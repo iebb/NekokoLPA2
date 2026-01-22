@@ -232,7 +232,7 @@
   "matchingIdHint": "ABC-123",
   "smdpOidLabel": "SM-DP+ OID",
   "confirmationCodeLabel": "確認コード",
-  "confirmationCodeHint": "シークレットコードを入力",
+  "confirmationCodeHint": "確認コードを入力",
   "continueButton": "続行",
   "invalidLpaClipboard": "クリップボードに有効な LPA の文字列が含まれていません。",
   "invalidFqdnFormat": "無効な FQDN 形式",
