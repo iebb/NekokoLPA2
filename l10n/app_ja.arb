@@ -33,8 +33,8 @@
   "tagRemindersSubtitle": "日付のタグに基づいて通知をスケジュールします",
   "manageTagsAndReminders": "タグの管理とリマインダー",
   "manageTagsAndRemindersSubtitle": "タグを構成、権限とテストアラート",
-  "viewScheduledReminders": "スケジュールされたリマインダーを表示",
-  "viewScheduledRemindersSubtitle": "今後のタグベースの通知を管理します",
+  "viewScheduledReminders": "スケジュール済みのリマインダーを表示",
+  "viewScheduledRemindersSubtitle": "タグベースのリマインダーを管理します",
   "connectivity": "接続性",
   "remoteReaders": "リモートリーダー",
   "remoteReadersSubtitle": "RemoCard コンパニオンアプリを構成します",
@@ -312,7 +312,7 @@
       }
     }
   },
-  "noScheduledReminders": "スケジュールされたリマインダーはありません",
+  "noScheduledReminders": "スケジュール済みのリマインダーはありません",
   "remindersAppearWhen": "プロファイルに日付のタグを追加すると、リマインダーが表示されます。",
   "activeTagsCount": "すべてのプロファイルで有効なタグが {count} 個あります",
   "@activeTagsCount": {
