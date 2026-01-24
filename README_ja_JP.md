@@ -1,5 +1,7 @@
 # NekokoLPA2 - 高度な eSIM マネージメント
 
+**Language:** [English](./README.md)
+
 NekokoLPA2 は、複数のカードリーダーと高度なプロファイル管理機能をサポートする強力なクロスプラットフォーム eSIM 管理アプリです。
 
 ## 機能
