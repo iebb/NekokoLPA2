@@ -9,11 +9,11 @@
   "language": "言語",
   "systemLanguage": "システム言語",
   "general": "一般",
-  "autoLoadProfiles": "プロファイルを自動で読み込み",
+  "autoLoadProfiles": "プロファイルを自動で読み込む",
   "autoLoadProfilesSubtitle": "リーダーの選択時にプロファイルを読み込みます",
-  "loadProfileIcons": "プロファイルアイコンを読み込み",
+  "loadProfileIcons": "プロファイルアイコンを読み込む",
   "loadProfileIconsSubtitle": "eUICC からアイコンを取得します (低速)",
-  "useNekokoIcons": "Nekoko Cloud からアイコンを使用",
+  "useNekokoIcons": "Nekoko Cloud からアイコンを取得",
   "useNekokoIconsSubtitle": "Nekoko からキャリアアイコンを取得します",
   "forceDeviceDropdown": "デバイスドロップダウンを強制",
   "forceDeviceDropdownSubtitle": "デバイスの選択で常にドロップダウンを使用します",
@@ -22,7 +22,7 @@
   "phoneFormat": "電話番号の形式",
   "phoneFormatSubtitle": "電話番号の表示形式を指定します",
   "notifications": "通知",
-  "notificationSettings": "通知設定",
+  "notificationSettings": "通知の設定",
   "notificationSettingsSubtitle": "自動処理と削除を設定します",
   "notificationHistory": "通知の履歴",
   "notificationHistorySubtitle": "送信済みの通知を検索、管理、再送信します",
@@ -393,7 +393,7 @@
   "serverAddedSuccessfully": "サーバーの追加が成功しました",
   "authFailedCheckPassword": "認証に失敗しました。パスワードを確認してください。",
   "addNewServer": "新しいサーバーを追加",
-  "autoLoadRemotes": "リモートデバイスを自動で読み込み",
+  "autoLoadRemotes": "リモートデバイスを自動で読み込む",
   "autoLoadRemotesSubtitle": "アプリの起動時に設定されたサーバーに自動で接続します",
   "getRemoCardGitHub": "GitHub から RemoCard を入手",
   "instructions": "説明:",
@@ -475,7 +475,7 @@
   "resentSuccessfully": "再送信に成功しました",
   "resendFailed": "再送信に失敗しました",
   "eid": "EID",
-  "seq": "順序",
+  "seq": "シーケンス",
   "date": "日付",
   "errorWithDetails": "エラー: {error}",
   "@errorWithDetails": {
@@ -579,8 +579,8 @@
   },
   "currentReader": "現在のリーダー",
   "errorLoadingNotifications": "通知の読み込み中にエラーが発生しました",
-  "allCaughtUp": "お久しぶりですね",
-  "sequence": "順序",
+  "allCaughtUp": "項目は以上です",
+  "sequence": "シーケンス",
   "operation": "操作",
   "profileNameLabel": "プロファイル名",
   "failedToSend": "送信に失敗しました",
@@ -589,7 +589,7 @@
   "deleteNotification": "通知を削除",
   "noNotifications": "通知はありません",
   "batchDownloadTitle": "一括ダウンロード",
-  "batchDownloadHint": "複数の LPA コードをここに貼り付け (one per line, max 20)",
+  "batchDownloadHint": "複数の LPA コードをここに貼り付け (1 行につき 1 個、最大 20 個)",
   "foundLpaCodes": "{count} 個の LPA コードが見つかりました",
   "@foundLpaCodes": {
     "placeholders": {
@@ -662,6 +662,6 @@
       }
     }
   },
-  "estimatedDownloadSize": "予想ダウンロードサイズ",
-  "insufficientStorageWarning": "空き容量が不足しているため、インストールが失敗する可能性があります。"
+  "estimatedDownloadSize": "予想のダウンロードサイズ",
+  "insufficientStorageWarning": "空き容量が不足しているため、インストールに失敗する可能性があります。"
 }
