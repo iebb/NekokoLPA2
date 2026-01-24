@@ -304,7 +304,7 @@
   "exportAsCurl": "cURL をエクスポート",
   "viewDetails": "詳細を表示",
   "deleteEntry": "エントリを削除",
-  "activeReminders": "{count} 個の有効なリマインダー",
+  "activeReminders": "{count} 個の有効なリマインダーがあります",
   "@activeReminders": {
     "placeholders": {
       "count": {
@@ -405,14 +405,14 @@
   "aramInfoTitle": "ARA-M 情報",
   "aramInfoSubtitle": "アクセスルールアプレットの詳細",
   "whatIsAram": "ARA-M とは何ですか？",
-  "aramDescription": "アクセスルールアプレット (ARA-M) は、eUICC (eSIM) および SIM カード上のメカニズムであり、プロファイルの管理やローレベルの操作の実行を許可するアプリを定義します。アプリのハッシュがカードの ARA-M の許可リストに存在しない場合、Android のシステムはアクセスをブロックして「アクセス拒否」のエラーを発生させます。",
+  "aramDescription": "アクセスルールアプレット (ARA-M) は、eUICC (eSIM) および SIM カード上のメカニズムであり、プロファイルの管理やローレベルの操作の実行を許可するアプリを定義します。アプリのハッシュがカードの ARA-M の許可リストに存在しない場合、Android のシステムはアクセスをブロックして「アクセス拒否」のエラーを返します。",
   "appCertHashes": "アプリ証明書のハッシュ",
   "aramHashInstruction": "このアプリにアクセスを許可するには、カードの ARA-M ルールに以下の SHA-1 証明書のハッシュを追加する必要がある場合があります。このハッシュは、現在のアプリビルドの証明書に固有するものです。",
   "certSha1Hash": "証明書の SHA-1 ハッシュ",
   "unavailable": "利用不可",
   "troubleshooting": "トラブルシューティング",
   "troubleStep1": "正しいカードリーダーを使用しているか確認してください。",
-  "troubleStep2": "物理カードを使用する場合は、それがテストカードか製品版のカード確認してください (製品版のカードは ARA-M がロックされていることが多いです)。",
+  "troubleStep2": "物理カードを使用する場合は、それがテストカードか製品版のカードかを確認してください (製品版のカードは ARA-M がロックされていることが多いです)。",
   "troubleStep3": "上記のハッシュはアプリのデバッグバージョン、通常バージョン、特権バージョン (Magisk) のいずれを使用するかによって異なります。",
   "troubleStep4": "一部の Android API 制限を回避可能な、特権バージョン (Magisk) の使用をご検討ください。",
   "hashCopied": "クリップボードにハッシュをコピーしました",
@@ -422,7 +422,7 @@
   "unknownProfile": "不明なプロファイル",
   "tags": "タグ",
   "noTags": "タグなし",
-  "records": "{count} 個の記録",
+  "records": "{count} 個のレコードがあります",
   "@records": {
     "placeholders": {
       "count": {
@@ -443,10 +443,10 @@
     }
   },
   "isdrAids": "ISD-R AID",
-  "configureDefaultAids": "デフォルトのアプリ ID を構成",
+  "configureDefaultAids": "デフォルトのアプリ ID を構成します",
   "addAidHexHint": "AID を追加 (Hex)",
   "notificationProcessing": "通知",
-  "manageAutoNotification": "自動通知処理を管理",
+  "manageAutoNotification": "自動通知処理を管理します",
   "notificationProcessingHelp": "通知を処理することで、eUICC と SM-DP+ サーバー (キャリア) 間の同期が容易になります。送信済みの通知を削除すると、カードのストレージをクリーンに保つことができます。",
   "afterEnablingProfile": "プロファイルの有効化後",
   "afterDisablingProfile": "プロファイルの無効化後",
