@@ -7,7 +7,7 @@
   "light": "Chiaro",
   "dark": "Scuro",
   "language": "Lingua",
-  "systemLanguage": "Lingua del sistema",
+  "systemLanguage": "Lingua di sistema",
   "general": "Generale",
   "autoLoadProfiles": "Carica automaticamente i profili",
   "autoLoadProfilesSubtitle": "Carica i profili quando è stato selezionato il lettore",
