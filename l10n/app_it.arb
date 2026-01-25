@@ -507,8 +507,8 @@
   "size": "Dimensione",
   "message": "Messaggio",
   "manage": "Gestisci",
-  "buyCard": "acquista adattatore eUICC",
-  "buyData": "Acquista Piano Dati",
+  "buyCard": "Acquista adattatore eUICC",
+  "buyData": "Acquista piano dati",
   "estimatedDownloadSize": "Dimensione di download stimata",
   "insufficientStorageWarning": "Spazio di archiviazione insufficiente per l'installazione. L'installazione potrebbe fallire."
 }
