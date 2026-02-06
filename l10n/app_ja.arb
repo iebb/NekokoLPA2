@@ -43,9 +43,9 @@
   "enableCcid": "USB CCID コネクター",
   "enableCcidSubtitle": "USB スマートカードリーダーを有効化します (CCID)",
   "enableOmapi": "Android OMAPI コネクター",
-  "enableOmapiSubtitle": "OMAPI ベースの eUICC 管理のための Open Mobile API 機能を有効化します",
+  "enableOmapiSubtitle": "OMAPI ベースな eUICC 管理のための Open Mobile API 機能を有効化します",
   "enableTmapi": "Android Telephony コネクター",
-  "enableTmapiSubtitle": "Telphony ベースの eUICC 管理のための Open Mobile API 機能を有効化します",
+  "enableTmapiSubtitle": "Telphony ベースな eUICC 管理のための Open Mobile API 機能を有効化します",
   "transport": "転送",
   "disableRefreshFlags": "更新フラグを無効化",
   "disableRefreshFlagsSubtitle": "外部リーダーには適用されません",
@@ -77,6 +77,7 @@
   "licenses": "オープンソースライセンス",
   "licensesSubtitle": "使用されているオープンソースライブラリのライセンス情報です",
   "noUpdatesFound": "更新はありません",
+
   "profilesTitle": "プロファイル",
   "switchEstkSlot": "eSTK スロットを切り替え",
   "notificationsButton": "通知",
@@ -115,6 +116,11 @@
   "removeCustomIcon": "カスタムアイコンを削除",
   "noRemoteIcon": "このオペレーターにはリモートアイコンがありません",
   "cancel": "キャンセル",
+  "useProfileIconSubtitle": "eSIM カードのアイコン",
+  "removeCustomIcon": "カスタムアイコンを削除",
+  "noRemoteIcon": "このオペレーターにはリモートアイコンがありません", 
+  
+  "cancel": "キャンセル",
   "ok": "OK",
   "save": "保存",
   "delete": "削除",
@@ -125,6 +131,7 @@
   "updatingProfile": "プロファイルを更新中...",
   "manageIsdR": "ISD-R AID を管理",
   "manageIsdRSubtitle": "eUICC のデフォルトアプリ ID を構成します",
+  
   "transportFailed": "転送が失敗しました",
   "remoteTransportFailedMessage": "リモートサーバーに接続しましたが、コマンドが失敗しました。これは通常、リモートデバイスが一時的にビジー状態であるか、カードから切断されていることを意味します。再試行しますか？",
   "retry": "再試行",
@@ -248,7 +255,7 @@
   "noQrFoundInImage": "画像から QR コードが見つかりません",
   "invalidAcInImage": "画像に無効なアクティベーションコードが見つかりました",
   "invalidAcFormatDetailed": "アクティベーションコードの形式が無効です。LPA:1$ で始まっている必要があります...",
-  "downloadProfileTitle": "プロファイルをダウンロード",
+  "downloadProfileTitle": "プロファイルのダウンロード",
   "connectingToEuicc": "eUICC に接続中...",
   "gettingChallenge": "eUICC チャレンジを取得中...",
   "authenticatingWithSmdp": "SM-DP+ を認証中...",
@@ -276,6 +283,7 @@
   "installationSuccessMessage": "プロファイルが eUICC にインストールされました。",
   "consumed": "消費",
   "enableProfileNow": "今すぐにプロファイル有効化",
+  "renameProfile": "プロファイルの名前を変更",
   "done": "完了",
   "profileEnabledSuccessfully": "プロファイルの有効化に成功しました",
   "enterNewProfileName": "簡単に識別できるように、プロファイルの新しい名前を入力してください。",
@@ -422,7 +430,7 @@
   "unknownProvider": "不明なプロバイダー",
   "unknownProfile": "不明なプロファイル",
   "tags": "タグ",
-  "noTags": "タグなし",
+  "noTags": "タグはありません",
   "records": "{count} 個のレコードがあります",
   "@records": {
     "placeholders": {
@@ -433,7 +441,7 @@
   },
   "bytes": "バイト",
   "responseCode": "レスポンスコード",
-  "responseBody": "レスポンス本文",
+  "responseBody": "レスポンスの本文",
   "type": "タイプ",
   "profileCount": "{count, plural, =1{1 個のプロファイル} other{{count} 個のプロファイル}}",
   "@profileCount": {
@@ -469,7 +477,36 @@
   "toggleAutoScroll": "自動スクロールを切り替え",
   "refreshDevices": "デバイスを更新",
   "scanBluetooth": "Bluetooth をスキャン",
+  "autoSend": "自動で送信",
+  "sendToServerAutomatically": "サーバーに自動で送信します",
+  "autoRemove": "自動で削除",
+  "removeFromCardAfterSending": "送信後にカードから削除します",
+  "removeWithoutSending": "送信せずに削除",
+  "removeWithoutSendingCaution": "使用上の注意: サーバーに通知されません",
+  "reminderSettings": "リマインダーの設定",
+  "permissionsActive": "権限が有効です",
+  "permissionsRequired": "権限が必要です",
+  "appCanSendNotifications": "アプリはシステム通知を送信できます",
+  "requiredForReminderAlerts": "リマインダーアラートに必要",
+  "enable": "有効",
+  "permissionCheckNotSupported": "このプラットフォームは権限の確認は対応していません。手動でテストを行ってください。",
+  "couldNotVerifyStatus": "ステータスを確認できませんでした。設定を手動で確認してください。",
+  "testNotification": "テスト通知",
+  "seconds": "秒",
+  "startTest": "テストを開始",
+  "notificationsDisabledMessage": "通知が無効化されています。リマインダーを受け取るには、システム設定で通知を有効化してください。",
+  "openSettings": "設定を開く",
+  "applicationLogs": "アプリのログ",
+  "refreshReload": "更新/再読み込み",
+  "toggleAutoScroll": "自動スクロールを切り替え",
+  "refreshDevices": "デバイスを更新",
+  "scanBluetooth": "Bluetooth をスキャン",
+  "initializationError": "初期化エラー",
+  "noReadersFound": "リーダーが見つかりません",
+  "noReadersFoundMessage": "互換性のあるリーダーを接続するか、BLE デバイスをスキャンして eSIM プロファイルを管理します。",
+  "scanBle": "BLE をスキャン",
   "lessThan1Kb": "< 1 KB",
+  "remoteReadersSubtitle": "RemoCard コンパニオンアプリを構成します",
   "connectionFailed": "接続に失敗しました",
   "downloadRemoCard": "RemoCard をダウンロード",
   "remoCardAndroidApp": "リモートコントロール用の Android アプリです",
@@ -560,7 +597,7 @@
   },
   "noNotificationAddress": "通知のアドレスがありません",
   "sendingNotification": "通知を送信中...",
-  "notifSentSuccessfully": "通知の送信に成功しました",
+  "notifSentSuccessfully": "通知の送信が成功しました",
   "failedToSendNotification": "通知の送信に失敗しました",
   "errorSendingNotification": "通知の送信に失敗しました: {error}",
   "@errorSendingNotification": {
@@ -579,13 +616,16 @@
     }
   },
   "currentReader": "現在のリーダー",
+  "loadingNotifications": "通知を読み込み中...",
   "errorLoadingNotifications": "通知の読み込み中にエラーが発生しました",
   "allCaughtUp": "項目は以上です",
   "sequence": "シーケンス",
   "operation": "操作",
+  "server": "サーバー",
   "profileNameLabel": "プロファイル名",
-  "failedToSend": "送信に失敗しました",
+  "failedToSend": "送信が失敗しました",
   "onCard": "カード上",
+  "unknownProfile": "不明なプロファイル", 
   "sendNotification": "通知を送信",
   "deleteNotification": "通知を削除",
   "noNotifications": "通知はありません",
@@ -618,15 +658,9 @@
   "updateAvailableSubtitle": "{appName} の新しいバージョン (v{version} b{build}) が利用可能です。今すぐ更新しますか？",
   "@updateAvailableSubtitle": {
     "placeholders": {
-      "appName": {
-        "type": "String"
-      },
-      "version": {
-        "type": "String"
-      },
-      "build": {
-        "type": "String"
-      }
+      "appName": { "type": "String" },
+      "version": { "type": "String" },
+      "build": { "type": "String" }
     }
   },
   "updateAction": "更新",
@@ -665,4 +699,6 @@
   },
   "estimatedDownloadSize": "予想のダウンロードサイズ",
   "insufficientStorageWarning": "空き容量が不足しているため、インストールに失敗する可能性があります。"
+  "estimateProfileSize": "プロファイルのサイズを見積もる",
+  "estimateProfileSizeSubtitle": "ダウンロード前にプロファイルメタデータのサイズを見積もります"
 }
