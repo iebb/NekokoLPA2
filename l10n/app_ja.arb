@@ -92,7 +92,7 @@
   "remoteConnectionFailed": "リモートリーダーの接続に失敗しました",
   "remoteConnectionFailedMessage": "リモートサーバーが実行中であり、アクセスが可能か確認します。\n\n{error}",
   "changeSettings": "設定を変更",
-  "connectCompatibleReader": "開始するには互換性のあるリーダーを接続してください。",
+  "connectCompatibleReader": "開始するには互換性のあるリーダーを接続してください",
   "connectReaderMessageBle": "Bluetooth 対応の eUICC を持っている場合は、互換性のある Bluetooth デバイスをスキャンすることもできます。",
   "connectReaderMessageNoBle": "CCID リーダーがコンピューターに接続されているか確認してください。",
   "downloadSmartCardExtension": "スマートカードの拡張機能をダウンロード",
