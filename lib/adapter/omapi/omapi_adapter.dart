@@ -226,11 +226,22 @@ class OmapiAdapter extends BaseAdapter {
       final readerId = _internalReaderName ?? "default";
 
       // 1. Check for same AID re-use
+      // For eSTK slots, only reuse the first AID requested by the caller.
       if (aids != null && aids.isNotEmpty) {
         log.info(
           'Checking for re-use. Targets: $aids. Current mappings: $_channelMappings',
         );
-        for (final aid in aids) {
+        const estkSlotAids = {
+          'A06573746B6D65FFFF4953442D522030',
+          'A06573746B6D65FFFF4953442D522031',
+        };
+        final preferredAid = aids.first;
+        final isEstkSlotAid = estkSlotAids.contains(
+          preferredAid.toUpperCase(),
+        );
+        final reuseCandidates = isEstkSlotAid ? [preferredAid] : aids;
+
+        for (final aid in reuseCandidates) {
           final existingId = _channelMappings.entries
               .firstWhereOrNull(
                 (e) => e.value.toUpperCase() == aid.toUpperCase(),
