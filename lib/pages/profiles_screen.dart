@@ -1100,6 +1100,13 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       await Future.delayed(const Duration(milliseconds: 300));
       await _listProfiles();
 
+      final activeAid = _adapter.connectedReader?.aid?.toUpperCase();
+      final atr = _adapter.lastAtr;
+      if (activeAid == targetAid && atr != null && atr.isNotEmpty) {
+        await AppSettings().setPreferredEstkAid(reader.id, atr, targetAid);
+        _log.info("Persisted eSTK slot for ${reader.id}: $targetAid");
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

@@ -643,6 +643,23 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  String? getPreferredEstkAid(String readerId, String atr) {
+    final key =
+        'preferredEstkAid_v1_${readerId.toLowerCase()}|${atr.toUpperCase()}';
+    return _prefs?.getString(key);
+  }
+
+  Future<void> setPreferredEstkAid(
+    String readerId,
+    String atr,
+    String aid,
+  ) async {
+    final key =
+        'preferredEstkAid_v1_${readerId.toLowerCase()}|${atr.toUpperCase()}';
+    await _prefs?.setString(key, aid);
+    notifyListeners();
+  }
+
   String? getPersistedEid(String readerId) {
     final key = readerId.toLowerCase();
     final jsonStr = _prefs?.getString('persisted_reader_eids_v2');
