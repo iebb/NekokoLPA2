@@ -154,8 +154,8 @@ class ProfileManager {
       ]);
     }
 
-    // Prioritize working AID for this reader (Ephemeral, tied to ATR)
     final readerName = adapter.connectedReader;
+    // Prioritize the persisted AID when a saved eSTKme preference is found.(Persistent, tied to ATR)
     if (readerName != null) {
       final persistedAid = currentAtr.isEmpty
           ? null
@@ -165,11 +165,12 @@ class ProfileManager {
         aids.removeWhere((aid) => listEquals(aid, persistedBytes));
         aids.insert(0, persistedBytes.toList());
         _log.info(
-          "Prioritizing persisted eSTK AID for $readerName: $persistedAid",
+          "Prioritizing persisted eSTKme AID for $readerName: $persistedAid",
         );
       }
     }
 
+    // Prioritize working AID for this reader (Ephemeral, tied to ATR)
     if (readerName != null) {
       final cached = _workingAidCache[readerName.id];
       final currentAtr = adapter.lastAtr;

@@ -1104,7 +1104,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       final atr = _adapter.lastAtr;
       if (activeAid == targetAid && atr != null && atr.isNotEmpty) {
         await AppSettings().setPreferredEstkAid(reader.id, atr, targetAid);
-        _log.info("Persisted eSTK slot for ${reader.id}: $targetAid");
+        _log.info("Persisted eSTKme slot for ${reader.id}: $targetAid");
       }
 
       if (mounted) {
