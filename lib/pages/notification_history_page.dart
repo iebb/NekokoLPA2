@@ -55,7 +55,7 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
     return _profileMetadataCache.putIfAbsent(iccid, () async {
       try {
         final service = await ProfileMetadataService.getInstance();
-        return service.getProfile(iccid);
+        return await service.getProfile(iccid);
       } catch (_) {
         return null;
       }
