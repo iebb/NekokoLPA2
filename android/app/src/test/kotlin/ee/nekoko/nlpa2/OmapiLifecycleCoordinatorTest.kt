@@ -4,7 +4,10 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -72,5 +75,52 @@ class OmapiLifecycleCoordinatorTest {
         assertFalse(queuedHardwareRan.get())
         assertFalse(postDetachHardwareRan.get())
         executor.shutdownNow()
+    }
+
+    @Test
+    fun purePoisonProbeDoesNotPersistArmedGuardBeforeAdmission() {
+        val armCalls = AtomicInteger()
+        val store =
+                object : OmapiSafetyStore {
+                    override fun load(): PersistedOmapiSafetyState? = null
+
+                    override fun saveArmed(
+                            bootIdentity: OmapiBootIdentity,
+                            recordedAtEpochMillis: Long,
+                    ): Boolean {
+                        armCalls.incrementAndGet()
+                        return true
+                    }
+
+                    override fun savePoison(poison: PersistedOmapiSafetyState): Boolean = true
+
+                    override fun clear(): Boolean = true
+                }
+        val cleanup =
+                OmapiCleanupCoordinator(
+                        backend =
+                                object : OmapiCleanupBackend<String> {
+                                    override fun closeChannel(channel: String) = Unit
+                                    override fun closeSessionChannels(readerName: String) = Unit
+                                    override fun closeSession(readerName: String) = Unit
+                                    override fun closeReaderSessions(readerName: String) = Unit
+                                    override fun reconnectService() = Unit
+                                },
+                        readerKeys = { emptySet() },
+                        detachChannel = { _, _ -> null },
+                        detachReader = { emptyList() },
+                        clearAllLocalState = {},
+                        safetyStore = store,
+                        bootIdentityProvider =
+                                OmapiBootIdentityProvider {
+                                    OmapiBootIdentity(bootCount = 40L, kernelBootId = "boot-one")
+                                },
+                )
+
+        assertNull(cleanup.rejectionForHardwareEntry(OmapiHardwareEntry.CONNECT))
+        assertEquals(0, armCalls.get())
+
+        assertNull(cleanup.enterHardware(OmapiHardwareEntry.CONNECT))
+        assertEquals(1, armCalls.get())
     }
 }

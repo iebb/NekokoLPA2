@@ -43,7 +43,10 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     // Track open sessions and channels per reader - using thread-safe maps
     private val readerSessions = java.util.concurrent.ConcurrentHashMap<String, Session>()
     private val readerChannels =
-            java.util.concurrent.ConcurrentHashMap<String, MutableMap<String, Channel>>()
+            java.util.concurrent.ConcurrentHashMap<
+                    String,
+                    java.util.concurrent.ConcurrentHashMap<String, Channel>,
+            >()
 
     // Cache for reader status - using thread-safe map
     private val readerStatusCache = java.util.concurrent.ConcurrentHashMap<String, String>()
@@ -354,7 +357,9 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                             OmapiHardwareEntry.DISCONNECT
                     else -> OmapiHardwareEntry.OPEN_SESSION
                 }
-        if (rejectIfPoisoned(result, entry)) return
+        // This is deliberately a pure poison probe. Durable ARMED is established only after
+        // lifecycle admission, inside the background operation immediately before hardware access.
+        if (rejectIfAlreadyPoisoned(result, entry)) return
 
         // Methods that interact with hardware are moved to background threads
         val backgroundMethods =
@@ -418,6 +423,21 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 ?: action()
     }
 
+    private fun rejectIfAlreadyPoisoned(
+            result: Result,
+            entry: OmapiHardwareEntry,
+    ): Boolean {
+        val info = cleanupCoordinator.rejectionForHardwareEntry(entry) ?: return false
+        runOnUiThread {
+            result.error(
+                    OMAPI_SESSION_CORRUPTED,
+                    CORRUPTED_MESSAGE,
+                    poisonDetails(info),
+            )
+        }
+        return true
+    }
+
     private fun rejectIfPoisoned(
             result: Result,
             entry: OmapiHardwareEntry = OmapiHardwareEntry.OPEN_SESSION,
@@ -452,6 +472,75 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             )
         }
         return true
+    }
+
+    private fun trackNewChannelOrReject(
+            readerName: String,
+            aidHex: String,
+            channel: Channel,
+            result: Result,
+    ): Boolean {
+        val key = aidHex.uppercase()
+        val channels =
+                readerChannels.getOrPut(readerName) {
+                    java.util.concurrent.ConcurrentHashMap()
+                }
+        val existing = channels.putIfAbsent(key, channel)
+        if (existing == null) return true
+
+        Log.e(TAG, "Refusing to overwrite tracked channel for AID $aidHex on $readerName")
+        try {
+            channel.close()
+        } catch (closeError: Exception) {
+            val info =
+                    cleanupCoordinator.markPoisoned(
+                            readerName,
+                            closeError.message ?: closeError.javaClass.simpleName,
+                            operationMayHaveSucceeded = profileSwitchInProgress,
+                    )
+            runOnUiThread {
+                result.error(OMAPI_SESSION_CORRUPTED, CORRUPTED_MESSAGE, poisonDetails(info))
+            }
+            return false
+        }
+
+        runOnUiThread {
+            result.error(
+                    "CHANNEL_ALREADY_OPEN",
+                    "A logical channel is already tracked for AID $aidHex",
+                    null,
+            )
+        }
+        return false
+    }
+
+    private fun reportTransmitException(
+            result: Result,
+            readerName: String,
+            channelKey: String,
+            error: Exception,
+    ) {
+        if (profileSwitchInProgress) {
+            val info =
+                    cleanupCoordinator.markPoisoned(
+                            readerName,
+                            error.message ?: error.javaClass.simpleName,
+                            operationMayHaveSucceeded = true,
+                    )
+            runOnUiThread {
+                result.error(OMAPI_SESSION_CORRUPTED, CORRUPTED_MESSAGE, poisonDetails(info))
+            }
+            return
+        }
+
+        val cleanup =
+                cleanupCoordinator.cleanupChannel(
+                        readerName,
+                        channelKey.uppercase(),
+                        operationMayHaveSucceeded = false,
+                )
+        if (reportCleanupFailure(result, cleanup)) return
+        runOnUiThread { result.error("TRANSMIT_FAILED", error.message, null) }
     }
 
     @RequiresApi(Build.VERSION_CODES.P)
@@ -678,14 +767,13 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                                 result.error(
                                         "CHANNEL_FAILED",
                                         "Failed to open logical channel",
-                                            null
-                                    )
+                                        null,
+                                )
                             }
 
-            // Track before transmit so every exceptional path remains individually cleanable.
-            readerChannels
-                    .getOrPut(readerName) { java.util.concurrent.ConcurrentHashMap() }[
-                            DEFAULT_EUICC_AID] = channel
+            // Never overwrite a previously tracked channel. If this newly opened duplicate cannot
+            // be closed individually, fail closed instead of losing the old channel reference.
+            if (!trackNewChannelOrReject(readerName, DEFAULT_EUICC_AID, channel, result)) return
 
             // Android OMAPI automatically handles CLA byte modification for logical channels.
             val response = channel.transmit(apduBytes)
@@ -722,15 +810,7 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             runOnUiThread { result.success(responseHex) }
         } catch (e: Exception) {
             Log.e(TAG, "Transmit failed", e)
-            val info =
-                    cleanupCoordinator.markPoisoned(
-                            readerName,
-                            e.message ?: e.javaClass.simpleName,
-                            operationMayHaveSucceeded = profileSwitchInProgress,
-                    )
-            runOnUiThread {
-                result.error(OMAPI_SESSION_CORRUPTED, CORRUPTED_MESSAGE, poisonDetails(info))
-            }
+            reportTransmitException(result, readerName, DEFAULT_EUICC_AID, e)
         }
     }
 
@@ -762,18 +842,25 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
         // Background thread work
         for (targetAid in targets) {
+            val targetKey = targetAid.uppercase()
+            if (readerChannels[readerName]?.containsKey(targetKey) == true) {
+                return runOnUiThread {
+                    result.error(
+                            "CHANNEL_ALREADY_OPEN",
+                            "A logical channel is already tracked for AID $targetAid",
+                            null,
+                    )
+                }
+            }
+
             try {
                 val aidBytes = hexStringToByteArray(targetAid)
                 val currentSession = session
                 val channel = currentSession.openLogicalChannel(aidBytes)
 
                 if (channel != null) {
-                    // Success!
-                    val channels =
-                            readerChannels.getOrPut(readerName) {
-                                java.util.concurrent.ConcurrentHashMap()
-                            }
-                    channels[targetAid.uppercase()] = channel
+                    // Success. Registration is fail-closed: never overwrite an older channel.
+                    if (!trackNewChannelOrReject(readerName, targetAid, channel, result)) return
                     readersWithSuccessfulChannel.add(readerName)
 
                     Log.i(TAG, "Opened logical channel for AID: $targetAid on reader: $readerName")
@@ -842,6 +929,7 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             result.error("CHANNEL_FAILED", lastError?.message ?: "No AID opened", null)
         }
     }
+
     @RequiresApi(Build.VERSION_CODES.P)
     private fun handleCloseChannel(call: MethodCall, result: Result) {
         if (rejectIfPoisoned(result)) return
@@ -918,10 +1006,9 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                             val aidBytes = hexStringToByteArray(aidHex)
                             channel = session.openLogicalChannel(aidBytes)
                             if (channel != null) {
-                                readerChannels
-                                        .getOrPut(readerName) {
-                                            java.util.concurrent.ConcurrentHashMap()
-                                        }[aidHex.uppercase()] = channel
+                                if (!trackNewChannelOrReject(readerName, aidHex, channel, result)) {
+                                    return
+                                }
                                 Log.i(TAG, "Re-opened channel for AID $aidHex during retry $attempt")
                             }
                         }
@@ -1012,10 +1099,10 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                                 TAG,
                                 "Got 6D00 on reader $readerName, AID $aidHex. Attempt ${attempt + 1}/$maxAttempts"
                         )
-                        
+
                         if (attempt < maxAttempts) {
                             // 6D00 often means the card OS state changed.
-                            // Close ALL channels and the session for this reader to be safe.
+                            // Close tracked channels individually before retrying with a fresh session.
                             val cleanup = cleanupReaderSessions(readerName)
                             if (reportCleanupFailure(result, cleanup)) return
 
@@ -1031,19 +1118,8 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     return
                 } catch (e: Exception) {
                     Log.e(TAG, "Channel transmit failed for AID $aidHex (attempt $attempt)", e)
-                    val info =
-                            cleanupCoordinator.markPoisoned(
-                                    readerName,
-                                    e.message ?: e.javaClass.simpleName,
-                                    operationMayHaveSucceeded = profileSwitchInProgress,
-                            )
-                    return runOnUiThread {
-                        result.error(
-                                OMAPI_SESSION_CORRUPTED,
-                                CORRUPTED_MESSAGE,
-                                poisonDetails(info),
-                        )
-                    }
+                    reportTransmitException(result, readerName, aidHex, e)
+                    return
                 }
             } else if (attempt < maxAttempts) {
                 // We don't have a channel and re-open failed, but have retries left

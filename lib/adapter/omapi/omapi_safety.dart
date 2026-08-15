@@ -40,6 +40,12 @@ class OmapiChannelOwnershipTracker {
   final Map<int, int> _owners = {};
 
   int claim(int channelId) {
+    if (_owners.containsKey(channelId)) {
+      throw AppException(
+        AppErrorCode.ERROR_OMAPI_CHANNEL_OPEN_FAILED,
+        message: 'OMAPI logical channel $channelId already has a live owner',
+      );
+    }
     final token = ++_nextToken;
     _owners[channelId] = token;
     return token;
@@ -49,6 +55,14 @@ class OmapiChannelOwnershipTracker {
 
   bool owns(int channelId, int? token) =>
       token != null && _owners[channelId] == token;
+
+  void ensureOwned(int channelId, int? token) {
+    if (owns(channelId, token)) return;
+    throw AppException(
+      AppErrorCode.ERROR_OMAPI_CHANNEL_OPEN_FAILED,
+      message: 'OMAPI channel handle $channelId is stale',
+    );
+  }
 
   bool releaseIfOwned(int channelId, int? token) {
     if (!owns(channelId, token)) return false;

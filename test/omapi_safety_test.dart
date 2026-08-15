@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nlpa2/adapter/euicc_adapter.dart';
 import 'package:nlpa2/adapter/omapi/omapi_adapter.dart';
 import 'package:nlpa2/adapter/omapi/omapi_safety.dart';
 import 'package:nlpa2/utils/error_codes.dart';
@@ -7,10 +10,13 @@ import 'package:nlpa2/utils/error_codes.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('test.omapi.safety');
+  const omapiChannel = MethodChannel('ee.nekoko.omapi_plugin');
 
   tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(omapiChannel, null);
   });
 
   test('healthy invocation returns native result', () async {
@@ -145,9 +151,15 @@ void main() {
     );
   });
 
-  test('stale handle cannot release a replacement channel with the same id', () {
+  test('stale handle cannot release or use a replacement channel id', () {
     final ownership = OmapiChannelOwnershipTracker();
     final oldToken = ownership.claim(1);
+
+    expect(
+      () => ownership.claim(1),
+      throwsA(isA<AppException>()),
+      reason: 'a live channel id must never be silently re-owned',
+    );
 
     // Bulk cleanup invalidates every old Dart handle while the object may live on.
     ownership.clear();
@@ -155,8 +167,142 @@ void main() {
 
     expect(ownership.owns(1, oldToken), isFalse);
     expect(ownership.owns(1, replacementToken), isTrue);
+    expect(() => ownership.ensureOwned(1, oldToken), throwsA(isA<AppException>()));
+    expect(() => ownership.ensureOwned(1, replacementToken), returnsNormally);
     expect(ownership.releaseIfOwned(1, oldToken), isFalse);
     expect(ownership.owns(1, replacementToken), isTrue);
     expect(ownership.releaseIfOwned(1, replacementToken), isTrue);
+  });
+
+  test('old Dart handle cannot transmit through replacement native channel', () async {
+    const aid = 'A0000005591010FFFFFFFF8900000100';
+    var nativeOpenCalls = 0;
+    var nativeTransmitCalls = 0;
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(omapiChannel, (call) async {
+          switch (call.method) {
+            case 'connect':
+              return <String, dynamic>{'success': true, 'atr': ''};
+            case 'openChannel':
+              nativeOpenCalls++;
+              return <String, dynamic>{'success': true, 'aid': aid};
+            case 'closeChannels':
+            case 'closeChannel':
+            case 'disconnect':
+              return true;
+            case 'transmitOnChannel':
+              nativeTransmitCalls++;
+              return '9000';
+          }
+          return true;
+        });
+
+    final adapter = OmapiAdapter();
+    final reader = Reader(id: 'omapi:SIM1', name: 'SIM 1', source: adapter);
+    await adapter.connect(reader);
+    final oldHandle = await adapter.openChannel(aids: const [aid]);
+    await adapter.cleanupChannels();
+    final replacement = await adapter.openChannel(aids: const [aid]);
+
+    await expectLater(
+      oldHandle.transmit(0x00, 0xCA, 0x00, 0x00),
+      throwsA(isA<AppException>()),
+    );
+    expect(nativeOpenCalls, 2);
+    expect(nativeTransmitCalls, 0, reason: 'stale handle must fail before native I/O');
+
+    await replacement.close();
+    await adapter.disconnect();
+  });
+
+  test('shared channel cannot be switched to another AID by one handle', () async {
+    const aid = 'A0000005591010FFFFFFFF8900000100';
+    var nativeOpenCalls = 0;
+    var nativeCloseCalls = 0;
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(omapiChannel, (call) async {
+          switch (call.method) {
+            case 'connect':
+              return <String, dynamic>{'success': true, 'atr': ''};
+            case 'openChannel':
+              nativeOpenCalls++;
+              return <String, dynamic>{'success': true, 'aid': aid};
+            case 'closeChannel':
+              nativeCloseCalls++;
+              return true;
+            case 'disconnect':
+            case 'closeChannels':
+              return true;
+          }
+          return true;
+        });
+
+    final adapter = OmapiAdapter();
+    final reader = Reader(id: 'omapi:SIM1', name: 'SIM 1', source: adapter);
+    await adapter.connect(reader);
+    final first = await adapter.openChannel(aids: const [aid]);
+    final second = await adapter.openChannel(aids: const [aid]);
+
+    await expectLater(
+      first.transmit(
+        0x00,
+        0xA4,
+        0x04,
+        0x00,
+        Uint8List.fromList([0xA0, 0x00, 0x00, 0x01]),
+      ),
+      throwsA(isA<AppException>()),
+    );
+    expect(nativeOpenCalls, 1, reason: 'second handle must reuse the live channel');
+    expect(nativeCloseCalls, 0, reason: 'shared channel must not be disturbed');
+
+    await first.close();
+    await second.close();
+    await adapter.disconnect();
+  });
+
+  test('transient cleanup failure preserves reusable Dart channel tracking', () async {
+    const aid = 'A0000005591010FFFFFFFF8900000100';
+    var nativeOpenCalls = 0;
+    var cleanupCalls = 0;
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(omapiChannel, (call) async {
+          switch (call.method) {
+            case 'connect':
+              return <String, dynamic>{'success': true, 'atr': ''};
+            case 'openChannel':
+              nativeOpenCalls++;
+              return <String, dynamic>{'success': true, 'aid': aid};
+            case 'closeChannels':
+              cleanupCalls++;
+              if (cleanupCalls == 1) return true;
+              throw PlatformException(
+                code: 'NOT_CONNECTED',
+                message: 'lifecycle detached before cleanup ran',
+              );
+            case 'closeChannel':
+            case 'disconnect':
+              return true;
+          }
+          return true;
+        });
+
+    final adapter = OmapiAdapter();
+    final reader = Reader(id: 'omapi:SIM1', name: 'SIM 1', source: adapter);
+    await adapter.connect(reader);
+    final first = await adapter.openChannel(aids: const [aid]);
+
+    await expectLater(adapter.cleanupChannels(), throwsA(isA<PlatformException>()));
+    final reused = await adapter.openChannel(aids: const [aid]);
+
+    expect(cleanupCalls, 2);
+    expect(nativeOpenCalls, 1, reason: 'failed cleanup must not discard live mapping');
+
+    await first.close();
+    await reused.close();
+    await adapter.disconnect();
   });
 }
