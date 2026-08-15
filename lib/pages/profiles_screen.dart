@@ -23,6 +23,7 @@ import '../adapter/ble/sim_link_adapter.dart';
 import '../utils/error_codes.dart';
 import '../adapter/nbridge/nbridge_adapter.dart';
 import '../adapter/omapi/omapi_adapter.dart';
+import '../adapter/omapi/omapi_safety.dart';
 import '../adapter/telephony/telephony_adapter.dart';
 import '../logic/profile_manager.dart';
 import '../utils/apdu_exception.dart';
@@ -1453,6 +1454,12 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       _autoDiscoveryFinished = true;
       _setSwitching(false); // Success! Toggle is done.
     } catch (e) {
+      if (isOmapiSessionCorruptedError(e)) {
+        _setSwitching(false);
+        _handleOperationError(reader, e);
+        return;
+      }
+
       final bool isConnectivity =
           (e is ProactiveRefreshException) ||
           (e is CardBusyException) ||
@@ -2195,47 +2202,62 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         try {
           await _adapter.runExclusive(() async {
             await _adapter.connect(reader);
-            final channel = await _manager.openSession();
-            bool isRefresh = false;
+            var switchMarkerSet = false;
             try {
-              // Perform toggle operation
-              commandSubmitted = true;
-              isRefresh = enable
-                  ? await _manager.enableProfile(p.iccid, useChannel: channel)
-                  : await _manager.disableProfile(p.iccid, useChannel: channel);
-            } finally {
+              await _adapter.setProfileSwitchInProgress(true);
+              switchMarkerSet = true;
+              final channel = await _manager.openSession();
+              bool isRefresh = false;
               try {
-                await channel.close();
-              } catch (closeError) {
-                _log.warning(
-                  "Failed to close switch channel after command submission: $closeError",
-                );
-                if (!commandSubmitted) rethrow;
-              }
-            }
-
-            // 1. change the app status by setting enable and disable flags on corresponding profiles;
-            if (mounted) {
-              setState(() {
-                _filteredProfiles = null; // Clear cache for optimistic update
-                if (_profiles != null) {
-                  for (var i = 0; i < _profiles!.length; i++) {
-                    if (_profiles![i].iccid == p.iccid) {
-                      _profiles![i] = _profiles![i].copyWith(enabled: enable);
-                    } else if (enable && _profiles![i].enabled) {
-                      // If we enabled a profile, others should be disabled (usually)
-                      _profiles![i] = _profiles![i].copyWith(enabled: false);
-                    }
+                // Perform toggle operation
+                commandSubmitted = true;
+                isRefresh = enable
+                    ? await _manager.enableProfile(p.iccid, useChannel: channel)
+                    : await _manager.disableProfile(
+                        p.iccid,
+                        useChannel: channel,
+                      );
+              } finally {
+                try {
+                  await channel.close();
+                } catch (closeError) {
+                  _log.warning(
+                    "Failed to close switch channel after command submission: $closeError",
+                  );
+                  if (!commandSubmitted ||
+                      isOmapiSessionCorruptedError(closeError)) {
+                    rethrow;
                   }
                 }
-              });
-            }
+              }
 
-            if (isRefresh) {
-              _log.info(
-                "Refresh detected, giving the card a moment before UI sync.",
-              );
-              await Future.delayed(const Duration(seconds: 1));
+              // 1. change the app status by setting enable and disable flags on corresponding profiles;
+              if (mounted) {
+                setState(() {
+                  _filteredProfiles = null; // Clear cache for optimistic update
+                  if (_profiles != null) {
+                    for (var i = 0; i < _profiles!.length; i++) {
+                      if (_profiles![i].iccid == p.iccid) {
+                        _profiles![i] = _profiles![i].copyWith(enabled: enable);
+                      } else if (enable && _profiles![i].enabled) {
+                        // If we enabled a profile, others should be disabled (usually)
+                        _profiles![i] = _profiles![i].copyWith(enabled: false);
+                      }
+                    }
+                  }
+                });
+              }
+
+              if (isRefresh) {
+                _log.info(
+                  "Refresh detected, giving the card a moment before UI sync.",
+                );
+                await Future.delayed(const Duration(seconds: 1));
+              }
+            } finally {
+              if (switchMarkerSet) {
+                await _adapter.setProfileSwitchInProgress(false);
+              }
             }
 
             if (mounted && _selectedReader?.id == reader.id) {
@@ -2292,8 +2314,11 @@ class _ProfilesScreenState extends State<ProfilesScreen>
           break; // Exit loop on success
         } catch (e) {
           final isConnectivity = _isSwitchConnectivityError(e);
-          if (!commandSubmitted &&
-              isConnectivity &&
+          if (isConnectivity &&
+              canAutomaticallyRetryProfileSwitch(
+                e,
+                commandSubmitted: commandSubmitted,
+              ) &&
               retryCount < maxRetries - 1) {
             retryCount++;
             _log.warning(
@@ -2305,7 +2330,12 @@ class _ProfilesScreenState extends State<ProfilesScreen>
             await Future.delayed(const Duration(seconds: 2));
             continue;
           }
-          if (e is CardBusyException && retryCount < maxRetries - 1) {
+          if (e is CardBusyException &&
+              canAutomaticallyRetryProfileSwitch(
+                e,
+                commandSubmitted: commandSubmitted,
+              ) &&
+              retryCount < maxRetries - 1) {
             retryCount++;
             _log.warning(
               "Card busy (6881) during toggle, retrying $retryCount/$maxRetries after delay...",
@@ -2317,6 +2347,11 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         }
       }
     } catch (e) {
+      if (isOmapiSessionCorruptedError(e)) {
+        _setSwitching(false);
+        _handleOperationError(reader, e);
+        return;
+      }
       if (await _handleInvalidPassword(e)) {
         _setSwitching(false);
         await _toggleProfile(p, enable);

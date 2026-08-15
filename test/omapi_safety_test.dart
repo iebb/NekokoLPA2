@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nlpa2/adapter/omapi/omapi_adapter.dart';
 import 'package:nlpa2/adapter/omapi/omapi_safety.dart';
 import 'package:nlpa2/utils/error_codes.dart';
 
@@ -75,5 +76,18 @@ void main() {
     );
 
     expect(isOmapiSessionCorruptedError(wrapped), isTrue);
+  });
+
+  test('eSTK reuse preserves the caller preferred AID', () {
+    const estkPreferred = 'A06573746B6D65FFFF4953442D522030';
+    const fallback = 'A0000005591010FFFFFFFF8900000100';
+
+    expect(omapiPreferredAidReuseCandidates([estkPreferred, fallback]), [
+      estkPreferred,
+    ]);
+    expect(omapiPreferredAidReuseCandidates([fallback, estkPreferred]), [
+      fallback,
+      estkPreferred,
+    ]);
   });
 }

@@ -523,6 +523,13 @@ class CompositeAdapter extends BaseAdapter {
   }
 
   @override
+  Future<void> setProfileSwitchInProgress(bool value) async {
+    if (_connectedAdapter != null) {
+      await _connectedAdapter!.setProfileSwitchInProgress(value);
+    }
+  }
+
+  @override
   Future<Uint8List> sendRawApdu(Uint8List apdu) async {
     if (_connectedAdapter == null) {
       throw AppException(AppErrorCode.ERROR_UNKNOWN, message: "Not connected");

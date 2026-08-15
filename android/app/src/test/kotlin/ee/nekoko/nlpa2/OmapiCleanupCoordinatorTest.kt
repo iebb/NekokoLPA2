@@ -98,6 +98,11 @@ class OmapiCleanupCoordinatorTest {
                 OmapiCleanupCoordinator(
                         backend = backend,
                         readerKeys = { sessions + channels.keys + successfulReaders },
+                        detachChannel = { reader, channelKey ->
+                            val tracked = channels[reader]
+                            val index = tracked?.indexOf(channelKey) ?: -1
+                            if (index >= 0) tracked!!.removeAt(index) else null
+                        },
                         detachReader = { reader ->
                             sessions.remove(reader)
                             successfulReaders.remove(reader)
@@ -126,6 +131,35 @@ class OmapiCleanupCoordinatorTest {
         assertEquals(OmapiCleanupResult.Success, fixture.coordinator.cleanupReader("SIM1"))
         assertEquals(listOf("a", "b"), fixture.backend.closed)
         assertFalse(fixture.coordinator.poisonInfo != null)
+    }
+
+    @Test
+    fun closingOneChannelLeavesOtherTrackedChannelsOpen() {
+        val fixture = Fixture(channels = mutableMapOf("SIM1" to mutableListOf("a", "b")))
+
+        assertEquals(
+                OmapiCleanupResult.Success,
+                fixture.coordinator.cleanupChannel("SIM1", "a"),
+        )
+        assertEquals(listOf("a"), fixture.backend.closed)
+        assertEquals(listOf("b"), fixture.channels["SIM1"])
+    }
+
+    @Test
+    fun individualCloseFailurePoisonsAndPreventsBulkCleanup() {
+        val fixture = Fixture(channels = mutableMapOf("SIM1" to mutableListOf("a", "b")))
+        fixture.backend.failOn = "a"
+
+        assertTrue(
+                fixture.coordinator.cleanupChannel("SIM1", "a")
+                        is OmapiCleanupResult.RebootRequired
+        )
+        assertTrue(fixture.coordinator.cleanupAll() is OmapiCleanupResult.RebootRequired)
+        assertEquals(listOf("a"), fixture.backend.closed)
+        assertEquals(0, fixture.backend.closeSessionChannelsCalls)
+        assertEquals(0, fixture.backend.closeSessionCalls)
+        assertEquals(0, fixture.backend.closeReaderSessionsCalls)
+        assertEquals(0, fixture.backend.reconnectCalls)
     }
 
     @Test
@@ -241,6 +275,11 @@ class OmapiCleanupCoordinatorTest {
                 OmapiCleanupCoordinator(
                         backend,
                         readerKeys = { local.keys },
+                        detachChannel = { reader, channelKey ->
+                            val tracked = local[reader]
+                            val index = tracked?.indexOf(channelKey) ?: -1
+                            if (index >= 0) tracked!!.removeAt(index) else null
+                        },
                         detachReader = { local.remove(it)?.toList() ?: emptyList() },
                         clearAllLocalState = { local.clear() },
                         safetyStore = FakePoisonStore(),
@@ -409,6 +448,7 @@ class OmapiCleanupCoordinatorTest {
                                     override fun reconnectService() = Unit
                                 },
                         readerKeys = { setOf("SIM1") },
+                        detachChannel = { _, _ -> null },
                         detachReader = {
                             events += "detach-reader"
                             listOf("bad")

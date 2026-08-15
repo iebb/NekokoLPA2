@@ -5,6 +5,7 @@ import '../plugins/session_plugin.dart';
 import 'package:flutter/foundation.dart';
 import '../utils/profile_tag_utils.dart';
 import '../adapter/euicc_adapter.dart';
+import '../adapter/omapi/omapi_safety.dart';
 import '../models/euicc_profile.dart';
 import '../models/asn1/rsp_definitions.g.dart';
 import '../models/asn1/simple_reader.dart';
@@ -300,70 +301,87 @@ class ProfileManager {
   Future<bool> enableProfile(String iccid, {Channel? useChannel}) async {
     const int maxAttempts = 10;
     int attempt = 0;
+    bool commandSubmitted = false;
+    final managesSwitchMarker = useChannel == null;
 
-    while (true) {
-      try {
-        return await _runOnChannel(useChannel, (channel) async {
-          bool isRefresh = false;
-          String iccidHex = iccid;
-          if (iccidHex.length % 2 != 0) iccidHex += 'F';
-          final iccidBytes = HexUtils.hexToBytes(
-            HexUtils.swapNibbles(iccidHex),
-          );
-
-          final request = EnableProfileRequest(
-            profileIdentifier: EnableProfileRequest_profileIdentifier(
-              iccid: iccidBytes,
-            ),
-            refreshFlag: AppSettings().disableRefreshFlags
-                ? false
-                : adapter.requiresRefresh,
-          );
-          _logAsn1Request(request);
-          var requestData = request.encode();
-
-          try {
-            final responseData = await transmitLogicalApdu(
-              channel,
-              requestData,
+    if (managesSwitchMarker) {
+      await adapter.setProfileSwitchInProgress(true);
+    }
+    try {
+      while (true) {
+        try {
+          return await _runOnChannel(useChannel, (channel) async {
+            bool isRefresh = false;
+            String iccidHex = iccid;
+            if (iccidHex.length % 2 != 0) iccidHex += 'F';
+            final iccidBytes = HexUtils.hexToBytes(
+              HexUtils.swapNibbles(iccidHex),
             );
-            final resp = EnableProfileResponse.decode(responseData);
-            _logAsn1Response(resp);
-            if (resp.enableResult != null &&
-                resp.enableResult != EnableProfileResponse_enableResult.ok &&
-                resp.enableResult !=
-                    EnableProfileResponse_enableResult
-                        .profileNotInDisabledState) {
-              throw Exception('ENABLE_FAILED:${resp.enableResult?.name}');
-            }
-            if (request.refreshFlag == true) {
-              await _handleRefresh(channel);
-              isRefresh = true;
-            } else {
-              await _handleSoftRefresh(channel);
-            }
-            return isRefresh;
-          } catch (e) {
-            if (e is ProactiveRefreshException) {
-              _markRefreshing();
-              _log.info(
-                "Got 91xx status; deferring recovery to the next fresh session.",
+
+            final request = EnableProfileRequest(
+              profileIdentifier: EnableProfileRequest_profileIdentifier(
+                iccid: iccidBytes,
+              ),
+              refreshFlag: AppSettings().disableRefreshFlags
+                  ? false
+                  : adapter.requiresRefresh,
+            );
+            _logAsn1Request(request);
+            var requestData = request.encode();
+
+            try {
+              commandSubmitted = true;
+              final responseData = await transmitLogicalApdu(
+                channel,
+                requestData,
               );
-              return true;
+              final resp = EnableProfileResponse.decode(responseData);
+              _logAsn1Response(resp);
+              if (resp.enableResult != null &&
+                  resp.enableResult != EnableProfileResponse_enableResult.ok &&
+                  resp.enableResult !=
+                      EnableProfileResponse_enableResult
+                          .profileNotInDisabledState) {
+                throw Exception('ENABLE_FAILED:${resp.enableResult?.name}');
+              }
+              if (request.refreshFlag == true) {
+                await _handleRefresh(channel);
+                isRefresh = true;
+              } else {
+                await _handleSoftRefresh(channel);
+              }
+              return isRefresh;
+            } catch (e) {
+              if (e is ProactiveRefreshException) {
+                _markRefreshing();
+                _log.info(
+                  "Got 91xx status; deferring recovery to the next fresh session.",
+                );
+                return true;
+              }
+              rethrow;
             }
-            rethrow;
+          });
+        } catch (e) {
+          if (e is CardBusyException &&
+              attempt < maxAttempts &&
+              canAutomaticallyRetryProfileSwitch(
+                e,
+                commandSubmitted: commandSubmitted,
+              )) {
+            attempt++;
+            _log.info(
+              "enableProfile: Card busy (6881), retry attempt $attempt/$maxAttempts...",
+            );
+            await Future.delayed(const Duration(milliseconds: 500));
+            continue;
           }
-        });
-      } catch (e) {
-        if (e is CardBusyException && attempt < maxAttempts) {
-          attempt++;
-          _log.info(
-            "enableProfile: Card busy (6881), retry attempt $attempt/$maxAttempts...",
-          );
-          await Future.delayed(const Duration(milliseconds: 500));
-          continue;
+          rethrow;
         }
-        rethrow;
+      }
+    } finally {
+      if (managesSwitchMarker) {
+        await adapter.setProfileSwitchInProgress(false);
       }
     }
   }
@@ -371,70 +389,88 @@ class ProfileManager {
   Future<bool> disableProfile(String iccid, {Channel? useChannel}) async {
     const int maxAttempts = 10;
     int attempt = 0;
+    bool commandSubmitted = false;
+    final managesSwitchMarker = useChannel == null;
 
-    while (true) {
-      try {
-        return await _runOnChannel(useChannel, (channel) async {
-          bool isRefresh = false;
-          String iccidHex = iccid;
-          if (iccidHex.length % 2 != 0) iccidHex += 'F';
-          final iccidBytes = HexUtils.hexToBytes(
-            HexUtils.swapNibbles(iccidHex),
-          );
-
-          final request = DisableProfileRequest(
-            profileIdentifier: DisableProfileRequest_profileIdentifier(
-              iccid: iccidBytes,
-            ),
-            refreshFlag: AppSettings().disableRefreshFlags
-                ? false
-                : adapter.requiresRefresh,
-          );
-          _logAsn1Request(request);
-          final requestData = request.encode();
-
-          try {
-            final responseData = await transmitLogicalApdu(
-              channel,
-              requestData,
+    if (managesSwitchMarker) {
+      await adapter.setProfileSwitchInProgress(true);
+    }
+    try {
+      while (true) {
+        try {
+          return await _runOnChannel(useChannel, (channel) async {
+            bool isRefresh = false;
+            String iccidHex = iccid;
+            if (iccidHex.length % 2 != 0) iccidHex += 'F';
+            final iccidBytes = HexUtils.hexToBytes(
+              HexUtils.swapNibbles(iccidHex),
             );
-            final resp = DisableProfileResponse.decode(responseData);
-            _logAsn1Response(resp);
-            if (resp.disableResult != null &&
-                resp.disableResult != DisableProfileResponse_disableResult.ok &&
-                resp.disableResult !=
-                    DisableProfileResponse_disableResult
-                        .profileNotInEnabledState) {
-              throw Exception('DISABLE_FAILED:${resp.disableResult?.name}');
-            }
-            if (request.refreshFlag == true) {
-              await _handleRefresh(channel);
-              isRefresh = true;
-            } else {
-              await _handleSoftRefresh(channel);
-            }
-            return isRefresh;
-          } catch (e) {
-            if (e is ProactiveRefreshException) {
-              _markRefreshing();
-              _log.info(
-                "Got 91xx status; deferring recovery to the next fresh session.",
+
+            final request = DisableProfileRequest(
+              profileIdentifier: DisableProfileRequest_profileIdentifier(
+                iccid: iccidBytes,
+              ),
+              refreshFlag: AppSettings().disableRefreshFlags
+                  ? false
+                  : adapter.requiresRefresh,
+            );
+            _logAsn1Request(request);
+            final requestData = request.encode();
+
+            try {
+              commandSubmitted = true;
+              final responseData = await transmitLogicalApdu(
+                channel,
+                requestData,
               );
-              return true;
+              final resp = DisableProfileResponse.decode(responseData);
+              _logAsn1Response(resp);
+              if (resp.disableResult != null &&
+                  resp.disableResult !=
+                      DisableProfileResponse_disableResult.ok &&
+                  resp.disableResult !=
+                      DisableProfileResponse_disableResult
+                          .profileNotInEnabledState) {
+                throw Exception('DISABLE_FAILED:${resp.disableResult?.name}');
+              }
+              if (request.refreshFlag == true) {
+                await _handleRefresh(channel);
+                isRefresh = true;
+              } else {
+                await _handleSoftRefresh(channel);
+              }
+              return isRefresh;
+            } catch (e) {
+              if (e is ProactiveRefreshException) {
+                _markRefreshing();
+                _log.info(
+                  "Got 91xx status; deferring recovery to the next fresh session.",
+                );
+                return true;
+              }
+              rethrow;
             }
-            rethrow;
+          });
+        } catch (e) {
+          if (e is CardBusyException &&
+              attempt < maxAttempts &&
+              canAutomaticallyRetryProfileSwitch(
+                e,
+                commandSubmitted: commandSubmitted,
+              )) {
+            attempt++;
+            _log.info(
+              "disableProfile: Card busy (6881), retry attempt $attempt/$maxAttempts...",
+            );
+            await Future.delayed(const Duration(milliseconds: 500));
+            continue;
           }
-        });
-      } catch (e) {
-        if (e is CardBusyException && attempt < maxAttempts) {
-          attempt++;
-          _log.info(
-            "disableProfile: Card busy (6881), retry attempt $attempt/$maxAttempts...",
-          );
-          await Future.delayed(const Duration(milliseconds: 500));
-          continue;
+          rethrow;
         }
-        rethrow;
+      }
+    } finally {
+      if (managesSwitchMarker) {
+        await adapter.setProfileSwitchInProgress(false);
       }
     }
   }
@@ -1551,6 +1587,7 @@ class ProfileManager {
     try {
       await channel.close();
     } catch (e) {
+      if (isOmapiSessionCorruptedError(e)) rethrow;
       /* ignore */
     }
 
@@ -1639,6 +1676,7 @@ class ProfileManager {
       try {
         return await action();
       } catch (e) {
+        if (isOmapiSessionCorruptedError(e)) rethrow;
         attempt++;
         if (attempt >= maxAttempts) {
           _log.severe("$desc failed after $maxAttempts attempts: $e");

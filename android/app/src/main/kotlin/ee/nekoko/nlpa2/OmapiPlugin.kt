@@ -21,8 +21,6 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 
 private fun ByteArray.toHex(): String =
         joinToString(separator = "") { eachByte -> "%02x".format(eachByte) }
@@ -56,10 +54,9 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     @Volatile private var profileSwitchInProgress = false
-    @Volatile private var acceptingHardwareOperations = false
 
     private lateinit var cleanupCoordinator: OmapiCleanupCoordinator<Channel>
-    private val hardwareLock = ReentrantLock()
+    private var lifecycleCoordinator: OmapiLifecycleCoordinator? = null
 
     private fun createCleanupCoordinator(appContext: Context): OmapiCleanupCoordinator<Channel> =
             OmapiCleanupCoordinator(
@@ -84,6 +81,9 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                                         readerChannels.keys +
                                         readersWithSuccessfulChannel)
                                 .toSet()
+                    },
+                    detachChannel = { readerName, channelKey ->
+                        readerChannels[readerName]?.remove(channelKey.uppercase())
                     },
                     detachReader = { readerName ->
                         // Detach every local reference before making a remote Binder call.
@@ -112,29 +112,31 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     if (action == "android.intent.action.SIM_STATE_CHANGED") {
                         val state = intent.getStringExtra("ss") ?: ""
                         Log.d(TAG, "SIM state changed: $state")
-                        // Post to background handler to ensure it runs after any current operation
-                        backgroundHandler?.post {
-                            if (!acceptingHardwareOperations) return@post
-                            hardwareLock.withLock {
-                                if (!acceptingHardwareOperations) return@withLock
-                                Log.i(
-                                        TAG,
-                                        "SIM state change detected ($state), cleaning up stale sessions/channels",
-                                )
-                                if (cleanupCoordinator.poisonInfo == null) {
-                                    val cleanup = cleanupAllSessions()
-                                    if (cleanup is OmapiCleanupResult.RebootRequired) {
-                                        Log.e(
-                                                TAG,
-                                                "SIM refresh cleanup poisoned OMAPI; reboot is required",
-                                        )
+                        lifecycleCoordinator?.enqueueHardware(
+                                onRejected = {},
+                                operation = {
+                                    Log.i(
+                                            TAG,
+                                            "SIM state change detected ($state), cleaning up stale sessions/channels",
+                                    )
+                                    if (cleanupCoordinator.poisonInfo == null) {
+                                        val cleanup = cleanupAllSessions()
+                                        if (cleanup is OmapiCleanupResult.RebootRequired) {
+                                            Log.e(
+                                                    TAG,
+                                                    "SIM refresh cleanup poisoned OMAPI; reboot is required",
+                                            )
+                                        }
                                     }
-                                }
 
-                                val eventMap = mapOf("type" to "sim_state_changed", "state" to state)
-                                runOnUiThread { sendEvent(eventMap) }
-                            }
-                        }
+                                    val eventMap =
+                                            mapOf(
+                                                    "type" to "sim_state_changed",
+                                                    "state" to state,
+                                            )
+                                    runOnUiThread { sendEvent(eventMap) }
+                                },
+                        )
                     }
                 }
             }
@@ -184,7 +186,6 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         Log.i(TAG, "onDetachedFromEngine")
-        acceptingHardwareOperations = false
         try {
             binding.applicationContext.unregisterReceiver(simStateReceiver)
         } catch (e: Exception) {
@@ -195,10 +196,22 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         eventChannel = null
         eventSink = null
 
-        if (::cleanupCoordinator.isInitialized) shutdownServiceAfterCleanup("engine detach")
-
-        stopBackgroundThread()
-        context = null
+        val queued =
+                lifecycleCoordinator?.detach {
+                    try {
+                        if (::cleanupCoordinator.isInitialized) {
+                            shutdownServiceAfterCleanup("engine detach")
+                        }
+                    } finally {
+                        stopBackgroundThread()
+                        context = null
+                    }
+                } == true
+        if (!queued) {
+            Log.e(TAG, "Unable to queue OMAPI engine-detach cleanup; durable guard remains armed")
+            stopBackgroundThread()
+            context = null
+        }
     }
 
     private fun startBackgroundThread() {
@@ -206,10 +219,15 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             backgroundThread = android.os.HandlerThread("OmapiPluginBackend")
             backgroundThread?.start()
             backgroundHandler = android.os.Handler(backgroundThread!!.looper)
+            lifecycleCoordinator =
+                    OmapiLifecycleCoordinator { task ->
+                        backgroundHandler?.post { task() } == true
+                    }
         }
     }
 
     private fun stopBackgroundThread() {
+        lifecycleCoordinator = null
         backgroundThread?.quitSafely()
         backgroundThread = null
         backgroundHandler = null
@@ -219,21 +237,33 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         Log.i(TAG, "onAttachedToActivity")
         context = binding.activity.applicationContext
         startBackgroundThread()
-        acceptingHardwareOperations = true
-        hardwareLock.withLock { initializeSEService() }
+        val queued =
+                lifecycleCoordinator?.attach {
+                    try {
+                        initializeSEService()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to initialize SEService during activity attach", e)
+                        false
+                    }
+                } == true
+        if (!queued) Log.e(TAG, "Unable to queue OMAPI activity attach")
     }
 
     override fun onDetachedFromActivityForConfigChanges() {}
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         context = binding.activity.applicationContext
-        acceptingHardwareOperations = true
     }
 
     override fun onDetachedFromActivity() {
         Log.i(TAG, "onDetachedFromActivity")
-        acceptingHardwareOperations = false
-        shutdownServiceAfterCleanup("activity detach")
+        val queued =
+                lifecycleCoordinator?.detach {
+                    shutdownServiceAfterCleanup("activity detach")
+                } == true
+        if (!queued) {
+            Log.e(TAG, "Unable to queue OMAPI activity-detach cleanup; durable guard remains armed")
+        }
     }
 
     private fun initializeSEService(wait: Boolean = false): Boolean {
@@ -268,11 +298,11 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         return true
     }
 
-    private fun shutdownServiceAfterCleanup(reason: String): Boolean = hardwareLock.withLock {
+    private fun shutdownServiceAfterCleanup(reason: String): Boolean {
         val cleanup = cleanupAllSessions()
         if (cleanup is OmapiCleanupResult.RebootRequired) {
             Log.e(TAG, "Skipping SEService.shutdown() during $reason because OMAPI is poisoned")
-            return@withLock false
+            return false
         }
 
         try {
@@ -285,15 +315,15 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     operationMayHaveSucceeded = true,
             )
             Log.e(TAG, "SEService.shutdown() failed during $reason", e)
-            return@withLock false
+            return false
         }
 
         val unsafe = cleanupCoordinator.confirmCleanShutdown()
         if (unsafe != null) {
             Log.e(TAG, "OMAPI safety guard could not be cleared during $reason")
-            return@withLock false
+            return false
         }
-        true
+        return true
     }
 
     private fun sendEvent(event: Map<String, Any>) {
@@ -341,39 +371,40 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 )
 
         if (backgroundMethods.contains(call.method)) {
-            backgroundHandler?.post {
-                if (!acceptingHardwareOperations) {
-                    runOnUiThread { result.error("NOT_CONNECTED", "OMAPI lifecycle is detached", null) }
-                } else hardwareLock.withLock {
-                    if (!acceptingHardwareOperations) {
-                        runOnUiThread {
-                            result.error("NOT_CONNECTED", "OMAPI lifecycle is detached", null)
-                        }
-                        return@withLock
-                    }
-                    try {
-                        when (call.method) {
-                            "connect" -> handleConnect(call, result)
-                            "disconnect" -> handleDisconnect(call, result)
-                            "reset" -> handleReset(result)
-                            "transmit" -> handleTransmit(call, result)
-                            "openChannel" -> handleOpenChannel(call, result, false)
-                            "closeChannel" -> handleCloseChannel(call, result)
-                            "closeChannels" -> handleCloseChannels(call, result)
-                            "transmitOnChannel" -> handleTransmitOnChannel(call, result)
-                            "listReaders" -> handleListReaders(result)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error in background method: ${call.method}", e)
-                        runOnUiThread { result.error("ERROR", e.message, null) }
-                    }
-                }
+            val queued =
+                    lifecycleCoordinator?.enqueueHardware(
+                            onRejected = {
+                                runOnUiThread {
+                                    result.error(
+                                            "NOT_CONNECTED",
+                                            "OMAPI lifecycle is detached",
+                                            null,
+                                    )
+                                }
+                            },
+                            operation = {
+                                try {
+                                    when (call.method) {
+                                        "connect" -> handleConnect(call, result)
+                                        "disconnect" -> handleDisconnect(call, result)
+                                        "reset" -> handleReset(result)
+                                        "transmit" -> handleTransmit(call, result)
+                                        "openChannel" -> handleOpenChannel(call, result, false)
+                                        "closeChannel" -> handleCloseChannel(call, result)
+                                        "closeChannels" -> handleCloseChannels(call, result)
+                                        "transmitOnChannel" -> handleTransmitOnChannel(call, result)
+                                        "listReaders" -> handleListReaders(result)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error in background method: ${call.method}", e)
+                                    runOnUiThread { result.error("ERROR", e.message, null) }
+                                }
+                            },
+                    ) == true
+            if (!queued) {
+                Log.e(TAG, "Background handler not available for method: ${call.method}")
+                result.error("ERROR", "Background thread not available", null)
             }
-                    ?: run {
-                        // Fallback if background handler is not available
-                        Log.e(TAG, "Background handler not available for method: ${call.method}")
-                        result.error("ERROR", "Background thread not available", null)
-                    }
         } else {
             result.notImplemented()
         }
@@ -825,8 +856,13 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                             result.error("INVALID_ARGUMENT", "aid required", null)
                         }
 
-        Log.i(TAG, "Closing tracked channels for AID request: $aidHex")
-        val cleanup = cleanupReaderSessions(readerName)
+        Log.i(TAG, "Closing tracked channel for AID request: $aidHex")
+        val cleanup =
+                cleanupCoordinator.cleanupChannel(
+                        readerName,
+                        aidHex.uppercase(),
+                        operationMayHaveSucceeded = profileSwitchInProgress,
+                )
         if (reportCleanupFailure(result, cleanup)) return
         runOnUiThread { result.success(true) }
     }

@@ -120,6 +120,7 @@ abstract class Adapter {
   Future<T> runExclusive<T>(Future<T> Function() action);
   Future<void> reconnect();
   Future<void> cleanupChannels();
+  Future<void> setProfileSwitchInProgress(bool value);
   Future<void> proactiveRefresh();
 
   Stream<EuiccPortState> get stateStream;
@@ -256,6 +257,9 @@ abstract class BaseAdapter implements Adapter {
 
   @override
   Future<void> proactiveRefresh() async {}
+
+  @override
+  Future<void> setProfileSwitchInProgress(bool value) async {}
 
   @override
   ReaderStrategy get readerStrategy => ReaderStrategy.fast;

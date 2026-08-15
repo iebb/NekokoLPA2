@@ -50,6 +50,7 @@ internal interface OmapiCleanupBackend<C> {
 internal class OmapiCleanupCoordinator<C>(
         private val backend: OmapiCleanupBackend<C>,
         private val readerKeys: () -> Set<String>,
+        private val detachChannel: (String, String) -> C?,
         private val detachReader: (String) -> List<C>,
         private val clearAllLocalState: () -> Unit,
         private val safetyStore: OmapiSafetyStore,
@@ -126,6 +127,35 @@ internal class OmapiCleanupCoordinator<C>(
             cleanupLock.withLock {
                 poison.get()?.let { return@withLock OmapiCleanupResult.RebootRequired(it) }
                 cleanupReaderLocked(readerName)
+            }
+
+    fun cleanupChannel(
+            readerName: String,
+            channelKey: String,
+            operationMayHaveSucceeded: Boolean = false,
+    ): OmapiCleanupResult =
+            cleanupLock.withLock {
+                poison.get()?.let { return@withLock OmapiCleanupResult.RebootRequired(it) }
+
+                val channel = detachChannel(readerName, channelKey) ?: return@withLock OmapiCleanupResult.Success
+                armLocked()?.let {
+                    clearAllLocalState()
+                    return@withLock OmapiCleanupResult.RebootRequired(it)
+                }
+
+                try {
+                    backend.closeChannel(channel)
+                    OmapiCleanupResult.Success
+                } catch (e: Exception) {
+                    val info =
+                            markPoisonedLocked(
+                                    readerName,
+                                    e.message ?: e.javaClass.simpleName,
+                                    operationMayHaveSucceeded,
+                            )
+                    clearAllLocalState()
+                    OmapiCleanupResult.RebootRequired(info)
+                }
             }
 
     fun cleanupAll(): OmapiCleanupResult =
