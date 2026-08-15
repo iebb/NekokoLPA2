@@ -7,6 +7,7 @@ import '../../utils/hex_utils.dart';
 import '../../settings/app_settings.dart';
 import '../../utils/error_codes.dart';
 import '../../utils/apdu_exception.dart';
+import 'omapi_safety.dart';
 
 class OmapiAdapter extends BaseAdapter {
   static final Logger _log = Logger('OmapiAdapter');
@@ -14,6 +15,12 @@ class OmapiAdapter extends BaseAdapter {
   static const EventChannel _eventChannel = EventChannel(
     'ee.nekoko.omapi_plugin/event',
   );
+  static final OmapiSafetyLatch _safety = OmapiSafetyLatch();
+
+  bool get isPoisoned => _safety.isPoisoned;
+
+  static Future<T> _invoke<T>(String method, [dynamic arguments]) =>
+      _safety.invoke<T>(_channel, method, arguments);
 
   Stream<Map<String, dynamic>> get simStateStream => _eventChannel
       .receiveBroadcastStream()
@@ -27,6 +34,7 @@ class OmapiAdapter extends BaseAdapter {
   final Map<String, int> _nextChannelIds = {};
   final Map<int, int> _refCounts = {};
   final Map<int, Timer> _pendingCloses = {};
+  bool _profileSwitchInProgress = false;
   List<Reader>? _lastReaders;
   DateTime? _lastListTime;
 
@@ -57,7 +65,7 @@ class OmapiAdapter extends BaseAdapter {
     }
 
     try {
-      final List<dynamic> result = await _channel.invokeMethod('listReaders');
+      final List<dynamic> result = await _invoke('listReaders');
       final readers = result.map((nameStr) {
         final name = nameStr as String;
         String displayName = name;
@@ -76,6 +84,7 @@ class OmapiAdapter extends BaseAdapter {
       _lastListTime = now;
       return readers;
     } catch (e) {
+      if (isOmapiSessionCorruptedError(e)) rethrow;
       log.warning('Failed to list OMAPI readers: $e');
       return [];
     }
@@ -97,23 +106,27 @@ class OmapiAdapter extends BaseAdapter {
       log.info('Connecting to OMAPI reader: $realReaderName');
 
       try {
-        final Map<dynamic, dynamic> result = await _channel.invokeMethod(
-          'connect',
-          {'reader': realReaderName},
-        );
+        final Map<dynamic, dynamic> result = await _invoke('connect', {
+          'reader': realReaderName,
+        });
 
         _lastAtr = result['atr'] as String?;
         _nextChannelIds[realReaderName] = 1; // Reset channel counter on connect
         _stateController.add(EuiccPortState.open);
         log.info('Connected to OMAPI reader: $readerId');
-      } catch (e) {
+      } on PlatformException catch (e) {
+        if (isOmapiSessionCorruptedError(e)) rethrow;
         log.severe('Failed to connect to OMAPI reader: $e');
-        if (e is PlatformException && e.code == 'SecurityException') {
+        if (e.code == 'SecurityException') {
           throw AppException(
             AppErrorCode.ERROR_OMAPI_SECURITYEXCEPTION,
             originalError: e,
           );
         }
+        rethrow;
+      } catch (e) {
+        if (isOmapiSessionCorruptedError(e)) rethrow;
+        log.severe('Failed to connect to OMAPI reader: $e');
         rethrow;
       }
     });
@@ -127,21 +140,31 @@ class OmapiAdapter extends BaseAdapter {
           // Close all open channels
           for (final aid in _channelMappings.values.toList()) {
             try {
-              await _channel.invokeMethod('closeChannel', {
+              await _invoke('closeChannel', {
                 'reader': _internalReaderName,
                 'aid': aid,
               });
             } catch (e) {
+              if (isOmapiSessionCorruptedError(e)) rethrow;
               log.warning('Failed to close channel $aid: $e');
             }
           }
           _channelMappings.clear();
 
-          await _channel.invokeMethod('disconnect', {
-            'reader': _internalReaderName,
-          });
+          await _invoke('disconnect', {'reader': _internalReaderName});
         } catch (e) {
           log.warning('Error during disconnect: $e');
+          if (isOmapiSessionCorruptedError(e)) {
+            _channelMappings.clear();
+            _pendingCloses.forEach((_, timer) => timer.cancel());
+            _pendingCloses.clear();
+            _refCounts.clear();
+            updateConnectedReader(null);
+            _internalReaderName = null;
+            _lastAtr = null;
+            _stateController.add(EuiccPortState.closed);
+            rethrow;
+          }
         }
 
         updateConnectedReader(null);
@@ -159,12 +182,11 @@ class OmapiAdapter extends BaseAdapter {
       _pendingCloses.forEach((_, timer) => timer.cancel());
       _pendingCloses.clear();
       _refCounts.clear();
-      await _channel.invokeMethod('closeChannels', {
-        'reader': _internalReaderName,
-      });
+      await _invoke('closeChannels', {'reader': _internalReaderName});
       _channelMappings.clear();
     } catch (e) {
       log.warning('Failed to close channels: $e');
+      if (isOmapiSessionCorruptedError(e)) rethrow;
     }
     await Future.delayed(const Duration(milliseconds: 100));
   }
@@ -172,11 +194,13 @@ class OmapiAdapter extends BaseAdapter {
   @override
   Future<void> reconnect() async {
     return await runExclusive(() async {
+      _safety.ensureAvailable();
       log.info('Hard reconnect for OMAPI reader: $_internalReaderName');
       try {
-        await _channel.invokeMethod('reset');
+        await _invoke('reset');
       } catch (e) {
         log.warning('OMAPI reset failed: $e');
+        if (isOmapiSessionCorruptedError(e)) rethrow;
       }
       final reader = connectedReader;
       if (reader != null) {
@@ -205,7 +229,7 @@ class OmapiAdapter extends BaseAdapter {
     }
     final String apduHex = HexUtils.bytesToHex(apdu);
 
-    final String responseHex = await _channel.invokeMethod('transmit', {
+    final String responseHex = await _invoke('transmit', {
       'reader': _internalReaderName,
       'apdu': apduHex,
     });
@@ -277,7 +301,7 @@ class OmapiAdapter extends BaseAdapter {
       _nextChannelIds[readerId] = (internalId % 3) + 1;
       if (aids != null && aids.isNotEmpty) {
         try {
-          final result = await _channel.invokeMethod('openChannel', {
+          final result = await _invoke('openChannel', {
             'reader': _internalReaderName,
             'aids': aids,
           });
@@ -290,6 +314,13 @@ class OmapiAdapter extends BaseAdapter {
           }
         } catch (e) {
           log.warning('Native scan failed: $e');
+          if (isOmapiSessionCorruptedError(e)) {
+            throw AppException(
+              AppErrorCode.ERROR_OMAPI_SESSION_CORRUPTED,
+              message: omapiRebootRequiredMessage,
+              originalError: e,
+            );
+          }
           if (e is PlatformException &&
               (e.code == 'AccessControlException' ||
                   e.message == 'no APDU access allowed')) {
@@ -322,10 +353,11 @@ class OmapiAdapter extends BaseAdapter {
       final String apduHex = HexUtils.bytesToHex(apdu);
 
       try {
-        final String responseHex = await _channel.invokeMethod(
-          'transmitOnChannel',
-          {'reader': _internalReaderName, 'aid': aidHex, 'apdu': apduHex},
-        );
+        final String responseHex = await _invoke('transmitOnChannel', {
+          'reader': _internalReaderName,
+          'aid': aidHex,
+          'apdu': apduHex,
+        });
 
         return HexUtils.hexToBytes(responseHex);
       } catch (e) {
@@ -342,12 +374,20 @@ class OmapiAdapter extends BaseAdapter {
   Future<void> _requestCloseChannel(int channelId, String aidHex) async {
     _refCounts[channelId] = (_refCounts[channelId] ?? 1) - 1;
     if (_refCounts[channelId]! <= 0) {
+      if (_profileSwitchInProgress) {
+        await _finalizeCloseChannel(channelId, aidHex);
+        return;
+      }
       log.info(
         'Channel $channelId close request pending: delaying 3s for AID $aidHex...',
       );
       _pendingCloses[channelId]?.cancel();
       _pendingCloses[channelId] = Timer(const Duration(seconds: 3), () async {
-        await _finalizeCloseChannel(channelId, aidHex);
+        try {
+          await _finalizeCloseChannel(channelId, aidHex);
+        } catch (e) {
+          log.severe('Deferred channel close failed: $e');
+        }
         _pendingCloses.remove(channelId);
       });
     } else {
@@ -362,7 +402,7 @@ class OmapiAdapter extends BaseAdapter {
       if (_internalReaderName == null) return;
 
       try {
-        await _channel.invokeMethod('closeChannel', {
+        await _invoke('closeChannel', {
           'reader': _internalReaderName,
           'aid': aidHex,
         });
@@ -371,6 +411,7 @@ class OmapiAdapter extends BaseAdapter {
         );
       } catch (e) {
         log.warning('Failed to close channel for $aidHex: $e');
+        if (isOmapiSessionCorruptedError(e)) rethrow;
       } finally {
         _channelMappings.remove(channelId);
       }
@@ -390,7 +431,7 @@ class OmapiAdapter extends BaseAdapter {
       }
 
       try {
-        final result = await _channel.invokeMethod('openChannel', {
+        final result = await _invoke('openChannel', {
           'reader': _internalReaderName,
           'aid': aidHex,
         });
@@ -402,13 +443,14 @@ class OmapiAdapter extends BaseAdapter {
         if (result is bool) return {"success": result};
         return result as Map<dynamic, dynamic>;
       } catch (e) {
+        if (isOmapiSessionCorruptedError(e)) rethrow;
         // If first attempt fails, try heavy cleanup and retry once
         log.warning(
           'Initial openChannel for $aidHex failed ($e). Retrying after cleanup...',
         );
         try {
           await cleanupChannels();
-          final result = await _channel.invokeMethod('openChannel', {
+          final result = await _invoke('openChannel', {
             'reader': _internalReaderName,
             'aid': aidHex,
           });
@@ -448,6 +490,13 @@ class OmapiAdapter extends BaseAdapter {
         _log.warning('OMAPI Event error: $error');
       },
     );
+  }
+
+  @override
+  Future<void> setProfileSwitchInProgress(bool value) async {
+    // This marker is local metadata, not an OMAPI operation, so it remains callable after poison.
+    _profileSwitchInProgress = value;
+    await _channel.invokeMethod('setProfileSwitchInProgress', {'value': value});
   }
 }
 
@@ -504,6 +553,7 @@ class _OmapiChannel extends BaseChannel {
           _aidHex = null;
         } catch (e) {
           _adapter.log.warning('Failed to close old channel during switch: $e');
+          if (isOmapiSessionCorruptedError(e)) rethrow;
           _aidHex = null; // Proceed anyway
         }
       }
@@ -552,7 +602,7 @@ class _OmapiChannel extends BaseChannel {
         );
         try {
           // Simple re-open if just channel lost
-          await OmapiAdapter._channel.invokeMethod('openChannel', {
+          await OmapiAdapter._invoke('openChannel', {
             'reader': _adapter._internalReaderName,
             'aid': _aidHex,
           });
@@ -561,6 +611,7 @@ class _OmapiChannel extends BaseChannel {
           // Otherwise just retry the raw transmission
           return await super.transmit(cla, ins, p1, p2, data, le);
         } catch (recoveryErr) {
+          if (isOmapiSessionCorruptedError(recoveryErr)) rethrow;
           _adapter.log.warning(
             'Failed to recover from error on AID $_aidHex: $recoveryErr',
           );
