@@ -1,5 +1,6 @@
 package ee.nekoko.nlpa2
 
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -57,32 +58,56 @@ internal interface OmapiCleanupBackend<C> {
  */
 private object OmapiProcessArmRegistry {
     private data class Key(val scope: Any, val bootIdentity: OmapiBootIdentity)
+    private data class OwnerRecord(val owner: Any, val released: CountDownLatch = CountDownLatch(1))
 
-    private val owners = mutableMapOf<Key, Any>()
+    private val owners = mutableMapOf<Key, OwnerRecord>()
 
     fun isOwnedByOther(scope: Any, bootIdentity: OmapiBootIdentity, owner: Any): Boolean =
             synchronized(owners) {
                 val current = owners[Key(scope, bootIdentity)]
-                current != null && current !== owner
+                current != null && current.owner !== owner
             }
 
     fun tryAcquire(scope: Any, bootIdentity: OmapiBootIdentity, owner: Any): Boolean =
             synchronized(owners) {
                 val key = Key(scope, bootIdentity)
                 val current = owners[key]
-                if (current == null || current === owner) {
-                    owners[key] = owner
+                if (current == null) {
+                    owners[key] = OwnerRecord(owner)
                     true
                 } else {
-                    false
+                    current.owner === owner
                 }
             }
 
-    fun release(scope: Any, bootIdentity: OmapiBootIdentity, owner: Any) {
-        synchronized(owners) {
-            val key = Key(scope, bootIdentity)
-            if (owners[key] === owner) owners.remove(key)
+    fun awaitOtherOwnerRelease(
+            scope: Any,
+            bootIdentity: OmapiBootIdentity,
+            owner: Any,
+    ): Boolean {
+        val latch =
+                synchronized(owners) {
+                    val current = owners[Key(scope, bootIdentity)]
+                    if (current != null && current.owner !== owner) current.released else null
+                }
+                        ?: return true
+        return try {
+            latch.await()
+            true
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
         }
+    }
+
+    fun release(scope: Any, bootIdentity: OmapiBootIdentity, owner: Any) {
+        val released =
+                synchronized(owners) {
+                    val key = Key(scope, bootIdentity)
+                    val current = owners[key]
+                    if (current != null && current.owner === owner) owners.remove(key) else null
+                }
+        released?.released?.countDown()
     }
 }
 
@@ -124,12 +149,69 @@ internal class OmapiCleanupCoordinator<C>(
             }
 
     /** Must succeed before the caller touches SEService, Reader, Session, Channel, or APDU. */
-    fun enterHardware(entry: OmapiHardwareEntry): OmapiPoisonInfo? =
-            cleanupLock.withLock {
-                rejectionForHardwareEntry(entry)?.let { return@withLock it }
-                refreshProcessHandoffLocked()?.let { return@withLock it }
-                armLocked()
+    fun enterHardware(entry: OmapiHardwareEntry): OmapiPoisonInfo? {
+        while (true) {
+            var waitTarget: Pair<Any, OmapiBootIdentity>? = null
+            val result =
+                    cleanupLock.withLock {
+                        rejectionForHardwareEntry(entry)?.let { return@withLock it }
+
+                        if (entry == OmapiHardwareEntry.INITIALIZE_SERVICE) {
+                            val pendingIdentity = pendingProcessHandoffIdentity
+                            val scope = safetyStore.processScopeKey
+                            if (pendingIdentity != null &&
+                                            scope != null &&
+                                            OmapiProcessArmRegistry.isOwnedByOther(
+                                                    scope,
+                                                    pendingIdentity,
+                                                    processOwnerToken,
+                                            )
+                            ) {
+                                waitTarget = scope to pendingIdentity
+                                return@withLock null
+                            }
+                        }
+
+                        val handoff = refreshProcessHandoffLocked()
+                        if (handoff != null) {
+                            if (entry == OmapiHardwareEntry.INITIALIZE_SERVICE &&
+                                            handoff.reason == OMAPI_PROCESS_HANDOFF_PENDING_REASON
+                            ) {
+                                val pendingIdentity = pendingProcessHandoffIdentity
+                                val scope = safetyStore.processScopeKey
+                                if (pendingIdentity != null && scope != null) {
+                                    waitTarget = scope to pendingIdentity
+                                    return@withLock null
+                                }
+                            }
+                            return@withLock handoff
+                        }
+
+                        val armResult = armLocked()
+                        if (entry == OmapiHardwareEntry.INITIALIZE_SERVICE &&
+                                        armResult?.reason == OMAPI_PROCESS_HANDOFF_PENDING_REASON
+                        ) {
+                            val pendingIdentity = pendingProcessHandoffIdentity
+                            val scope = safetyStore.processScopeKey
+                            if (pendingIdentity != null && scope != null) {
+                                waitTarget = scope to pendingIdentity
+                                return@withLock null
+                            }
+                        }
+                        armResult
+                    }
+
+            val target = waitTarget ?: return result
+            if (!OmapiProcessArmRegistry.awaitOtherOwnerRelease(
+                            target.first,
+                            target.second,
+                            processOwnerToken,
+                    )
+            ) {
+                return processHandoffPendingInfo()
             }
+        }
+    }
 
     /** Clears the durable guard only after local cleanup and SEService shutdown both succeeded. */
     fun confirmCleanShutdown(): OmapiPoisonInfo? =

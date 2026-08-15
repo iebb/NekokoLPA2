@@ -1,6 +1,10 @@
 package ee.nekoko.nlpa2
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -79,6 +83,33 @@ class OmapiProcessHandoffTest {
         assertNull(replacement.enterHardware(OmapiHardwareEntry.CONNECT))
         assertEquals(PersistedOmapiSafetyKind.ARMED, state.persisted?.kind)
         assertNull(replacement.confirmCleanShutdown())
+    }
+
+    @Test
+    fun replacementInitializationWaitsOffMainLockAndRecoversAfterCleanup() {
+        val state = SharedState()
+        val scope = Any()
+        val first = coordinator(ProcessAwareStore(state, scope))
+        assertNull(first.enterHardware(OmapiHardwareEntry.CONNECT))
+
+        val replacement = coordinator(ProcessAwareStore(state, scope))
+        val started = CountDownLatch(1)
+        val executor = Executors.newSingleThreadExecutor()
+        val initialization =
+                executor.submit<OmapiPoisonInfo?> {
+                    started.countDown()
+                    replacement.enterHardware(OmapiHardwareEntry.INITIALIZE_SERVICE)
+                }
+
+        assertTrue(started.await(2, TimeUnit.SECONDS))
+        Thread.sleep(100)
+        assertFalse(initialization.isDone)
+
+        // A normal asynchronous engine detach clears ARMED and releases the process owner.
+        assertNull(first.confirmCleanShutdown())
+        assertNull(initialization.get(2, TimeUnit.SECONDS))
+        assertNull(replacement.confirmCleanShutdown())
+        executor.shutdownNow()
     }
 
     @Test

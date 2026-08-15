@@ -98,7 +98,7 @@ internal class AndroidOmapiBootIdentityProvider(private val context: Context) :
 }
 
 internal class SharedPreferencesOmapiSafetyStore(context: Context) : OmapiSafetyStore {
-    private val appContext = context.applicationContext
+    private val appContext = context.applicationContext ?: context
     private val preferences =
             appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
