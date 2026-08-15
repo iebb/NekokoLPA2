@@ -799,10 +799,7 @@ class _OmapiChannel extends BaseChannel {
         );
         try {
           _ensureUsable();
-          _adapter._ensureAidNotOwnedByAnotherChannel(
-            _aidHex!,
-            _internalId,
-          );
+          _adapter._ensureAidNotOwnedByAnotherChannel(_aidHex!, _internalId);
           // Simple re-open if just channel lost. The same handle keeps ownership.
           await OmapiAdapter._invoke('openChannel', {
             'reader': _adapter._internalReaderName,
