@@ -5,6 +5,8 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 internal const val OMAPI_SESSION_CORRUPTED = "OMAPI_SESSION_CORRUPTED"
+internal const val OMAPI_PROCESS_HANDOFF_PENDING_REASON =
+        "OMAPI same-process engine handoff is still cleaning up"
 
 internal data class OmapiPoisonInfo(
         val readerName: String?,
@@ -47,6 +49,43 @@ internal interface OmapiCleanupBackend<C> {
     fun reconnectService()
 }
 
+/**
+ * Process-local ownership complements the durable ARMED marker. A surviving in-process owner means
+ * an overlapping Flutter engine must wait for that owner's asynchronous cleanup instead of treating
+ * the marker as evidence of a process crash. The registry disappears on real process death, while
+ * the durable marker does not.
+ */
+private object OmapiProcessArmRegistry {
+    private data class Key(val scope: Any, val bootIdentity: OmapiBootIdentity)
+
+    private val owners = mutableMapOf<Key, Any>()
+
+    fun isOwnedByOther(scope: Any, bootIdentity: OmapiBootIdentity, owner: Any): Boolean =
+            synchronized(owners) {
+                val current = owners[Key(scope, bootIdentity)]
+                current != null && current !== owner
+            }
+
+    fun tryAcquire(scope: Any, bootIdentity: OmapiBootIdentity, owner: Any): Boolean =
+            synchronized(owners) {
+                val key = Key(scope, bootIdentity)
+                val current = owners[key]
+                if (current == null || current === owner) {
+                    owners[key] = owner
+                    true
+                } else {
+                    false
+                }
+            }
+
+    fun release(scope: Any, bootIdentity: OmapiBootIdentity, owner: Any) {
+        synchronized(owners) {
+            val key = Key(scope, bootIdentity)
+            if (owners[key] === owner) owners.remove(key)
+        }
+    }
+}
+
 internal class OmapiCleanupCoordinator<C>(
         private val backend: OmapiCleanupBackend<C>,
         private val readerKeys: () -> Set<String>,
@@ -59,6 +98,8 @@ internal class OmapiCleanupCoordinator<C>(
 ) {
     private val cleanupLock = ReentrantLock()
     private val poison = AtomicReference<OmapiPoisonInfo?>()
+    private val processOwnerToken = Any()
+    private var pendingProcessHandoffIdentity: OmapiBootIdentity? = null
     private var armed = false
     private var armedBootIdentity: OmapiBootIdentity? = null
 
@@ -86,6 +127,7 @@ internal class OmapiCleanupCoordinator<C>(
     fun enterHardware(entry: OmapiHardwareEntry): OmapiPoisonInfo? =
             cleanupLock.withLock {
                 rejectionForHardwareEntry(entry)?.let { return@withLock it }
+                refreshProcessHandoffLocked()?.let { return@withLock it }
                 armLocked()
             }
 
@@ -109,18 +151,22 @@ internal class OmapiCleanupCoordinator<C>(
                             false
                         }
                 if (cleared) {
+                    releaseProcessOwnershipLocked()
                     armed = false
                     armedBootIdentity = null
                     return@withLock null
                 }
 
-                OmapiPoisonInfo(
+                val info =
+                        OmapiPoisonInfo(
                                 readerName = null,
                                 reason = "Unable to durably clear the OMAPI safety guard",
                                 operationMayHaveSucceeded = true,
                                 persistenceConfirmed = true,
                         )
-                        .also { poison.set(it) }
+                poison.set(info)
+                releaseProcessOwnershipLocked()
+                info
             }
 
     fun cleanupReader(readerName: String): OmapiCleanupResult =
@@ -137,7 +183,9 @@ internal class OmapiCleanupCoordinator<C>(
             cleanupLock.withLock {
                 poison.get()?.let { return@withLock OmapiCleanupResult.RebootRequired(it) }
 
-                val channel = detachChannel(readerName, channelKey) ?: return@withLock OmapiCleanupResult.Success
+                val channel =
+                        detachChannel(readerName, channelKey)
+                                ?: return@withLock OmapiCleanupResult.Success
                 armLocked()?.let {
                     clearAllLocalState()
                     return@withLock OmapiCleanupResult.RebootRequired(it)
@@ -240,19 +288,16 @@ internal class OmapiCleanupCoordinator<C>(
                 }
         val finalInfo = candidate.copy(persistenceConfirmed = persisted)
         poison.set(finalInfo)
+        releaseProcessOwnershipLocked()
         return finalInfo
     }
 
     private fun armLocked(): OmapiPoisonInfo? {
         poison.get()?.let { return it }
         if (armed) return null
+        refreshProcessHandoffLocked()?.let { return it }
 
-        val identity =
-                try {
-                    bootIdentityProvider.currentBootIdentity()
-                } catch (_: Exception) {
-                    null
-                }
+        val identity = currentBootIdentityOrNull()
         if (identity == null) {
             return OmapiPoisonInfo(
                             readerName = null,
@@ -263,6 +308,14 @@ internal class OmapiCleanupCoordinator<C>(
                     .also { poison.set(it) }
         }
 
+        val scope = safetyStore.processScopeKey
+        if (scope != null &&
+                        !OmapiProcessArmRegistry.tryAcquire(scope, identity, processOwnerToken)
+        ) {
+            pendingProcessHandoffIdentity = identity
+            return processHandoffPendingInfo()
+        }
+
         val persisted =
                 try {
                     safetyStore.saveArmed(identity, nowEpochMillis())
@@ -270,6 +323,9 @@ internal class OmapiCleanupCoordinator<C>(
                     false
                 }
         if (!persisted) {
+            if (scope != null) {
+                OmapiProcessArmRegistry.release(scope, identity, processOwnerToken)
+            }
             return OmapiPoisonInfo(
                             readerName = null,
                             reason = "Unable to durably arm the OMAPI safety guard",
@@ -284,28 +340,25 @@ internal class OmapiCleanupCoordinator<C>(
         return null
     }
 
-    private fun restorePersistedState(): OmapiPoisonInfo? {
-        val persisted =
-                try {
-                    safetyStore.load()
-                } catch (e: Exception) {
-                    return OmapiPoisonInfo(
-                            readerName = null,
-                            reason =
-                                    "Unable to verify persisted OMAPI safety state: " +
-                                            (e.message ?: e.javaClass.simpleName),
-                            operationMayHaveSucceeded = true,
-                            persistenceConfirmed = false,
-                    )
-                }
-                        ?: return null
+    private fun refreshProcessHandoffLocked(): OmapiPoisonInfo? {
+        val pendingIdentity = pendingProcessHandoffIdentity ?: return null
+        val scope = safetyStore.processScopeKey
+        if (scope != null &&
+                        OmapiProcessArmRegistry.isOwnedByOther(
+                                scope,
+                                pendingIdentity,
+                                processOwnerToken,
+                        )
+        ) {
+            return processHandoffPendingInfo()
+        }
 
-        val currentIdentity =
-                try {
-                    bootIdentityProvider.currentBootIdentity()
-                } catch (_: Exception) {
-                    null
-                }
+        pendingProcessHandoffIdentity = null
+        val persisted = loadPersistedState()
+        poison.get()?.let { return it }
+        if (persisted == null) return null
+
+        val currentIdentity = currentBootIdentityOrNull()
         if (currentIdentity?.definitelyChangedSince(persisted.bootIdentity) == true) {
             val cleared =
                     try {
@@ -316,18 +369,95 @@ internal class OmapiCleanupCoordinator<C>(
             if (cleared) return null
         }
 
-        // Missing, incomparable, unchanged, or contradictory identity signals all fail closed.
-        return when (persisted.kind) {
-            PersistedOmapiSafetyKind.ARMED ->
-                    OmapiPoisonInfo(
-                            readerName = null,
-                            reason =
-                                    "OMAPI safety guard survived an unclean process exit on this boot",
-                            operationMayHaveSucceeded = true,
-                            persistenceConfirmed = true,
-                    )
-            PersistedOmapiSafetyKind.POISONED ->
-                    requireNotNull(persisted.info).copy(persistenceConfirmed = true)
+        val restored = persistedStateToPoison(persisted)
+        poison.set(restored)
+        return restored
+    }
+
+    private fun restorePersistedState(): OmapiPoisonInfo? {
+        val persisted = loadPersistedState()
+        poison.get()?.let { return it }
+        if (persisted == null) return null
+
+        val currentIdentity = currentBootIdentityOrNull()
+        if (currentIdentity?.definitelyChangedSince(persisted.bootIdentity) == true) {
+            val cleared =
+                    try {
+                        safetyStore.clear()
+                    } catch (_: Exception) {
+                        false
+                    }
+            if (cleared) return null
         }
+
+        if (persisted.kind == PersistedOmapiSafetyKind.ARMED) {
+            val scope = safetyStore.processScopeKey
+            val persistedIdentity = persisted.bootIdentity
+            if (scope != null &&
+                            persistedIdentity != null &&
+                            OmapiProcessArmRegistry.isOwnedByOther(
+                                    scope,
+                                    persistedIdentity,
+                                    processOwnerToken,
+                            )
+            ) {
+                pendingProcessHandoffIdentity = persistedIdentity
+                return null
+            }
+        }
+
+        return persistedStateToPoison(persisted)
+    }
+
+    private fun loadPersistedState(): PersistedOmapiSafetyState? =
+            try {
+                safetyStore.load()
+            } catch (e: Exception) {
+                val info =
+                        OmapiPoisonInfo(
+                                readerName = null,
+                                reason =
+                                        "Unable to verify persisted OMAPI safety state: " +
+                                                (e.message ?: e.javaClass.simpleName),
+                                operationMayHaveSucceeded = true,
+                                persistenceConfirmed = false,
+                        )
+                poison.set(info)
+                null
+            }
+
+    private fun persistedStateToPoison(persisted: PersistedOmapiSafetyState): OmapiPoisonInfo =
+            when (persisted.kind) {
+                PersistedOmapiSafetyKind.ARMED ->
+                        OmapiPoisonInfo(
+                                readerName = null,
+                                reason =
+                                        "OMAPI safety guard survived an unclean process exit on this boot",
+                                operationMayHaveSucceeded = true,
+                                persistenceConfirmed = true,
+                        )
+                PersistedOmapiSafetyKind.POISONED ->
+                        requireNotNull(persisted.info).copy(persistenceConfirmed = true)
+            }
+
+    private fun currentBootIdentityOrNull(): OmapiBootIdentity? =
+            try {
+                bootIdentityProvider.currentBootIdentity()
+            } catch (_: Exception) {
+                null
+            }
+
+    private fun processHandoffPendingInfo(): OmapiPoisonInfo =
+            OmapiPoisonInfo(
+                    readerName = null,
+                    reason = OMAPI_PROCESS_HANDOFF_PENDING_REASON,
+                    operationMayHaveSucceeded = false,
+                    persistenceConfirmed = true,
+            )
+
+    private fun releaseProcessOwnershipLocked() {
+        val scope = safetyStore.processScopeKey ?: return
+        val identity = armedBootIdentity ?: return
+        OmapiProcessArmRegistry.release(scope, identity, processOwnerToken)
     }
 }

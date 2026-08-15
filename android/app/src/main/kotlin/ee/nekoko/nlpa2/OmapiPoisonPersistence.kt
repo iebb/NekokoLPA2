@@ -40,6 +40,14 @@ internal data class PersistedOmapiSafetyState(
 )
 
 internal interface OmapiSafetyStore {
+    /**
+     * Optional process-local coordination scope. Production stores return a stable key so overlapping
+     * Flutter engines in the same process can hand off safely. Test/custom stores default to no
+     * process handoff semantics unless they explicitly opt in.
+     */
+    val processScopeKey: Any?
+        get() = null
+
     fun load(): PersistedOmapiSafetyState?
 
     /** Establishes crash safety synchronously before the first OMAPI hardware access. */
@@ -90,8 +98,11 @@ internal class AndroidOmapiBootIdentityProvider(private val context: Context) :
 }
 
 internal class SharedPreferencesOmapiSafetyStore(context: Context) : OmapiSafetyStore {
+    private val appContext = context.applicationContext
     private val preferences =
-            context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+            appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+
+    override val processScopeKey: Any = "${appContext.packageName}:$PREFERENCES_NAME"
 
     override fun load(): PersistedOmapiSafetyState? {
         if (!preferences.getBoolean(KEY_PRESENT, false)) return null
