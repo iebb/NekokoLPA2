@@ -9,8 +9,7 @@ const String omapiRebootRequiredMessage =
     'SIM/eSIM channel became invalid during the profile operation. The operation may already have taken effect. Restart the device, reopen the app, and refresh profile status before retrying.';
 
 bool isOmapiProcessHandoffPendingError(Object error) {
-  if (error is! PlatformException ||
-      error.code != omapiSessionCorruptedCode) {
+  if (error is! PlatformException || error.code != omapiSessionCorruptedCode) {
     return false;
   }
   final details = error.details;

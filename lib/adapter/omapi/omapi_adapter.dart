@@ -318,12 +318,7 @@ class OmapiAdapter extends BaseAdapter {
             log.info(
               'Reusing existing logical channel $existingId for AID $aid (refs: ${_refCounts[existingId]})',
             );
-            return _OmapiChannel(
-              this,
-              existingId,
-              aid,
-              ownershipToken,
-            );
+            return _OmapiChannel(this, existingId, aid, ownershipToken);
           }
         }
       }
@@ -359,12 +354,7 @@ class OmapiAdapter extends BaseAdapter {
             _channelMappings[internalId] = selectedAid;
             final ownershipToken = _channelOwnership.claim(internalId);
             _refCounts[internalId] = (_refCounts[internalId] ?? 0) + 1;
-            return _OmapiChannel(
-              this,
-              internalId,
-              selectedAid,
-              ownershipToken,
-            );
+            return _OmapiChannel(this, internalId, selectedAid, ownershipToken);
           }
         } catch (e) {
           log.warning('Native scan failed: $e');

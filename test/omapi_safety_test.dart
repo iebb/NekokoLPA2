@@ -51,39 +51,42 @@ void main() {
     expect(nativeCalls, 1, reason: 'poisoned reset/reconnect must stay local');
   });
 
-  test('same-process handoff rejection stays temporary and does not latch', () async {
-    final latch = OmapiSafetyLatch();
-    var nativeCalls = 0;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-          nativeCalls++;
-          if (nativeCalls == 1) {
-            throw PlatformException(
-              code: omapiSessionCorruptedCode,
-              message: omapiRebootRequiredMessage,
-              details: const {
-                'rebootRequired': true,
-                'reason': omapiProcessHandoffPendingReason,
-              },
-            );
-          }
-          return 'ok';
-        });
+  test(
+    'same-process handoff rejection stays temporary and does not latch',
+    () async {
+      final latch = OmapiSafetyLatch();
+      var nativeCalls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            nativeCalls++;
+            if (nativeCalls == 1) {
+              throw PlatformException(
+                code: omapiSessionCorruptedCode,
+                message: omapiRebootRequiredMessage,
+                details: const {
+                  'rebootRequired': true,
+                  'reason': omapiProcessHandoffPendingReason,
+                },
+              );
+            }
+            return 'ok';
+          });
 
-    await expectLater(
-      latch.invoke<String>(channel, 'connect'),
-      throwsA(
-        isA<PlatformException>().having(
-          (e) => e.code,
-          'code',
-          'NOT_CONNECTED',
+      await expectLater(
+        latch.invoke<String>(channel, 'connect'),
+        throwsA(
+          isA<PlatformException>().having(
+            (e) => e.code,
+            'code',
+            'NOT_CONNECTED',
+          ),
         ),
-      ),
-    );
-    expect(latch.isPoisoned, isFalse);
-    expect(await latch.invoke<String>(channel, 'connect'), 'ok');
-    expect(nativeCalls, 2);
-  });
+      );
+      expect(latch.isPoisoned, isFalse);
+      expect(await latch.invoke<String>(channel, 'connect'), 'ok');
+      expect(nativeCalls, 2);
+    },
+  );
 
   test('profile switch is never retried after submission or corruption', () {
     const ordinary = FormatException('temporary');
@@ -129,14 +132,13 @@ void main() {
     const estkPreferred = 'A06573746B6D65FFFF4953442D522030';
     const fallback = 'A0000005591010FFFFFFFF8900000100';
 
-    expect(
-      omapiNativeOpenCandidates([estkPreferred, fallback], [fallback]),
-      [estkPreferred],
-    );
-    expect(
-      omapiNativeOpenCandidates([estkPreferred, fallback], const []),
-      [estkPreferred, fallback],
-    );
+    expect(omapiNativeOpenCandidates([estkPreferred, fallback], [fallback]), [
+      estkPreferred,
+    ]);
+    expect(omapiNativeOpenCandidates([estkPreferred, fallback], const []), [
+      estkPreferred,
+      fallback,
+    ]);
     expect(
       omapiNativeOpenCandidates([fallback, estkPreferred], [estkPreferred]),
       [fallback, estkPreferred],
