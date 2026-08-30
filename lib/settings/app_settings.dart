@@ -100,11 +100,11 @@ class AppSettings extends ChangeNotifier {
   }
 
   String get logoAsset {
-    return 'assets/logo.png';
+    return 'packages/nlpa2/assets/logo.png';
   }
 
   String get appName {
-    return 'NekokoLPA 2';
+    return 'Roam2World eSIM Manager';
   }
 
   String get userAgent {
