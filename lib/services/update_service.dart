@@ -69,7 +69,7 @@ class UpdateService {
       final osConfig = config[platformKey];
 
       if (os == 'android') {
-        return _checkAndroidUpdate(osConfig);
+        return await _checkAndroidUpdate(osConfig);
       } else {
         return _checkGenericUpdate(osConfig);
       }
