@@ -4395,17 +4395,33 @@ class _ProfilesScreenState extends State<ProfilesScreen>
                     ? Size.fromHeight(40)
                     : Size.fromHeight(56),
                 child: AppBar(
-                  leadingWidth: isExtremelySmall ? 100 : 200,
+                  leadingWidth: isExtremelySmall ? 150 : 280,
                   leading: Padding(
                     padding: EdgeInsets.only(
-                      left: isWide ? 20 : 12,
+                      left: isWide ? 72 : 64,
                       top: isExtremelySmall ? 4 : 8,
                       right: 0,
                       bottom: 0,
                     ),
                     child: Row(
                       children: [
-                        Image.asset(AppSettings().logoAsset, height: 24),
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [kPrimaryColor2, Color(0xFF8B5CF6)],
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.sim_card_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
                         if (!AppSettings().isOnline)
                           Padding(
                             padding: const EdgeInsets.only(left: 4),
@@ -4429,8 +4445,10 @@ class _ProfilesScreenState extends State<ProfilesScreen>
                               children: [
                                 Text(
                                   AppSettings().appName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    fontSize: 18,
+                                    fontSize: 16,
                                     fontWeight: FontWeight.w600,
                                     color: theme.colorScheme.primary,
                                     height: 0.9,
