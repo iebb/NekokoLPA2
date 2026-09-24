@@ -2,6 +2,15 @@
 
 All notable changes to NekokoLPA2 will be documented in this file.
 
+## [2.2.5+587] - 2026-09-24
+
+### Changed
+- The macOS app requires macOS 12 or later.
+
+### Fixed
+- eUICC signing requests from websites accept a non-standard IMEI or TAC given as integers, instead of failing with "IMEI integer must contain exactly 15 decimal digits".
+- When a profile fails to install, the reason (such as insufficient memory) is shown even on cards holding many install notifications, instead of an APDU error over Bluetooth readers.
+
 ## [2.2.4+586] - 2026-08-29
 
 ### Fixed
