@@ -3,8 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../settings/app_settings.dart';
 
-const Color kPrimaryColor = Color(0xFF3276CD);
-const Color kPrimaryColor2 = Color(0xFF54AAFF);
+const Color kPrimaryColor = Color(0xFF07ACE9);
+const Color kPrimaryColor2 = Color(0xFF22D0F7);
 const Color kErrorColor = Color(0xFFE53935);
 const Color kSuccessColor = Color(0xFF43A047);
 
@@ -56,9 +56,7 @@ class AppTheme {
       primary: isDark
           ? const Color(0xFF64B5F6)
           : kPrimaryColor, // Lighter blue for dark mode
-      secondary: const Color(
-        0xFF9E8CF2,
-      ), // Slightly more vibrant secondary for dark mode
+      secondary: const Color(0xFF8B5CF6),
       error: kErrorColor,
       brightness: isDark ? Brightness.dark : Brightness.light,
       surface: isDark ? const Color(0xFF0F172A) : Colors.white,
