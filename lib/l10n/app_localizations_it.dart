@@ -2117,4 +2117,95 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get qrtrReaderSubtitle =>
       'Qualcomm\'s low-level modem protocol (requires Shizuku)';
+
+  @override
+  String get seHalReaderTitle => 'SE HAL (direct access)';
+
+  @override
+  String get seHalReaderSubtitle =>
+      'SIM cards and built-in eSIMs through the Secure Element HAL (requires Shizuku)';
+
+  @override
+  String get seHalAdvancedSettings => 'SE HAL advanced settings';
+
+  @override
+  String seHalBorrowSlot(int slot) {
+    return 'SIM$slot: borrow channel 1';
+  }
+
+  @override
+  String get seHalBorrowHint =>
+      'Off opens a new channel. Turn on only if channel 1 already has ISD-R selected.';
+
+  @override
+  String get seHalBorrowTitle => 'Borrow channel 1?';
+
+  @override
+  String seHalBorrowWarning(int slot) {
+    return 'Turn this on only if channel 1 on SIM$slot has ISD-R selected right now; commands sent to another application can have unpredictable effects. Turn it off again after changing the card.';
+  }
+
+  @override
+  String get seHalBorrowConfirm => 'Borrow';
+
+  @override
+  String get seHalDownloadTitle => 'SE HAL: experimental download';
+
+  @override
+  String get seHalInstallWarning =>
+      'This installs the profile and keeps the existing ones. Do not use another LPA or remove the SIM until it finishes. If it fails, check the profile list before using the activation code again.';
+
+  @override
+  String get seHalPreviewWarning =>
+      'The preview talks to the server and the card but installs nothing; you confirm again before installing. Do not use another LPA meanwhile.';
+
+  @override
+  String get seHalAcceptInstall => 'Install';
+
+  @override
+  String get seHalContinuePreview => 'Continue to preview';
+
+  @override
+  String get seHalDownloadUnusedQr => 'Download (unused QR only)';
+
+  @override
+  String get seHalReturnToEnable => 'Return to profiles to enable';
+
+  @override
+  String get seHalSwitchTitle => 'SE HAL: enable profile';
+
+  @override
+  String get seHalDisableTitle => 'SE HAL: disable profile';
+
+  @override
+  String get seHalEnableWarning =>
+      'The currently enabled profile will be disabled, and the connection may drop for a moment. If the result is unclear, restart the device and check before trying again.';
+
+  @override
+  String get seHalDisableWarning =>
+      'Calls and data through this profile will stop. If the result is unclear, restart the device and check before trying again.';
+
+  @override
+  String get seHalAcceptSwitch => 'Enable';
+
+  @override
+  String get seHalAcceptDisable => 'Disable';
+
+  @override
+  String get seHalStateChanged =>
+      'Profile state changed. Restart the device if the connection does not come back.';
+
+  @override
+  String seHalStateUnknown(String error) {
+    return 'SE HAL: $error\nThe result is unknown. Refresh to check the profile state before trying again.';
+  }
+
+  @override
+  String get seHalInstallNotVerified =>
+      'SE HAL: the installation could not be confirmed. Check the profile list before using the activation code again.';
+
+  @override
+  String seHalDeleteUnknown(String error) {
+    return 'The deletion could not be confirmed: $error\nRefresh the profile list to check.';
+  }
 }

@@ -1,5 +1,9 @@
 package ee.nekoko.nlpa2
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.ComponentName
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
@@ -16,6 +20,7 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The app's way to the modem's bus.
@@ -26,6 +31,11 @@ import java.util.concurrent.TimeUnit
  * the app therefore is not a descriptor but the traffic itself — Dart asks for
  * a datagram to go out, or waits for one to come in, and the answering happens
  * in the process that holds the socket.
+ *
+ * The SE HAL reader rides on the same service, since the Secure Element HAL
+ * also answers only to `shell`. Its calls start with `hal`, and a change of SIM
+ * state is passed on to the service so that it drops channels it can no
+ * longer vouch for.
  *
  * Waiting for the modem can take longer than a frame, so none of it runs on
  * the thread the app draws on.
@@ -42,7 +52,50 @@ class QrtrPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
+    @Volatile
     private var service: IQrtrService? = null
+    private var receiverContext: Context? = null
+    private val pendingInvalidations = AtomicInteger(0)
+    private val simStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            intent ?: return
+            val slot = if (intent.action == "android.se.omapi.action.SECURE_ELEMENT_STATE_CHANGED") {
+                when (intent.getStringExtra("android.se.omapi.extra.READER_NAME")) {
+                    "SIM1" -> 1
+                    "SIM2" -> 2
+                    else -> return // eSE is not one of our SIM readers.
+                }
+            } else {
+                // Telephony's physical/phone indices are not a verified mapping
+                // to SIM1/2 HAL reader names (especially with built-in eSIM/MEP).
+                0
+            }
+            val connected = service
+            try {
+                if (connected == null) queueInvalidation(slot)
+                else connected.halInvalidateSessions(slot) // No HAL init, reset or close.
+            } catch (e: Throwable) {
+                queueInvalidation(slot)
+                Log.w(TAG, "SIM change invalidation deferred until next SE HAL operation", e)
+            }
+        }
+    }
+
+    private fun queueInvalidation(slot: Int) {
+        val mask = if (slot == 0) 3 else 1 shl (slot - 1)
+        pendingInvalidations.getAndUpdate { it or mask }
+    }
+
+    private fun applyPendingInvalidations(service: IQrtrService) {
+        val mask = pendingInvalidations.getAndSet(0)
+        try {
+            if (mask == 3) service.halInvalidateSessions(0)
+            else if (mask != 0) service.halInvalidateSessions(if (mask == 1) 1 else 2)
+        } catch (e: Throwable) {
+            pendingInvalidations.getAndUpdate { it or mask }
+            throw e // Never perform a card operation before invalidation succeeds.
+        }
+    }
 
     /** Set while a binding is in flight, and counted down when it lands. */
     @Volatile
@@ -98,6 +151,20 @@ class QrtrPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, CHANNEL)
         channel.setMethodCallHandler(this)
+        val context = binding.applicationContext
+        val filter = IntentFilter().apply {
+            addAction("android.intent.action.SIM_STATE_CHANGED")
+            addAction("android.telephony.action.SIM_CARD_STATE_CHANGED")
+            addAction("android.telephony.action.SIM_APPLICATION_STATE_CHANGED")
+            addAction("android.se.omapi.action.SECURE_ELEMENT_STATE_CHANGED")
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(simStateReceiver, filter, Context.RECEIVER_EXPORTED)
+            else context.registerReceiver(simStateReceiver, filter)
+            receiverContext = context
+        } catch (e: RuntimeException) {
+            Log.e(TAG, "SE HAL state monitoring unavailable; direct access disabled", e)
+        }
 
         val application = binding.applicationContext.applicationInfo
         libraryDir = application.nativeLibraryDir
@@ -121,6 +188,8 @@ class QrtrPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             Log.w(TAG, "could not let the user service go", e)
         }
 
+        receiverContext?.unregisterReceiver(simStateReceiver)
+        receiverContext = null
         service = null
         worker.shutdown()
     }
@@ -131,6 +200,51 @@ class QrtrPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "isAvailable" -> result.success(isAvailable())
             "hasPermission" -> result.success(hasPermission())
             "requestPermission" -> requestPermission(result)
+
+            "halInvalidateSessions" -> withService(result, retrySafe = false, seHal = true) { service -> service.halInvalidateSessions(call.number("slot")); null }
+            "halUseBorrowed" -> withService(result, retrySafe = false, seHal = true) { service -> service.halUseBorrowed(call.number("slot")); null }
+            "halOpenOwned" -> withService(result, retrySafe = false, seHal = true) { service -> service.halOpenOwned(call.number("slot")); null }
+            "halCloseOwned" -> withService(result, retrySafe = false, seHal = true) { service -> service.halCloseOwned(call.number("slot")); null }
+            "halAtr" -> withService(result, seHal = true) { service -> service.halAtr(call.number("slot")) }
+            "halRead" -> withService(result, seHal = true) { service ->
+                service.halRead(call.number("slot"), call.argument<ByteArray>("data") ?: invalid("data"))
+            }
+
+            "halRenameProfile" -> withService(result, retrySafe = false, seHal = true) { service ->
+                service.halRenameProfile(call.number("slot"), call.argument<ByteArray>("iccid") ?: invalid("iccid"), call.argument<ByteArray>("eid") ?: invalid("eid"), call.argument<ByteArray>("nickname") ?: invalid("nickname"))
+            }
+            "halDeleteProfile" -> withService(result, retrySafe = false, seHal = true) { service ->
+                service.halDeleteProfile(call.number("slot"), call.argument<ByteArray>("iccid") ?: invalid("iccid"), call.argument<ByteArray>("eid") ?: invalid("eid"))
+            }
+            "halRemoveNotification" -> withService(result, retrySafe = false, seHal = true) { service ->
+                service.halRemoveNotification(call.number("slot"), call.number("sequence"), call.argument<ByteArray>("eid") ?: invalid("eid"), call.argument<ByteArray>("response") ?: invalid("response"))
+            }
+            "halSwitchProfile" -> withService(result, retrySafe = false, seHal = true, switchOperation = true) { service ->
+                service.halSwitchProfile(call.number("slot"), call.argument<ByteArray>("iccid") ?: invalid("iccid"), call.argument<ByteArray>("eid") ?: invalid("eid"), call.argument<Boolean>("enable") ?: invalid("enable"))
+            }
+            "halBeginDownload" -> withService(result, seHal = true) { service -> service.halBeginDownload(call.number("slot")); null }
+            "halEndDownload" -> withService(result, seHal = true) { service -> service.halEndDownload(call.number("slot")); null }
+            "halDownload" -> withService(result, retrySafe = false, seHal = true) { service ->
+                val payload = call.argument<ByteArray>("data") ?: invalid("data")
+                val segments = call.argument<IntArray>("segments") ?: invalid("segments")
+                require(payload.size in 3..(16 * 1024 * 1024)) { "Invalid ES10b size" }
+                require(segments.size in 1..65536) { "Invalid segment count" }
+                // Binder has a shared ~1 MiB transaction buffer. Transfer the
+                // package as small data-only chunks, then validate and send it
+                // inside one native call. Staging never talks to the card.
+                try {
+                    var offset = 0
+                    while (offset < payload.size) {
+                        val end = minOf(offset + 128 * 1024, payload.size)
+                        service.halStageDownload(call.number("slot"), payload.copyOfRange(offset, end), offset == 0)
+                        offset = end
+                    }
+                    service.halDownload(call.number("slot"), byteArrayOf(), segments)
+                } catch (e: Throwable) {
+                    try { service.halEndDownload(call.number("slot")) } catch (_: Throwable) {}
+                    throw e
+                }
+            }
 
             "openBus" -> withService(result) { service -> service.openBus() }
             "busNode" -> withService(result) { service ->
@@ -172,7 +286,11 @@ class QrtrPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     /**
      * Run `call` against the user service, off the thread the app draws on.
      */
-    private fun withService(result: MethodChannel.Result, call: (IQrtrService) -> Any?) {
+    private fun withService(result: MethodChannel.Result, retrySafe: Boolean = true, seHal: Boolean = false, switchOperation: Boolean = false, call: (IQrtrService) -> Any?) {
+        if (seHal && receiverContext == null) {
+            result.error("NO_STATE_MONITOR", "SE HAL state monitoring is unavailable", null)
+            return
+        }
         if (!hasPermission()) {
             result.error("NO_PERMISSION", "Shizuku permission was not granted", null)
             return
@@ -190,11 +308,24 @@ class QrtrPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 }
 
                 try {
+                    if (seHal) applyPendingInvalidations(service)
                     val value = call(service)
                     main.post { result.success(value) }
                     return@execute
                 } catch (e: Throwable) {
                     Log.w(TAG, "the user service could not answer", e)
+
+                    if (!retrySafe || e !is android.os.DeadObjectException) {
+                        if (switchOperation && e is android.os.DeadObjectException) {
+                            // The service may have sent the switch before its IPC reply was lost.
+                            // Rebind for verification only; never retry this mutation.
+                            forget(service)
+                            fail(result, "HAL_SWITCH_UNCERTAIN", e)
+                        } else {
+                            fail(result, "SERVICE_ERROR", e)
+                        }
+                        return@execute
+                    }
 
                     // The binder Shizuku hands over is not always one whose
                     // process is ready for it: right after a bind, and right
@@ -255,7 +386,7 @@ class QrtrPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     private fun fail(result: MethodChannel.Result, code: String, error: Throwable) {
-        val message = error.message ?: error.toString()
+        val message = error.message?.takeIf { it.isNotBlank() } ?: error.toString()
         main.post { result.error(code, message, null) }
     }
 

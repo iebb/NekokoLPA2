@@ -28,11 +28,13 @@ NekokoLPA2 is a cross-platform eSIM management app for working with local eUICCs
 | OMAPI | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Telephony / TMAPI | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `OTBridge` provider | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| SE HAL (Shizuku) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | WebUSB SCRP / WebCard | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
 Notes:
 - `Telephony / TMAPI` and `OTBridge` are Android-only paths.
 - `OTBridge` is intended for rooted Android setups where Telephony access or OMAPI policy bypass is needed.
+- `SE HAL` is experimental and off by default. It needs Shizuku, and works only where the device lets `shell` call the Secure Element HAL.
 - Chrome support refers to the web build running in a Chromium browser with the required browser APIs available.
 
 ## Translation

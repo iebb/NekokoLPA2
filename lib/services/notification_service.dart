@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/asn1/rsp_definitions.g.dart';
 import '../logic/profile_manager.dart';
 import '../adapter/euicc_adapter.dart';
+import '../adapter/se_hal_adapter.dart';
 import '../utils/hex_utils.dart';
 import 'database_service.dart';
 import 'package:logging/logging.dart';
@@ -253,11 +254,20 @@ class NotificationService {
     final processedAsSent = <int>{};
 
     try {
-      // 1. Collect pending deletes from previous runs
+      // HAL automatic send-only flows must not remove historical pending deletes.
+      final halSendOnly =
+          (channel is HalDownloadChannel ||
+              manager.adapter.connectedReader?.source is SeHalAdapter) &&
+          !autoRemoveInstall &&
+          !autoRemoveEnable &&
+          !deleteWithoutSendingEnable &&
+          !autoRemoveDisable &&
+          !deleteWithoutSendingDisable &&
+          !autoRemoveDelete;
       try {
         final pendingDeletes = await DatabaseService()
             .getDeletePendingNotifications(currentEid);
-        for (final p in pendingDeletes) {
+        for (final p in halSendOnly ? <NotificationRecord>[] : pendingDeletes) {
           seqsToRemove.add(p.seqNumber);
           seqToIccid[p.seqNumber] = p.iccid;
         }

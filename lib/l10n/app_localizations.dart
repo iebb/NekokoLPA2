@@ -3934,6 +3934,156 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Qualcomm\'s low-level modem protocol (requires Shizuku)'**
   String get qrtrReaderSubtitle;
+
+  /// No description provided for @seHalReaderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'SE HAL (direct access)'**
+  String get seHalReaderTitle;
+
+  /// No description provided for @seHalReaderSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'SIM cards and built-in eSIMs through the Secure Element HAL (requires Shizuku)'**
+  String get seHalReaderSubtitle;
+
+  /// No description provided for @seHalAdvancedSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'SE HAL advanced settings'**
+  String get seHalAdvancedSettings;
+
+  /// No description provided for @seHalBorrowSlot.
+  ///
+  /// In en, this message translates to:
+  /// **'SIM{slot}: borrow channel 1'**
+  String seHalBorrowSlot(int slot);
+
+  /// No description provided for @seHalBorrowHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Off opens a new channel. Turn on only if channel 1 already has ISD-R selected.'**
+  String get seHalBorrowHint;
+
+  /// No description provided for @seHalBorrowTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Borrow channel 1?'**
+  String get seHalBorrowTitle;
+
+  /// No description provided for @seHalBorrowWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn this on only if channel 1 on SIM{slot} has ISD-R selected right now; commands sent to another application can have unpredictable effects. Turn it off again after changing the card.'**
+  String seHalBorrowWarning(int slot);
+
+  /// No description provided for @seHalBorrowConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Borrow'**
+  String get seHalBorrowConfirm;
+
+  /// No description provided for @seHalDownloadTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'SE HAL: experimental download'**
+  String get seHalDownloadTitle;
+
+  /// No description provided for @seHalInstallWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This installs the profile and keeps the existing ones. Do not use another LPA or remove the SIM until it finishes. If it fails, check the profile list before using the activation code again.'**
+  String get seHalInstallWarning;
+
+  /// No description provided for @seHalPreviewWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'The preview talks to the server and the card but installs nothing; you confirm again before installing. Do not use another LPA meanwhile.'**
+  String get seHalPreviewWarning;
+
+  /// No description provided for @seHalAcceptInstall.
+  ///
+  /// In en, this message translates to:
+  /// **'Install'**
+  String get seHalAcceptInstall;
+
+  /// No description provided for @seHalContinuePreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue to preview'**
+  String get seHalContinuePreview;
+
+  /// No description provided for @seHalDownloadUnusedQr.
+  ///
+  /// In en, this message translates to:
+  /// **'Download (unused QR only)'**
+  String get seHalDownloadUnusedQr;
+
+  /// No description provided for @seHalReturnToEnable.
+  ///
+  /// In en, this message translates to:
+  /// **'Return to profiles to enable'**
+  String get seHalReturnToEnable;
+
+  /// No description provided for @seHalSwitchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'SE HAL: enable profile'**
+  String get seHalSwitchTitle;
+
+  /// No description provided for @seHalDisableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'SE HAL: disable profile'**
+  String get seHalDisableTitle;
+
+  /// No description provided for @seHalEnableWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'The currently enabled profile will be disabled, and the connection may drop for a moment. If the result is unclear, restart the device and check before trying again.'**
+  String get seHalEnableWarning;
+
+  /// No description provided for @seHalDisableWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Calls and data through this profile will stop. If the result is unclear, restart the device and check before trying again.'**
+  String get seHalDisableWarning;
+
+  /// No description provided for @seHalAcceptSwitch.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable'**
+  String get seHalAcceptSwitch;
+
+  /// No description provided for @seHalAcceptDisable.
+  ///
+  /// In en, this message translates to:
+  /// **'Disable'**
+  String get seHalAcceptDisable;
+
+  /// No description provided for @seHalStateChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile state changed. Restart the device if the connection does not come back.'**
+  String get seHalStateChanged;
+
+  /// No description provided for @seHalStateUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'SE HAL: {error}\nThe result is unknown. Refresh to check the profile state before trying again.'**
+  String seHalStateUnknown(String error);
+
+  /// No description provided for @seHalInstallNotVerified.
+  ///
+  /// In en, this message translates to:
+  /// **'SE HAL: the installation could not be confirmed. Check the profile list before using the activation code again.'**
+  String get seHalInstallNotVerified;
+
+  /// No description provided for @seHalDeleteUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'The deletion could not be confirmed: {error}\nRefresh the profile list to check.'**
+  String seHalDeleteUnknown(String error);
 }
 
 class _AppLocalizationsDelegate

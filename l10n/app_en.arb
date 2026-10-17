@@ -788,5 +788,58 @@
   "imeiDigits": "TAC or IMEI digits",
   "importAction": "Import",
   "qrtrReaderTitle": "Qualcomm modem (QRTR)",
-  "qrtrReaderSubtitle": "Qualcomm's low-level modem protocol (requires Shizuku)"
+  "qrtrReaderSubtitle": "Qualcomm's low-level modem protocol (requires Shizuku)",
+  "seHalReaderTitle": "SE HAL (direct access)",
+  "seHalReaderSubtitle": "SIM cards and built-in eSIMs through the Secure Element HAL (requires Shizuku)",
+  "seHalAdvancedSettings": "SE HAL advanced settings",
+  "seHalBorrowSlot": "SIM{slot}: borrow channel 1",
+  "@seHalBorrowSlot": {
+    "placeholders": {
+      "slot": {
+        "type": "int"
+      }
+    }
+  },
+  "seHalBorrowHint": "Off opens a new channel. Turn on only if channel 1 already has ISD-R selected.",
+  "seHalBorrowTitle": "Borrow channel 1?",
+  "seHalBorrowWarning": "Turn this on only if channel 1 on SIM{slot} has ISD-R selected right now; commands sent to another application can have unpredictable effects. Turn it off again after changing the card.",
+  "@seHalBorrowWarning": {
+    "placeholders": {
+      "slot": {
+        "type": "int"
+      }
+    }
+  },
+  "seHalBorrowConfirm": "Borrow",
+  "seHalDownloadTitle": "SE HAL: experimental download",
+  "seHalInstallWarning": "This installs the profile and keeps the existing ones. Do not use another LPA or remove the SIM until it finishes. If it fails, check the profile list before using the activation code again.",
+  "seHalPreviewWarning": "The preview talks to the server and the card but installs nothing; you confirm again before installing. Do not use another LPA meanwhile.",
+  "seHalAcceptInstall": "Install",
+  "seHalContinuePreview": "Continue to preview",
+  "seHalDownloadUnusedQr": "Download (unused QR only)",
+  "seHalReturnToEnable": "Return to profiles to enable",
+  "seHalSwitchTitle": "SE HAL: enable profile",
+  "seHalDisableTitle": "SE HAL: disable profile",
+  "seHalEnableWarning": "The currently enabled profile will be disabled, and the connection may drop for a moment. If the result is unclear, restart the device and check before trying again.",
+  "seHalDisableWarning": "Calls and data through this profile will stop. If the result is unclear, restart the device and check before trying again.",
+  "seHalAcceptSwitch": "Enable",
+  "seHalAcceptDisable": "Disable",
+  "seHalStateChanged": "Profile state changed. Restart the device if the connection does not come back.",
+  "seHalStateUnknown": "SE HAL: {error}\nThe result is unknown. Refresh to check the profile state before trying again.",
+  "@seHalStateUnknown": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "seHalInstallNotVerified": "SE HAL: the installation could not be confirmed. Check the profile list before using the activation code again.",
+  "seHalDeleteUnknown": "The deletion could not be confirmed: {error}\nRefresh the profile list to check.",
+  "@seHalDeleteUnknown": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -355,6 +355,11 @@ class AppSettings extends ChangeNotifier {
   bool _enableQrtrConnector = false;
   bool get enableQrtrConnector => _enableQrtrConnector;
 
+  bool _enableSeHalConnector = false;
+  bool get enableSeHalConnector => _enableSeHalConnector;
+  final _halBorrowedSlots = <int>{};
+  bool halUseBorrowed(int slot) => _halBorrowedSlots.contains(slot);
+
   bool _enableOmapiConnector = true;
   bool get enableOmapiConnector => _enableOmapiConnector;
 
@@ -534,6 +539,14 @@ class AppSettings extends ChangeNotifier {
     // plugged in, so it starts on there and off everywhere else.
     _enableQrtrConnector =
         _prefs?.getBool('enableQrtrConnector') ?? await QrtrHost.isSupported();
+    _enableSeHalConnector = _prefs?.getBool('enableSeHalConnector') ?? false;
+    _halBorrowedSlots
+      ..clear()
+      ..addAll(
+        (_prefs?.getStringList('halBorrowedSlots') ?? [])
+            .where((s) => s == '1' || s == '2')
+            .map(int.parse),
+      );
     bool otbridgeHasOmapi = false;
     bool otbridgeHasTmapi = false;
 
@@ -1113,6 +1126,26 @@ class AppSettings extends ChangeNotifier {
   Future<void> setEnableQrtrConnector(bool value) async {
     _enableQrtrConnector = value;
     await _prefs?.setBool('enableQrtrConnector', value);
+    notifyListeners();
+  }
+
+  Future<void> setEnableSeHalConnector(bool value) async {
+    _enableSeHalConnector = value;
+    await _prefs?.setBool('enableSeHalConnector', value);
+    notifyListeners();
+  }
+
+  Future<void> setHalUseBorrowed(int slot, bool value) async {
+    if (slot < 1 || slot > 2) throw ArgumentError('Invalid SIM slot');
+    if (value) {
+      _halBorrowedSlots.add(slot);
+    } else {
+      _halBorrowedSlots.remove(slot);
+    }
+    await _prefs?.setStringList(
+      'halBorrowedSlots',
+      _halBorrowedSlots.map((s) => '$s').toList(),
+    );
     notifyListeners();
   }
 

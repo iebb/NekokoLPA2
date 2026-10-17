@@ -3,18 +3,23 @@ import 'dart:convert';
 import '../plugins/session_plugin.dart';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import '../utils/profile_tag_utils.dart';
 import '../adapter/euicc_adapter.dart';
+import '../adapter/se_hal_adapter.dart';
+import '../adapter/se_hal_host.dart';
 import '../adapter/omapi/omapi_safety.dart';
 import '../models/euicc_profile.dart';
 import '../models/asn1/rsp_definitions.g.dart';
 import '../models/asn1/simple_reader.dart';
 import '../utils/hex_utils.dart';
+import '../utils/iccid_formatter.dart';
 import '../utils/imei_codec.dart';
 import '../utils/apdu_exception.dart';
 import '../utils/error_codes.dart';
 
 import '../settings/app_settings.dart';
+import '../services/database_service.dart';
 import 'package:logging/logging.dart';
 
 class InstallationException implements Exception {
@@ -236,7 +241,10 @@ class ProfileManager {
     }, desc: "openSession");
   }
 
-  Future<List<EuiccProfile>> listProfiles({Channel? useChannel}) async {
+  Future<List<EuiccProfile>> listProfiles({
+    Channel? useChannel,
+    bool requireKnownState = false,
+  }) async {
     // Conditionally include icon tags based on setting
     final loadIcons = AppSettings().loadProfileIcons;
     final tagList = loadIcons
@@ -290,6 +298,14 @@ class ProfileManager {
           }
 
           final profilesRaw = responseObj.profileInfoListOk ?? [];
+          if (requireKnownState &&
+              profilesRaw.any(
+                (p) => p.profileState?.value != 0 && p.profileState?.value != 1,
+              )) {
+            throw StateError(
+              'Profile state missing or unknown; switch cannot be verified',
+            );
+          }
           return await compute(_mapProfiles, profilesRaw);
         });
       },
@@ -298,7 +314,160 @@ class ProfileManager {
     );
   }
 
+  void _checkHalResult(Uint8List response, int tag) {
+    final data = _checkSwAndGetData(response);
+    final node = SimpleAsn1Reader(data).readNext();
+    if (node?.tag != tag ||
+        node!.encodedBytes.length != data.length ||
+        node.children.length != 1 ||
+        node.children.first.tag != 0x80 ||
+        node.children.first.value.length != 1) {
+      throw StateError('SE HAL: invalid management response');
+    }
+    final result = node.children.first.value.first;
+    if (result != 0) {
+      throw StateError(
+        'SE HAL: card rejected ${tag.toRadixString(16)} with result $result',
+      );
+    }
+  }
+
+  static const _halSwitchUnconfirmed = 'SE HAL: profile switch not confirmed';
+  static const _halCardChanged =
+      'Card changed; profile switch cannot be verified';
+
+  /// How many times a switch is read back before its state is reported unknown.
+  @visibleForTesting
+  static const halVerifyAttempts = 5;
+
+  /// The wait before each read-back: 1.5 s, 3 s, 4.5 s, then 5 s each, about
+  /// 19 s in all.
+  @visibleForTesting
+  static Duration Function(int attempt) halVerifyDelay = (attempt) =>
+      Duration(milliseconds: attempt < 3 ? 1500 * (attempt + 1) : 5000);
+
+  // Reading back never touches the switch, so a failure while the card resets
+  // is worth another look. Stop only when another look cannot help: the card
+  // is a different one, or the reader may no longer be used.
+  static bool _isHalVerifyFatal(Object e) {
+    if (e is StateError) {
+      return e.message == _halCardChanged ||
+          e.message == 'SE HAL connector is disabled' ||
+          e.message == 'Shizuku permission is required' ||
+          e.message.startsWith('SE HAL ownership setting changed');
+    }
+    if (e is PlatformException) {
+      return e.code == 'NO_PERMISSION' || e.code == 'NO_STATE_MONITOR';
+    }
+    return e is AppException;
+  }
+
+  Future<bool> _switchHalProfile(
+    String iccid,
+    HalDownloadChannel useChannel,
+    bool enable,
+  ) async {
+    if (!RegExp(r'^89[0-9]{17,18}$').hasMatch(iccid)) {
+      throw ArgumentError('Invalid ICCID');
+    }
+    final eid = await getEid(useChannel: useChannel);
+    final padded = iccid.length.isOdd ? '${iccid}F' : iccid;
+    final response = await SeHalHost.halSwitchProfile(
+      useChannel.slot,
+      HexUtils.hexToBytes(HexUtils.swapNibbles(padded)),
+      HexUtils.hexToBytes(eid),
+      enable,
+    );
+    final data = _checkSwAndGetData(response);
+    // Unlike the generated decoder, reject missing/unknown result tags.
+    final node = SimpleAsn1Reader(data).readNext();
+    if (node?.tag != (enable ? 0xBF31 : 0xBF32) ||
+        node!.encodedBytes.length != data.length ||
+        node.children.isEmpty ||
+        node.children.first.tag != 0x80 ||
+        node.children.first.value.length != 1 ||
+        node.children.first.value.first != 0) {
+      throw StateError(_halSwitchUnconfirmed);
+    }
+    return true;
+  }
+
+  Future<List<EuiccProfile>> switchHalProfileAndVerify(
+    String iccid,
+    bool enable,
+  ) async {
+    return adapter.runExclusive(() async {
+      final reader = adapter.connectedReader;
+      if (reader == null || reader.source is! SeHalAdapter) {
+        throw StateError('SE HAL reader is required');
+      }
+      var channel = await openSession();
+      try {
+        final eid = await getEid(useChannel: channel);
+        try {
+          if (enable) {
+            await enableProfile(iccid, useChannel: channel);
+          } else {
+            await disableProfile(iccid, useChannel: channel);
+          }
+        } on ProactiveRefreshException {
+          _log.info(
+            'HAL switch requested REFRESH; verifying without resending',
+          );
+        } on PlatformException catch (e) {
+          if (e.code != 'HAL_SWITCH_UNCERTAIN' &&
+              (e.code != 'SERVICE_ERROR' ||
+                  !(e.message ?? '').contains('reply uncertain'))) {
+            rethrow;
+          }
+          _log.warning('HAL switch reply lost; verifying without resending');
+        }
+        // REFRESH may produce several delayed SIM broadcasts, and the card can
+        // stay unreachable while it resets. Only the read-back is retried; the
+        // switch above is never sent again.
+        for (var attempt = 0; ; attempt++) {
+          await Future.delayed(halVerifyDelay(attempt));
+          try {
+            await channel.close();
+            await adapter.disconnect();
+            await adapter.connect(reader);
+            channel = await openSession();
+            if (await getEid(useChannel: channel) != eid) {
+              throw StateError(_halCardChanged);
+            }
+            final profiles = await listProfiles(
+              useChannel: channel,
+              requireKnownState: true,
+            );
+            if (!profiles.any((p) => p.iccid == iccid && p.enabled == enable)) {
+              throw StateError(_halSwitchUnconfirmed);
+            }
+            reader.eid = eid;
+            adapter.updateConnectedReader(reader);
+            return profiles;
+          } catch (e) {
+            if (attempt >= halVerifyAttempts - 1 || _isHalVerifyFatal(e)) {
+              rethrow;
+            }
+            _log.info('HAL read-back failed; reopening to verify: $e');
+          }
+        }
+      } finally {
+        await channel.close();
+      }
+    });
+  }
+
   Future<bool> enableProfile(String iccid, {Channel? useChannel}) async {
+    if (useChannel is HalDownloadChannel ||
+        (useChannel == null &&
+            adapter.connectedReader?.source is SeHalAdapter)) {
+      return _runOnChannel(
+        useChannel,
+        (channel) =>
+            _switchHalProfile(iccid, channel as HalDownloadChannel, true),
+      );
+    }
     const int maxAttempts = 10;
     int attempt = 0;
     bool commandSubmitted = false;
@@ -387,6 +556,15 @@ class ProfileManager {
   }
 
   Future<bool> disableProfile(String iccid, {Channel? useChannel}) async {
+    if (useChannel is HalDownloadChannel ||
+        (useChannel == null &&
+            adapter.connectedReader?.source is SeHalAdapter)) {
+      return _runOnChannel(
+        useChannel,
+        (channel) =>
+            _switchHalProfile(iccid, channel as HalDownloadChannel, false),
+      );
+    }
     const int maxAttempts = 10;
     int attempt = 0;
     bool commandSubmitted = false;
@@ -487,6 +665,24 @@ class ProfileManager {
 
       final requestData = _encodeNicknameRequestUtf8(iccidBytes, nickname);
 
+      if (channel is HalDownloadChannel) {
+        final eid = await getEid(useChannel: channel);
+        final response = await SeHalHost.halRenameProfile(
+          channel.slot,
+          iccidBytes,
+          HexUtils.hexToBytes(eid),
+          nickname,
+        );
+        _checkHalResult(response, 0xBF29);
+        final profiles = await listProfiles(useChannel: channel);
+        if (!profiles.any(
+          (p) => p.iccid == iccid && (p.nickname ?? '') == nickname,
+        )) {
+          throw StateError('SE HAL: nickname change not verified');
+        }
+        return;
+      }
+
       if (AppSettings().decodeAsn1) {
         try {
           final node = SimpleAsn1Reader(requestData).readNext();
@@ -509,7 +705,21 @@ class ProfileManager {
   Future<void> deleteProfile(String iccid, {Channel? useChannel}) async {
     return _runOnChannel(useChannel, (channel) async {
       String iccidHex = iccid;
+      if (iccidHex.length % 2 != 0) iccidHex += 'F';
       final iccidBytes = HexUtils.hexToBytes(HexUtils.swapNibbles(iccidHex));
+
+      if (channel is HalDownloadChannel) {
+        final eid = await getEid(useChannel: channel);
+        _checkHalResult(
+          await SeHalHost.halDeleteProfile(
+            channel.slot,
+            iccidBytes,
+            HexUtils.hexToBytes(eid),
+          ),
+          0xBF33,
+        );
+        return;
+      }
 
       final request = DeleteProfileRequest(iccid: iccidBytes);
       _logAsn1Request(request);
@@ -946,6 +1156,57 @@ class ProfileManager {
     return _runOnChannel(useChannel, (channel) async {
       final results = <NotificationSentResponse_deleteNotificationStatus?>[];
       for (final seq in seqNumbers) {
+        if (channel is HalDownloadChannel) {
+          if (seq < 0 || seq > 0x7fffffff) {
+            throw ArgumentError('Invalid notification sequence');
+          }
+          final eid = await getEid(useChannel: channel);
+          final snapshot = await transmitLogicalApdu(
+            channel,
+            RetrieveNotificationsListRequest(
+              searchCriteria: RetrieveNotificationsListRequest_searchCriteria(
+                seqNumber: seq,
+              ),
+            ).encode(),
+          );
+          final notification = RetrieveNotificationsListResponse.decode(
+            snapshot,
+          ).notificationList?.single;
+          if (notification == null) throw StateError('Notification missing');
+          final metadata = extractMetadata(notification);
+          if (metadata?.seqNumber != seq) {
+            throw StateError('Notification identity mismatch');
+          }
+          final iccid = metadata?.iccid != null
+              ? HexUtils.swapNibbles(HexUtils.bytesToHex(metadata!.iccid!))
+              : 'Unknown';
+          final record = await DatabaseService().getNotification(
+            eid,
+            seq,
+            iccid,
+          );
+          validateHalNotificationBackup(
+            record,
+            seq,
+            base64Encode(notification.encode()),
+            metadata?.notificationAddress,
+          );
+          _checkHalResult(
+            await SeHalHost.halRemoveNotification(
+              channel.slot,
+              seq,
+              HexUtils.hexToBytes(eid),
+              snapshot,
+            ),
+            0xBF30,
+          );
+          final remaining = await retrieveNotifications(useChannel: channel);
+          if (remaining.any((n) => extractMetadata(n)?.seqNumber == seq)) {
+            throw StateError('SE HAL: notification removal not verified');
+          }
+          results.add(NotificationSentResponse_deleteNotificationStatus.ok);
+          continue;
+        }
         final request = NotificationSentRequest(seqNumber: seq);
         _logAsn1Request(request);
         final requestData = request.encode();
@@ -1325,6 +1586,17 @@ class ProfileManager {
   }) async {
     return _runOnChannel(useChannel, (channel) async {
       final segments = _decomposeBpp(bpp);
+      if (channel is HalDownloadChannel) {
+        // The whole package goes over in one call, so nothing the app sends
+        // can come between its blocks.
+        final response = await channel.loadBpp(
+          bpp,
+          segments.map((s) => s.length).toList(),
+        );
+        _checkSwAndGetData(response);
+        onProgress?.call(bpp.length, bpp.length);
+        return;
+      }
       final totalSize = bpp.length;
       int totalSentBytes = 0;
 
@@ -1769,8 +2041,9 @@ List<EuiccProfile> _mapProfiles(List<ProfileInfo> profilesRaw) {
   return profilesRaw.map((p) {
     String? iccid;
     if (p.iccid != null) {
-      iccid = HexUtils.swapNibbles(HexUtils.bytesToHex(p.iccid!));
-      if (iccid.endsWith('F')) iccid = iccid.substring(0, iccid.length - 1);
+      iccid = IccidFormatter.forDisplay(
+        HexUtils.swapNibbles(HexUtils.bytesToHex(p.iccid!)),
+      );
     }
 
     String? mcc;
@@ -1889,4 +2162,21 @@ Uint8List _encodeLength(int length) {
   }
   bytes.insert(0, 0x80 | bytes.length);
   return Uint8List.fromList(bytes);
+}
+
+/// The SE HAL path removes a notification only once it has been delivered and
+/// the delivered copy is backed up.
+void validateHalNotificationBackup(
+  NotificationRecord? record,
+  int sequence,
+  String content,
+  String? address,
+) {
+  if (record == null ||
+      record.status != 1 ||
+      record.seqNumber != sequence ||
+      record.content != content ||
+      record.notificationServer != address) {
+    throw StateError('SE HAL: send the notification before removing it');
+  }
 }

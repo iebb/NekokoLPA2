@@ -54,4 +54,19 @@ interface IQrtrService {
      * Close a socket this service opened.
      */
     void closeBus(int fd) = 6;
+    byte[] halAtr(int slot) = 7;
+    byte[] halRead(int slot, in byte[] apdu) = 8;
+    void halBeginDownload(int slot) = 9;
+    void halEndDownload(int slot) = 10;
+    byte[] halDownload(int slot, in byte[] payload, in int[] segmentLengths) = 11;
+    void halStageDownload(int slot, in byte[] chunk, boolean first) = 12;
+    byte[] halSwitchProfile(int slot, in byte[] iccid, in byte[] expectedEid, boolean enable) = 13;
+    byte[] halRenameProfile(int slot, in byte[] iccid, in byte[] expectedEid, in byte[] nickname) = 14;
+    byte[] halDeleteProfile(int slot, in byte[] iccid, in byte[] expectedEid) = 15;
+    byte[] halRemoveNotification(int slot, int sequence, in byte[] expectedEid, in byte[] expectedResponse) = 16;
+    void halOpenOwned(int slot) = 17;
+    void halCloseOwned(int slot) = 18;
+    void halUseBorrowed(int slot) = 19;
+    // slot 0 conservatively invalidates both SIM slots; no card I/O.
+    void halInvalidateSessions(int slot) = 20;
 }

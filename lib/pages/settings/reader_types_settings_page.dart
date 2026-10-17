@@ -36,6 +36,51 @@ class ReaderTypesSettingsPage extends StatelessWidget {
                     _buildRemoteConnectorSwitcher(context),
                     if (PlatformX.isAndroid) ...[
                       _buildQrtrConnectorSwitcher(context),
+                      _buildSeHalConnectorSwitcher(context),
+                      if (AppSettings().enableSeHalConnector)
+                        ExpansionTile(
+                          title: Text(l10n.seHalAdvancedSettings),
+                          children: [
+                            for (final slot in [1, 2])
+                              SwitchListTile(
+                                title: Text(l10n.seHalBorrowSlot(slot)),
+                                subtitle: Text(l10n.seHalBorrowHint),
+                                value: AppSettings().halUseBorrowed(slot),
+                                onChanged: (value) async {
+                                  if (value) {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        title: Text(l10n.seHalBorrowTitle),
+                                        content: Text(
+                                          l10n.seHalBorrowWarning(slot),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(context, false),
+                                            child: Text(l10n.cancel),
+                                          ),
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(context, true),
+                                            child: Text(
+                                              l10n.seHalBorrowConfirm,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirmed != true) return;
+                                  }
+                                  await AppSettings().setHalUseBorrowed(
+                                    slot,
+                                    value,
+                                  );
+                                },
+                              ),
+                          ],
+                        ),
                       _buildOmapiConnectorSwitcher(context),
                       if (kIsPrivileged) _buildTmapiConnectorSwitcher(context),
                     ],
@@ -260,6 +305,32 @@ class ReaderTypesSettingsPage extends StatelessWidget {
       ),
       onTap: () =>
           settings.setEnableQrtrConnector(!settings.enableQrtrConnector),
+    );
+  }
+
+  Widget _buildSeHalConnectorSwitcher(BuildContext context) {
+    final settings = AppSettings();
+    final l10n = AppLocalizations.of(context)!;
+
+    return _buildResponsiveTile(
+      context,
+      icon: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.teal.withValues(alpha: 0.1),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.memory_rounded, size: 20, color: Colors.teal),
+      ),
+      title: l10n.seHalReaderTitle,
+      subtitle: l10n.seHalReaderSubtitle,
+      child: _buildCustomSwitch(
+        context,
+        settings.enableSeHalConnector,
+        (v) => settings.setEnableSeHalConnector(v),
+      ),
+      onTap: () =>
+          settings.setEnableSeHalConnector(!settings.enableSeHalConnector),
     );
   }
 
