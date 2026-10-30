@@ -1,4 +1,6 @@
 {
+  "addBluetoothReader": "Add Bluetooth reader",
+  "bluetoothSetupFailed": "Unable to set up the Bluetooth reader. Check that Bluetooth is on and the reader is nearby, then try again.",
   "settingsTitle": "設定",
   "displaySettings": "表示設定",
   "appearance": "外観",
@@ -162,6 +164,25 @@
   "scanningForUnresponsiveDevices": "応答のないデバイスをスキャン中...",
   "resettingConnection": "接続を再設定中...",
   "connectingToReader": "リーダーに接続中...",
+  "waitingForBluetooth": "Waiting for Bluetooth to turn on...",
+  "connectingOverBluetooth": "Connecting over Bluetooth...",
+  "connectingOverBluetoothAttempt": "Connecting over Bluetooth (attempt {attempt} of {total})...",
+  "@connectingOverBluetoothAttempt": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "discoveringReaderServices": "Discovering reader services...",
+  "settingUpBluetoothLink": "Setting up the Bluetooth link...",
+  "authenticatingWithReader": "Authenticating with the reader...",
+  "initializingReader": "Initializing the reader...",
+  "switchingReaderToEuiccMode": "Switching the reader to eUICC mode...",
+  "waitingForReaderRestart": "Waiting for the reader to restart...",
   "moreOptions": "その他のオプション",
   "retrievingProfiles": "プロファイルを取得中...",
   "savingProfileMetadata": "プロファイルのメタデータを保存中...",
@@ -877,5 +898,289 @@
       }
     }
   },
-  "downloadBusyCannotLeave": "Please wait for the current operation to finish."
+  "downloadBusyCannotLeave": "Please wait for the current operation to finish.",
+  "qrtrReaderTitle": "Qualcomm modem (QRTR)",
+  "qrtrReaderSubtitle": "Qualcomm's low-level modem protocol (requires Shizuku)",
+  "voWifiCallHistory": "Call history",
+  "voWifiRefreshCallHistory": "Refresh call history",
+  "voWifiKeypad": "Keypad",
+  "voWifiAllCalls": "All calls",
+  "voWifiMissed": "Missed",
+  "voWifiCouldNotLoadCallHistoryPullDownToRetry": "Could not load call history. Pull down to retry.",
+  "voWifiNoCallHistoryYet": "No call history yet",
+  "voWifiCompleted": "Completed",
+  "voWifiInCall": "In call",
+  "voWifiFailed": "Failed",
+  "voWifiDeclinedBusy": "Declined / busy",
+  "voWifiNotAnswered": "Not answered",
+  "voWifiInterruptedFinalStateUnknown": "Interrupted · final state unknown",
+  "voWifiConnecting": "Connecting",
+  "voWifiIncoming": "Incoming",
+  "voWifiOutgoing": "Outgoing",
+  "voWifiUnknownCaller": "Unknown caller",
+  "voWifiDuration": "Duration",
+  "voWifiUseNumberInDialer": "Use number in dialer",
+  "voWifiFilterMessages": "Filter messages",
+  "voWifiAll": "All",
+  "voWifiInbox": "Inbox",
+  "voWifiSent": "Sent",
+  "voWifiUnhideToSearch": "Unhide to search",
+  "voWifiSearch": "Search",
+  "voWifiNewMessage": "New message",
+  "voWifiMessages": "Messages",
+  "voWifiCouldNotLoadMessagesPullDownToRetry": "Could not load messages. Pull down to retry.",
+  "voWifiNoConversations": "No conversations",
+  "voWifiNoReceivedMessagesYet": "No received messages yet",
+  "voWifiNoSentMessagesYet": "No sent messages yet",
+  "voWifiConnectWiFiCallingAndKeepTheAppIn": "Connect Wi-Fi calling and keep the app in the foreground to receive calls and SMS.",
+  "voWifiMessageHidden": "Message hidden",
+  "voWifiYesterday": "Yesterday",
+  "voWifiConversations": "Conversations",
+  "voWifiReply": "Reply",
+  "voWifiReceived": "Received",
+  "voWifiSubmittedDeliveryUnconfirmed": "Submitted, delivery unconfirmed",
+  "voWifiSubmitting": "Submitting",
+  "voWifiRecents": "Recents",
+  "voWifiCall": "Call",
+  "voWifiDeleteDigit": "Delete digit",
+  "voWifiIdle": "Idle",
+  "voWifiCalling": "Calling",
+  "voWifiRinging": "Ringing",
+  "voWifiIncomingCall": "Incoming call",
+  "voWifiEndingCall": "Ending call",
+  "voWifiCallEnded": "Call ended",
+  "voWifiDeclined": "Declined",
+  "voWifiBusy": "Busy",
+  "voWifiSubmitted": "Submitted",
+  "voWifiWiFiCalling": "Wi-Fi calling",
+  "voWifiDial": "Dial",
+  "voWifiBack": "Back",
+  "voWifiConnectionSettings": "Connection settings",
+  "voWifiConnectionOverview": "Connection overview",
+  "voWifiOverview": "Overview",
+  "voWifiRecentCalls": "Recent calls",
+  "voWifiIncomingOutgoingAndMissed": "Incoming, outgoing and missed",
+  "voWifiGroupedBySIMAndNumber": "Grouped by SIM and number",
+  "voWifiUSBCCIDSmartCardReader": "USB CCID smart-card reader",
+  "voWifiBluetoothSIMReader": "Bluetooth SIM reader",
+  "voWifiMyNumber": "My number",
+  "voWifiCopied": "Copied",
+  "voWifiCopyMyNumber": "Copy my number",
+  "voWifiTheCarrierHasNotSuppliedAPhoneNumber": "The carrier has not supplied a phone number",
+  "voWifiConnectionDetails": "Connection details",
+  "voWifiStoppingWiFiCalling": "Stopping Wi-Fi calling…",
+  "voWifiPleaseWait": "Please wait…",
+  "voWifiStopWiFiCalling": "Stop Wi-Fi calling",
+  "voWifiConnect": "Connect",
+  "voWifiCarrierSettingsAreDetectedFromTheActiveSIM": "Carrier settings are detected from the active SIM",
+  "voWifiEPDGHostOptional": "ePDG host (optional)",
+  "voWifiProxyURLOptional": "Proxy URL (optional)",
+  "voWifi127001RefersToThisIPhoneNot": "127.0.0.1 refers to this iPhone, not your Mac. To use a proxy on your Mac, enter its LAN address.",
+  "voWifiIMEIOptional": "IMEI (optional)",
+  "voWifiStopWiFiCallingBeforeManagingProfilesOrChanging": "Stop Wi-Fi calling before managing profiles or changing readers.",
+  "voWifiCallsUseTheIPhoneSystemCallScreenReaderSMS": "Calls use the iPhone system call screen. Reader SMS is stored separately from Apple Messages. iOS may pause an idle connection after backgrounding or locking. Returning to the foreground or changing networks checks the connection and reconnects when needed; new calls and SMS wait for verification. Force-quitting ends the session, so reconnect manually after reopening.",
+  "voWifiPhoneNumber": "Phone number",
+  "voWifiCountryCodeAndNumber": "+ country code and number",
+  "voWifiHideKeyboard": "Hide keyboard",
+  "voWifiCalls": "Calls",
+  "voWifiReadyForIncomingCallsSystemAnswerDecline": "Ready for incoming calls · system Answer / Decline",
+  "voWifiConnectWiFiCallingToReceiveCalls": "Connect Wi-Fi calling to receive calls",
+  "voWifiCallHistoryCouldNotBeSavedOnThisDevice": "Call history could not be saved on this device",
+  "voWifiIncomingOutgoingAndMissedCalls": "Incoming, outgoing and missed calls",
+  "voWifiAllMessages": "All messages",
+  "voWifiYourRecentReaderMessagesWillAppearHere": "Your recent reader messages will appear here.",
+  "voWifiStoredOnThisDeviceSubmittedMessagesAreNotConfirmed": "Stored on this device. Submitted messages are not confirmed delivered.",
+  "voWifiMessage": "Message",
+  "voWifiWriteAMessage": "Write a message…",
+  "voWifiSending": "Sending…",
+  "voWifiSendSMS": "Send SMS",
+  "voWifiTo": "To",
+  "voWifiFrom": "From",
+  "voWifiAudioConnected": "Audio connected",
+  "voWifiAnswer": "Answer",
+  "voWifiDecline": "Decline",
+  "voWifiHangUp": "Hang up",
+  "voWifiReader": "Reader",
+  "voWifiReady": "Ready",
+  "voWifiComplete": "complete",
+  "voWifiFailed2": "failed",
+  "voWifiInProgress": "in progress",
+  "voWifiWaiting": "waiting",
+  "voWifiWiFiCallingConnectionProgress": "Wi-Fi calling connection progress",
+  "voWifiCheckingConnection": "Checking connection…",
+  "voWifiReadingTheActiveSIM": "Reading the active SIM…",
+  "voWifiPreparingEPDGNetworkPath": "Preparing ePDG network path…",
+  "voWifiWaitingForTheFirstEPDGResponse": "Waiting for the first ePDG response…",
+  "voWifiWaitingForCarrierAuthentication": "Waiting for carrier authentication…",
+  "voWifiRespondingToCarrierIdentityRequest": "Responding to carrier identity request…",
+  "voWifiProcessingSIMAKAAuthentication": "Processing SIM AKA authentication…",
+  "voWifiWaitingForCarrierAuthenticationResult": "Waiting for carrier authentication result…",
+  "voWifiConfirmingTheAuthenticatedTunnel": "Confirming the authenticated tunnel…",
+  "voWifiPreparingTheEncryptedTunnel": "Preparing the encrypted tunnel…",
+  "voWifiConnectingToTheCarrierEPDG": "Connecting to the carrier ePDG…",
+  "voWifiRegisteringWithIMS": "Registering with IMS…",
+  "voWifiIMSRegistered": "IMS registered",
+  "voWifiWaitingForIMSRegistration": "Waiting for IMS registration…",
+  "voWifiConnectionInterruptedRetrying": "Connection interrupted; retrying…",
+  "voWifiConnectionFailed": "Connection failed",
+  "voWifiSessionStoppedWhileTheAppWasInTheBackground": "Session stopped while the app was in the background",
+  "voWifiDisconnected": "Disconnected",
+  "voWifiReadyToConnectWithTheActiveSIM": "Ready to connect with the active SIM",
+  "voWifiShowSensitiveInformation": "Show sensitive information",
+  "voWifiHideSensitiveInformation": "Hide sensitive information",
+  "voWifiTheActionCouldNotBeCompletedTryAgain": "The action could not be completed. Try again.",
+  "voWifiSpeaker": "Speaker",
+  "voWifiMute": "Mute",
+  "voWifiHideKeypad": "Hide keypad",
+  "voWifiEndCall": "End call",
+  "voWifiDeleteRecords": "Delete records?",
+  "voWifiCancel": "Cancel",
+  "voWifiDelete": "Delete",
+  "voWifiCouldNotUpdateRecordsTryAgain": "Could not update records. Try again.",
+  "voWifiDone": "Done",
+  "voWifiEdit": "Edit",
+  "voWifiDeselectAll": "Deselect all",
+  "voWifiSelectAll": "Select all",
+  "voWifiDeleteSelected": "Delete selected",
+  "voWifiRead": "Read",
+  "voWifiDeleteRecordCount": "Delete the {count} selected records from this device? This cannot be undone.",
+  "@voWifiDeleteRecordCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "voWifiSelectedRecordCount": "{count} records selected",
+  "@voWifiSelectedRecordCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "voWifiIMEIMustContain15Digits": "IMEI must contain 15 digits",
+  "voWifiIMEIMustHave15DigitsAndAValidCheck": "IMEI must have 15 digits and a valid check digit",
+  "voWifiCouldNotSaveWiFiCallingSettings": "Could not save Wi-Fi calling settings",
+  "voWifiTheNativeWiFiCallingEngineIsUnavailableIn": "The native Wi-Fi calling engine is unavailable in this build",
+  "voWifiCallKitRejectedTheTransactionBecauseTheAppNeedsThe": "CallKit rejected the transaction because the app needs the VoIP background mode.",
+  "voWifiAWiFiCallingSessionIsAlreadyActive": "A Wi-Fi calling session is already active",
+  "voWifiThisReaderDoesNotSupportWiFiCalling": "This reader does not support Wi-Fi calling",
+  "voWifiConnectThisReaderInManageBeforeStartingWiFi": "Connect this reader in Manage before starting Wi-Fi calling",
+  "voWifiTheSIMReaderDisconnected": "The SIM reader disconnected",
+  "voWifiTheActiveSIMDidNotProvideAnIMSI": "The active SIM did not provide an IMSI",
+  "voWifiWiFiCallingIsNotReady": "Wi-Fi calling is not ready",
+  "voWifiIMSMessagingIsNotRegistered": "IMS messaging is not registered",
+  "voWifiSIMSessionChanged": "SIM session changed",
+  "voWifiSIMSessionHasEnded": "SIM session has ended",
+  "voWifiSIMSessionWasCancelled": "SIM session was cancelled.",
+  "voWifiIncomingSMSCouldNotBeSavedOnThisDevice": "Incoming SMS could not be saved on this device",
+  "voWifiMicrophonePermissionIsRequiredToMakeACall": "Microphone permission is required to make a call.",
+  "voWifiOpenTheAppToConnectVoWiFi": "Open the app to connect VoWiFi.",
+  "voWifiStopTheCurrentVoWiFiSessionBeforeConnecting": "Stop the current VoWiFi session before connecting.",
+  "voWifiConnectionCancelled": "Connection cancelled.",
+  "voWifiTheSIMReaderDidNotAnswerWithin30Seconds": "The SIM reader did not answer within 30 seconds.",
+  "voWifiNewWiFiSMS": "New Wi-Fi SMS",
+  "voWifiOpenToReadYourMessage": "Open the app to read your message.",
+  "voWifiReaderInUse": "Wi-Fi calling is using the reader. Stop it before managing profiles.",
+  "voWifiCouldNotConfirmConnectionState": "Could not confirm the current connection state",
+  "voWifiCannotCorrectSIMCommandLength": "Cannot correct SIM command length",
+  "voWifiIncompleteSIMResponse": "Incomplete SIM response",
+  "voWifiInvalidSIMCommandBatch": "Invalid SIM command batch",
+  "voWifiInvalidSIMCommandBatchSize": "Invalid SIM command batch size",
+  "voWifiInvalidSIMCommandEncoding": "Invalid SIM command encoding",
+  "voWifiInvalidWiFiCallingResponse": "Invalid Wi-Fi calling response",
+  "voWifiInvalidIncomingSMSSegments": "Invalid incoming SMS segments",
+  "voWifiSIMResponseExceedsSizeLimit": "SIM response exceeds size limit",
+  "voWifiTheSIMReaderDidNotReconnectPleaseRetry": "The SIM reader did not reconnect. Please retry.",
+  "voWifiTheSIMReaderDisconnectedReconnectItAndTryWi": "The SIM reader disconnected. Reconnect it and try Wi-Fi calling again.",
+  "voWifiTheNativeEngineReportedAnError": "The native engine reported an error",
+  "voWifiTooManySIMResponseContinuations": "Too many SIM response continuations",
+  "voWifiUnknownWiFiCallingCallback": "Unknown Wi-Fi calling callback",
+  "voWifiSimStatus": "SIM status {status}",
+  "@voWifiSimStatus": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "adbBridgeTitle": "Connect using computer",
+  "adbBridgeSubtitle": "Reach the card over a one-time ADB session — no root, no Shizuku",
+  "adbBridgeDescription": "Opening a channel to the card needs a caller the system trusts, which the app is not. The shell user is, and a computer can start a helper as shell over ADB.\n\nWith the phone plugged in and USB debugging on, open the connection, copy the command, and run it on the computer while the timer is going. Keep that terminal open — closing it ends the session. Reconnect after a reboot or an app update.",
+  "adbBridgeStart": "Start connection",
+  "adbBridgeRestart": "Start connection again",
+  "adbBridgeDisconnect": "Disconnect",
+  "adbBridgeCopy": "Copy ADB command",
+  "adbBridgeCopied": "Command copied",
+  "adbBridgeConnected": "Connected",
+  "adbBridgeWaiting": "Waiting for the computer…",
+  "adbBridgeDisconnected": "Not connected",
+  "adbBridgeWindow": "Run the command within {seconds}s.",
+  "@adbBridgeWindow": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "seHalReaderTitle": "SE HAL (direct access)",
+  "seHalReaderSubtitle": "SIM cards and built-in eSIMs through the Secure Element HAL (requires Shizuku)",
+  "seHalAdvancedSettings": "SE HAL advanced settings",
+  "seHalBorrowSlot": "SIM{slot}: borrow channel 1",
+  "@seHalBorrowSlot": {
+    "placeholders": {
+      "slot": {
+        "type": "int"
+      }
+    }
+  },
+  "seHalBorrowHint": "Off opens a new channel. Turn on only if channel 1 already has ISD-R selected.",
+  "seHalBorrowTitle": "Borrow channel 1?",
+  "seHalBorrowWarning": "Turn this on only if channel 1 on SIM{slot} has ISD-R selected right now; commands sent to another application can have unpredictable effects. Turn it off again after changing the card.",
+  "@seHalBorrowWarning": {
+    "placeholders": {
+      "slot": {
+        "type": "int"
+      }
+    }
+  },
+  "seHalBorrowConfirm": "Borrow",
+  "seHalDownloadTitle": "SE HAL: experimental download",
+  "seHalInstallWarning": "This installs the profile and keeps the existing ones. Do not use another LPA or remove the SIM until it finishes. If it fails, check the profile list before using the activation code again.",
+  "seHalPreviewWarning": "The preview talks to the server and the card but installs nothing; you confirm again before installing. Do not use another LPA meanwhile.",
+  "seHalAcceptInstall": "Install",
+  "seHalContinuePreview": "Continue to preview",
+  "seHalDownloadUnusedQr": "Download (unused QR only)",
+  "seHalReturnToEnable": "Return to profiles to enable",
+  "seHalSwitchTitle": "SE HAL: enable profile",
+  "seHalDisableTitle": "SE HAL: disable profile",
+  "seHalEnableWarning": "The currently enabled profile will be disabled, and the connection may drop for a moment. If the result is unclear, restart the device and check before trying again.",
+  "seHalDisableWarning": "Calls and data through this profile will stop. If the result is unclear, restart the device and check before trying again.",
+  "seHalAcceptSwitch": "Enable",
+  "seHalAcceptDisable": "Disable",
+  "seHalStateChanged": "Profile state changed. Restart the device if the connection does not come back.",
+  "seHalStateUnknown": "SE HAL: {error}\nThe result is unknown. Refresh to check the profile state before trying again.",
+  "@seHalStateUnknown": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "seHalInstallNotVerified": "SE HAL: the installation could not be confirmed. Check the profile list before using the activation code again.",
+  "seHalDeleteUnknown": "The deletion could not be confirmed: {error}\nRefresh the profile list to check.",
+  "@seHalDeleteUnknown": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pluginEsimCcRewards": "eSIM.cc Rewards",
+  "pluginEsimCcPortal": "eSIM.cc Portal",
+  "pluginEsimGgProfile": "eSIM.gg Profile",
+  "pluginEsimGgPortal": "eSIM.gg Portal",
+  "pluginEsimGgWelcome": "Welcome to eSIM.gg Portal",
+  "pluginVisitWebsite": "Visit Website"
 }
