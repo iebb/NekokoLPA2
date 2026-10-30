@@ -72,7 +72,6 @@ import '../widgets/profiles_screen/state_messages.dart' hide ColumnStateMessage;
 import '../widgets/profiles_screen/error_state.dart';
 import '../widgets/profiles_screen/profiles_header.dart';
 import '../services/deep_link_service.dart';
-import '../services/connectivity_service.dart';
 import '../widgets/log_console.dart';
 import '../vowifi/vowifi_page.dart';
 import '../vowifi/vowifi_service.dart';
@@ -915,7 +914,10 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     final eid = _eid;
     if (eid == null) return;
 
-    NotificationService().currentNotifications.value = const [];
+    if (NotificationService().currentEid != eid) {
+      NotificationService().currentEid = eid;
+      NotificationService().currentNotifications.value = const [];
+    }
     final unsent = await DatabaseService().getUnsentCount(eid);
     NotificationService().pendingCount.value = unsent;
   }
@@ -1804,12 +1806,11 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         } finally {
           await channel.close();
         }
-
-        // 5. Update Notifications in background (non-blocking) AFTER closing the list channel
-        _handleNotifications(null, eid, reader);
       });
       _autoDiscoveryFinished = true;
       _setSwitching(false); // Success! Toggle is done.
+      // Start a fresh notification session after releasing the list reservation.
+      await _handleNotifications(null, eid, reader);
     } catch (e) {
       if (isOmapiSessionCorruptedError(e)) {
         _setSwitching(false);
@@ -2471,7 +2472,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     if (refreshNotificationCount &&
         mounted &&
         _selectedReader?.id == reader.id) {
-      _loadPendingNotificationCount();
+      await _refreshPendingCountFromDb();
     }
   }
 
@@ -2482,39 +2483,27 @@ class _ProfilesScreenState extends State<ProfilesScreen>
   ) async {
     if (_voWifiOwnsReader) return;
     final settings = AppSettings();
-    if (settings.notifProcessInitialLoad &&
-        settings.isAnyNotificationProcessingEnabled) {
-      await NotificationService().processPendingNotifications(
-        _manager,
-        channel,
-        readerName: reader.id,
-        eid: eid,
-        autoSendInstall: settings.notifAutoSendInstall,
-        autoRemoveInstall: settings.notifAutoRemoveInstall,
-        autoSendEnable: settings.notifAutoSendEnable,
-        autoRemoveEnable: settings.notifAutoRemoveEnable,
-        deleteWithoutSendingEnable: settings.notifDeleteWithoutSendingEnable,
-        autoSendDisable: settings.notifAutoSendDisable,
-        autoRemoveDisable: settings.notifAutoRemoveDisable,
-        deleteWithoutSendingDisable: settings.notifDeleteWithoutSendingDisable,
-        autoSendDelete: settings.notifAutoSendDelete,
-        autoRemoveDelete: settings.notifAutoRemoveDelete,
-      );
-      // The card was just listed and processed above, so only the badge needs
-      // refreshing. Calling _loadPendingNotificationCount() here would open a
-      // second channel and re-read the same notifications off the card.
-      await _refreshPendingCountFromDb();
-    } else {
-      try {
-        final notifs = channel != null
-            ? await _manager.retrieveNotifications(useChannel: channel)
-            : await _adapter.runExclusive(
-                () => _manager.retrieveNotifications(),
-              );
-        NotificationService().pendingCount.value = notifs.length;
-        NotificationService().currentNotifications.value = notifs;
-      } catch (_) {}
-    }
+    final process =
+        settings.notifProcessInitialLoad &&
+        settings.isAnyNotificationProcessingEnabled;
+    await NotificationService().processPendingNotifications(
+      _manager,
+      channel,
+      readerName: reader.id,
+      eid: eid,
+      autoSendInstall: process && settings.notifAutoSendInstall,
+      autoRemoveInstall: process && settings.notifAutoRemoveInstall,
+      autoSendEnable: process && settings.notifAutoSendEnable,
+      autoRemoveEnable: process && settings.notifAutoRemoveEnable,
+      deleteWithoutSendingEnable:
+          process && settings.notifDeleteWithoutSendingEnable,
+      autoSendDisable: process && settings.notifAutoSendDisable,
+      autoRemoveDisable: process && settings.notifAutoRemoveDisable,
+      deleteWithoutSendingDisable:
+          process && settings.notifDeleteWithoutSendingDisable,
+      autoSendDelete: process && settings.notifAutoSendDelete,
+      autoRemoveDelete: process && settings.notifAutoRemoveDelete,
+    );
   }
 
   bool _isProfileSwitchTransientError(Object error) {
@@ -2964,8 +2953,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     try {
       final settings = AppSettings();
       if (!settings.notifProcessAfterSwitch ||
-          !settings.isAnyNotificationProcessingEnabled ||
-          !await ConnectivityService().checkConnectivity()) {
+          !settings.isAnyNotificationProcessingEnabled) {
         return;
       }
       if (!mounted || _selectedReader?.id != reader.id) return;
@@ -3260,44 +3248,42 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         } finally {
           await channel.close();
         }
-
-        final settings = AppSettings();
-        if (reader.source is SeHalAdapter) {
-          await NotificationService().processPendingNotifications(
-            _manager,
-            null,
-            autoSendInstall: true,
-            autoRemoveInstall: false,
-            autoSendEnable: true,
-            autoRemoveEnable: false,
-            deleteWithoutSendingEnable: false,
-            autoSendDisable: true,
-            autoRemoveDisable: false,
-            deleteWithoutSendingDisable: false,
-            autoSendDelete: true,
-            autoRemoveDelete: false,
-          );
-        } else if (settings.notifProcessAfterDeletion &&
-            settings.isAnyNotificationProcessingEnabled) {
-          await NotificationService().processPendingNotifications(
-            _manager,
-            null, // Use fresh session
-            readerName: reader.id,
-            autoSendInstall: settings.notifAutoSendInstall,
-            autoRemoveInstall: settings.notifAutoRemoveInstall,
-            autoSendEnable: settings.notifAutoSendEnable,
-            autoRemoveEnable: settings.notifAutoRemoveEnable,
-            deleteWithoutSendingEnable:
-                settings.notifDeleteWithoutSendingEnable,
-            autoSendDisable: settings.notifAutoSendDisable,
-            autoRemoveDisable: settings.notifAutoRemoveDisable,
-            deleteWithoutSendingDisable:
-                settings.notifDeleteWithoutSendingDisable,
-            autoSendDelete: settings.notifAutoSendDelete,
-            autoRemoveDelete: settings.notifAutoRemoveDelete,
-          );
-        }
       });
+      final settings = AppSettings();
+      if (reader.source is SeHalAdapter) {
+        await NotificationService().processPendingNotifications(
+          _manager,
+          null,
+          autoSendInstall: true,
+          autoRemoveInstall: false,
+          autoSendEnable: true,
+          autoRemoveEnable: false,
+          deleteWithoutSendingEnable: false,
+          autoSendDisable: true,
+          autoRemoveDisable: false,
+          deleteWithoutSendingDisable: false,
+          autoSendDelete: true,
+          autoRemoveDelete: false,
+        );
+      } else if (settings.notifProcessAfterDeletion &&
+          settings.isAnyNotificationProcessingEnabled) {
+        await NotificationService().processPendingNotifications(
+          _manager,
+          null, // Use fresh session
+          readerName: reader.id,
+          autoSendInstall: settings.notifAutoSendInstall,
+          autoRemoveInstall: settings.notifAutoRemoveInstall,
+          autoSendEnable: settings.notifAutoSendEnable,
+          autoRemoveEnable: settings.notifAutoRemoveEnable,
+          deleteWithoutSendingEnable: settings.notifDeleteWithoutSendingEnable,
+          autoSendDisable: settings.notifAutoSendDisable,
+          autoRemoveDisable: settings.notifAutoRemoveDisable,
+          deleteWithoutSendingDisable:
+              settings.notifDeleteWithoutSendingDisable,
+          autoSendDelete: settings.notifAutoSendDelete,
+          autoRemoveDelete: settings.notifAutoRemoveDelete,
+        );
+      }
     } catch (e) {
       if (reader.source is SeHalAdapter) {
         setState(

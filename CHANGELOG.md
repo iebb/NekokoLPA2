@@ -2,6 +2,14 @@
 
 All notable changes to NekokoLPA2 will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Keep delivered notifications visible while they remain on the eUICC, and verify card removal before reporting success (#42).
+- Preserve a minimal delivery receipt when local history is deleted, preventing an already delivered notification from being sent again (#42).
+- Queue automatic notification processing after profile operations instead of losing requests during a concurrent badge refresh (#43).
+- Send notifications without requiring an unrelated connectivity-probe server to be reachable (#43).
+
 ## [2.4.2+602] - 2026-10-31
 
 ### Fixed

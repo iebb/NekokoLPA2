@@ -917,7 +917,7 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
                                                             Text(
                                                               AppLocalizations.of(
                                                                 context,
-                                                              )!.deleteEntry,
+                                                              )!.deleteNotificationHistoryEntry,
                                                               style:
                                                                   const TextStyle(
                                                                     fontSize:

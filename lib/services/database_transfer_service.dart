@@ -11,6 +11,7 @@ import 'package:sqflite/sqflite.dart';
 class DatabaseTransferService {
   static const supportedTables = <String>[
     'notifications',
+    'notification_delivery_receipts',
     'profile_storage',
     'profile_metadata',
     'profile_msisdn',

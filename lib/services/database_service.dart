@@ -1,5 +1,7 @@
 // ignore_for_file: unused_element
 import 'dart:io';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
@@ -111,7 +113,7 @@ class DatabaseService {
       final db = await (factory ?? databaseFactory).openDatabase(
         path,
         options: OpenDatabaseOptions(
-          version: 17,
+          version: 18,
           onCreate: (db, version) async {
             if (kDebugMode) _log.fine('Creating database tables...');
             await db.execute('''
@@ -130,6 +132,7 @@ class DatabaseService {
               PRIMARY KEY (eid, seqNumber, iccid)
             )
           ''');
+            await createNotificationDeliveryReceipts(db);
             await db.execute('''
             CREATE TABLE profile_storage (
               eid TEXT,
@@ -335,6 +338,7 @@ class DatabaseService {
                 if (kDebugMode) _log.warning('Error upgrading to v17: $e');
               }
             }
+            if (oldVersion < 18) await createNotificationDeliveryReceipts(db);
           },
         ),
       );
@@ -346,13 +350,68 @@ class DatabaseService {
     }
   }
 
-  Future<void> saveNotification(NotificationRecord record) async {
-    final db = await database;
-    await db.insert(
+  /// A minimal receipt survives deletion of visible history. The payload itself
+  /// remains deletable; its hash distinguishes a reused sequence from a resend.
+  static Future<void> createNotificationDeliveryReceipts(
+    DatabaseExecutor db,
+  ) async {
+    await db.execute(
+      '''CREATE TABLE IF NOT EXISTS notification_delivery_receipts (
+      eid TEXT COLLATE NOCASE,
+      seqNumber INTEGER,
+      iccid TEXT COLLATE NOCASE,
+      contentHash TEXT NOT NULL,
+      PRIMARY KEY (eid, seqNumber, iccid)
+    )''',
+    );
+    final sent = await db.query(
       'notifications',
-      record.toMap(),
+      where: 'status = 1',
+      orderBy: 'timestamp ASC',
+    );
+    for (final row in sent) {
+      await db.insert(
+        'notification_delivery_receipts',
+        {
+          'eid': row['eid'],
+          'seqNumber': row['seqNumber'],
+          'iccid': row['iccid'],
+          'contentHash': _notificationHash(row['content'] as String),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  static String _notificationHash(String content) =>
+      sha256.convert(utf8.encode(content)).toString();
+
+  static Future<void> _saveDeliveryReceipt(
+    DatabaseExecutor db,
+    Map<String, Object?> row,
+  ) async {
+    await db.insert(
+      'notification_delivery_receipts',
+      {
+        'eid': row['eid'],
+        'seqNumber': row['seqNumber'],
+        'iccid': row['iccid'],
+        'contentHash': _notificationHash(row['content'] as String),
+      },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  Future<void> saveNotification(NotificationRecord record) async {
+    final db = await database;
+    await db.transaction((tx) async {
+      await tx.insert(
+        'notifications',
+        record.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      if (record.status == 1) await _saveDeliveryReceipt(tx, record.toMap());
+    });
   }
 
   Future<void> updateNotificationStatus(
@@ -364,17 +423,24 @@ class DatabaseService {
     String? responseContent,
   }) async {
     final db = await database;
-    final Map<String, dynamic> values = {'status': status};
-    if (responseCode != null) values['responseCode'] = responseCode;
-    if (responseContent != null) values['responseContent'] = responseContent;
-
-    await db.update(
-      'notifications',
-      values,
-      where:
-          'eid = ? COLLATE NOCASE AND seqNumber = ? AND iccid = ? COLLATE NOCASE',
-      whereArgs: [eid, seqNumber, iccid],
-    );
+    await db.transaction((tx) async {
+      final values = <String, Object?>{'status': status};
+      if (responseCode != null) values['responseCode'] = responseCode;
+      if (responseContent != null) values['responseContent'] = responseContent;
+      const where =
+          'eid = ? COLLATE NOCASE AND seqNumber = ? AND iccid = ? COLLATE NOCASE';
+      final args = [eid, seqNumber, iccid];
+      await tx.update('notifications', values, where: where, whereArgs: args);
+      if (status == 1) {
+        for (final row in await tx.query(
+          'notifications',
+          where: where,
+          whereArgs: args,
+        )) {
+          await _saveDeliveryReceipt(tx, row);
+        }
+      }
+    });
   }
 
   Future<NotificationRecord?> getNotification(
@@ -501,27 +567,60 @@ class DatabaseService {
     String iccid,
   ) async {
     final db = await database;
-    await db.delete(
-      'notifications',
-      where:
-          'eid = ? COLLATE NOCASE AND seqNumber = ? AND iccid = ? COLLATE NOCASE',
-      whereArgs: [eid, seqNumber, iccid],
-    );
+    await db.transaction((tx) async {
+      const where =
+          'eid = ? COLLATE NOCASE AND seqNumber = ? AND iccid = ? COLLATE NOCASE';
+      final args = [eid, seqNumber, iccid];
+      for (final row in await tx.query(
+        'notifications',
+        where: where,
+        whereArgs: args,
+      )) {
+        if (row['status'] == 1) await _saveDeliveryReceipt(tx, row);
+      }
+      await tx.delete('notifications', where: where, whereArgs: args);
+    });
   }
 
   Future<bool> isNotificationSent(
     String eid,
     int seqNumber,
-    String iccid,
-  ) async {
+    String iccid, {
+    String? content,
+  }) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'notifications',
-      where:
-          'eid = ? COLLATE NOCASE AND seqNumber = ? AND iccid = ? COLLATE NOCASE AND status = 1',
-      whereArgs: [eid, seqNumber, iccid],
+    const where =
+        'eid = ? COLLATE NOCASE AND seqNumber = ? AND iccid = ? COLLATE NOCASE';
+    final args = [eid, seqNumber, iccid];
+    final receipts = await db.query(
+      'notification_delivery_receipts',
+      where: where,
+      whereArgs: args,
     );
-    return maps.isNotEmpty;
+    if (receipts.any(
+      (r) => content == null || r['contentHash'] == _notificationHash(content),
+    )) {
+      return true;
+    }
+    // Older imported databases may contain sent history without ledger rows.
+    final records = await db.query(
+      'notifications',
+      where: '$where AND status = 1',
+      whereArgs: args,
+    );
+    return records.any((r) => content == null || r['content'] == content);
+  }
+
+  Future<Set<int>> getSentNotificationSequences(String eid) async {
+    final db = await database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT seqNumber FROM notifications WHERE eid = ? COLLATE NOCASE AND status = 1
+      UNION SELECT seqNumber FROM notification_delivery_receipts WHERE eid = ? COLLATE NOCASE
+    ''',
+      [eid, eid],
+    );
+    return rows.map((r) => r['seqNumber'] as int).toSet();
   }
 
   Future<int> getPendingNotificationCount({String? eid}) async {
@@ -799,6 +898,7 @@ class DatabaseService {
         PRIMARY KEY (eid, seqNumber, iccid)
       )
     ''');
+    await createNotificationDeliveryReceipts(db);
     await db.execute('''
       CREATE TABLE profile_storage (
         eid TEXT,
@@ -996,12 +1096,14 @@ class DatabaseService {
         if (kDebugMode) _log.warning('Error upgrading to v17: \$e');
       }
     }
+    if (oldVersion < 18) await createNotificationDeliveryReceipts(db);
   }
 
   Future<void> resetDatabase() async {
     final db = await database;
     final tables = [
       'notifications',
+      'notification_delivery_receipts',
       'profile_storage',
       'profile_metadata',
       'profile_msisdn',

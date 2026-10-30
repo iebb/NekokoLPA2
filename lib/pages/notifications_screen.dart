@@ -57,6 +57,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String? _error;
   bool _isProcessing = false; // Prevent recursive processing
   String? _eid;
+  int _statusRefreshGeneration = 0;
 
   @override
   void initState() {
@@ -82,7 +83,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   void _onNotificationsChanged() {
-    if (!mounted) return;
+    if (!mounted || _eid == null || NotificationService().currentEid != _eid) {
+      return;
+    }
     final newList = _retainRemovingNotifications(
       NotificationService().currentNotifications.value,
     );
@@ -120,7 +123,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   void _onNotificationRemoved() {
     final seq = NotificationService().removedSeq.value;
-    if (!mounted || seq == null) return;
+    if (!mounted ||
+        seq == null ||
+        _eid == null ||
+        NotificationService().currentEid != _eid) {
+      return;
+    }
     if (!_notifications.any(
       (n) => (ProfileManager.extractMetadata(n)?.seqNumber ?? -1) == seq,
     )) {
@@ -145,7 +153,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   void _onNotificationSent() {
     final seq = NotificationService().sentSeq.value;
-    if (!mounted || seq == null) return;
+    if (!mounted ||
+        seq == null ||
+        _eid == null ||
+        NotificationService().currentEid != _eid) {
+      return;
+    }
     if (!_notifications.any(
       (n) => (ProfileManager.extractMetadata(n)?.seqNumber ?? -1) == seq,
     )) {
@@ -159,7 +172,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   void _seedCurrentNotifications() {
     final current = NotificationService().currentNotifications.value;
-    if (current.isEmpty) return;
+    if (_eid == null ||
+        NotificationService().currentEid != _eid ||
+        current.isEmpty) {
+      return;
+    }
 
     final sortedList = List<PendingNotification>.from(current);
     sortedList.sort((a, b) {
@@ -234,6 +251,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _refreshStatusMap(List<PendingNotification> list) async {
+    final generation = ++_statusRefreshGeneration;
     if (_eid == null) {
       final statusMap = _buildDefaultStatusMap(list);
       final sortedList = _sortNotifications(list);
@@ -249,6 +267,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
     try {
       final dbNotifs = await DatabaseService().getNotifications(_eid!);
+      final sent = await DatabaseService().getSentNotificationSequences(_eid!);
+      if (!mounted || generation != _statusRefreshGeneration) return;
       final Map<int, int> dbStatusMap = {
         for (var r in dbNotifs) r.seqNumber: r.status,
       };
@@ -258,7 +278,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         final seq = ProfileManager.extractMetadata(n)?.seqNumber ?? -1;
         if (seq != -1) {
           final dbStatus = dbStatusMap[seq];
-          statusMap[seq] = dbStatus == 1
+          statusMap[seq] = sent.contains(seq)
               ? 'sent'
               : (dbStatus == 2 ? 'failed' : 'on-card');
         }
@@ -342,11 +362,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final adapter = CompositeAdapter();
 
     try {
-      await adapter.connect(widget.reader);
       final manager = ProfileManager(adapter);
 
-      // Run fetching and processing in a single exclusive block to share the channel
+      // Selection and notification APDUs share one card reservation.
       await adapter.runExclusive(() async {
+        await adapter.connect(widget.reader);
         final channel = await manager.openSession();
         try {
           // 1. Initial Fetch
@@ -361,6 +381,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
           // Identify statuses from DB
           final dbNotifs = await DatabaseService().getNotifications(eid);
+          final sent = await DatabaseService().getSentNotificationSequences(
+            eid,
+          );
           final Map<int, int> dbStatusMap = {
             for (var r in dbNotifs) r.seqNumber: r.status,
           };
@@ -370,9 +393,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             final seq = ProfileManager.extractMetadata(n)?.seqNumber ?? -1;
             if (seq != -1) {
               final dbStatus = dbStatusMap[seq];
-              if (dbStatus == 1) continue;
               pendingCardNotifs.add(n);
-              statusMap[seq] = dbStatus == 2 ? 'failed' : 'on-card';
+              statusMap[seq] = sent.contains(seq)
+                  ? 'sent'
+                  : (dbStatus == 2 ? 'failed' : 'on-card');
             }
           }
 
@@ -434,6 +458,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             final updatedDbNotifs = await DatabaseService().getNotifications(
               eid,
             );
+            final finalSent = await DatabaseService()
+                .getSentNotificationSequences(eid);
             final updatedDbStatusMap = {
               for (var r in updatedDbNotifs) r.seqNumber: r.status,
             };
@@ -443,9 +469,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               final seq = ProfileManager.extractMetadata(n)?.seqNumber ?? -1;
               if (seq != -1) {
                 final dbStatus = updatedDbStatusMap[seq];
-                if (dbStatus == 1) continue;
                 pendingFinalNotifs.add(n);
-                updatedStatusMap[seq] = dbStatus == 2 ? 'failed' : 'on-card';
+                updatedStatusMap[seq] = finalSent.contains(seq)
+                    ? 'sent'
+                    : (dbStatus == 2 ? 'failed' : 'on-card');
               }
             }
 
@@ -491,22 +518,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _removeNotification(int seqNumber) async {
-    // Optimistic removal
-    setState(() {
-      _notifications.removeWhere(
-        (n) =>
-            (ProfileManager.extractMetadata(n)?.seqNumber ?? -1) == seqNumber,
-      );
-    });
-
     final adapter = CompositeAdapter();
     try {
-      await adapter.connect(widget.reader);
-      final manager = ProfileManager(adapter);
-
-      await manager.removeNotification(seqNumber);
-
-      await _loadNotifications();
+      await adapter.runExclusive(() async {
+        await adapter.connect(widget.reader);
+        final manager = ProfileManager(adapter);
+        final channel = await manager.openSession();
+        try {
+          await NotificationService().removeFromCard(
+            manager,
+            channel,
+            seqNumber,
+            expectedEid: _eid,
+          );
+        } finally {
+          await channel.close();
+        }
+      });
+      await _loadNotifications(skipProcessing: true);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -675,10 +704,57 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
 
     try {
-      final success = await NotificationService().sendNotification(
-        notification,
-        address,
-      );
+      final adapter = CompositeAdapter();
+      final success = await adapter.runExclusive(() async {
+        await adapter.connect(widget.reader);
+        final manager = ProfileManager(adapter);
+        final channel = await manager.openSession();
+        try {
+          final eid = await manager.getEid(useChannel: channel);
+          if (_eid != null && _eid != 'Unknown' && eid != _eid) {
+            throw StateError('The selected eUICC changed before sending');
+          }
+          final resolved = notification.asn1 == null
+              ? await manager.resolveNotification(
+                  notification,
+                  useChannel: channel,
+                )
+              : notification;
+          final sent = await NotificationService().sendNotification(
+            resolved,
+            address,
+            eid: eid,
+          );
+          if (sent &&
+              _willDeleteNotification(
+                ProfileManager.extractMetadata(resolved)!,
+              )) {
+            try {
+              await NotificationService().removeFromCard(
+                manager,
+                channel,
+                ProfileManager.extractMetadata(resolved)!.seqNumber!,
+                expectedEid: eid,
+              );
+            } catch (error) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      AppLocalizations.of(
+                        context,
+                      )!.failedToRemove(error.toString()),
+                    ),
+                  ),
+                );
+              }
+            }
+          }
+          return sent;
+        } finally {
+          await channel.close();
+        }
+      });
 
       // Close loading dialog
       if (mounted) Navigator.of(context).pop();

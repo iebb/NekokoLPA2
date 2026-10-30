@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'notification_processing_queue.dart';
 import 'package:flutter/foundation.dart';
 import '../models/asn1/rsp_definitions.g.dart';
 import '../logic/profile_manager.dart';
@@ -23,7 +24,22 @@ class NotificationService {
   static final Logger _log = Logger('NotificationService');
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
-  NotificationService._internal();
+  NotificationService._internal()
+    : _database = DatabaseService(),
+      _sender = null;
+
+  @visibleForTesting
+  NotificationService.forTesting({
+    required DatabaseService database,
+    Future<SendResult> Function(PendingNotification, String)? sender,
+  }) : _database = database,
+       _sender = sender;
+
+  final DatabaseService _database;
+  final Future<SendResult> Function(PendingNotification, String)? _sender;
+  final _queue = NotificationProcessingQueue();
+  int _activeRuns = 0;
+  String? currentEid;
 
   final ValueNotifier<bool> isProcessing = ValueNotifier<bool>(false);
 
@@ -40,21 +56,43 @@ class NotificationService {
 
   Future<bool> sendNotification(
     PendingNotification notification,
-    String address,
-  ) async {
-    try {
-      await SmdpClient.post(
-        smdpAddress: address,
-        endpoint: 'handleNotification',
-        bodyData: {'pendingNotification': base64Encode(notification.encode())},
-        checkStatus:
-            false, // SM-DP+ might return 204 or specific codes for notifications
-      );
+    String address, {
+    String? eid,
+  }) async {
+    final metadata = ProfileManager.extractMetadata(notification);
+    final seq = metadata?.seqNumber;
+    final iccid = metadata?.iccid == null
+        ? 'Unknown'
+        : HexUtils.swapNibbles(HexUtils.bytesToHex(metadata!.iccid!));
+    final content = base64Encode(notification.encode());
+    if (eid != null &&
+        seq != null &&
+        await _database.isNotificationSent(eid, seq, iccid, content: content)) {
       return true;
-    } catch (e) {
-      _log.warning("Notification send failed: $e");
-      return false;
     }
+    final result = await sendNotificationRaw(notification, address);
+    if (eid != null && seq != null) {
+      await _database.saveNotification(
+        NotificationRecord(
+          eid: eid,
+          iccid: iccid,
+          seqNumber: seq,
+          content: content,
+          timestamp: DateTime.now().millisecondsSinceEpoch,
+          status: result.success ? 1 : 2,
+          responseCode: result.statusCode,
+          responseContent: result.body,
+          notificationServer: address,
+          notificationType: _getNotificationType(metadata),
+        ),
+      );
+      if (result.success) {
+        currentEid = eid;
+        sentSeq.value = null;
+        sentSeq.value = seq;
+      }
+    }
+    return result.success;
   }
 
   Future<SendResult> sendNotificationRaw(
@@ -62,16 +100,15 @@ class NotificationService {
     String address,
   ) async {
     if (address.isEmpty) return SendResult(false, 0, "Empty address");
+    if (_sender != null) return _sender(notification, address);
 
     try {
       final data = await SmdpClient.post(
         smdpAddress: address,
         endpoint: 'handleNotification',
         bodyData: {'pendingNotification': base64Encode(notification.encode())},
-        checkStatus: false,
       );
-      // If no exception, it's successful enough for now.
-      // Note: SmdpClient.post currently throws if not 2xx.
+      // HTTP errors and explicit SM-DP+ execution failures are not delivered.
       return SendResult(true, 200, jsonEncode(data));
     } catch (e) {
       return SendResult(false, 0, e.toString());
@@ -94,23 +131,74 @@ class NotificationService {
     required bool autoSendDelete,
     required bool autoRemoveDelete,
   }) async {
-    if (isProcessing.value) return;
-    // Only callers that would open their own session are held off. One that
-    // supplies a channel already owns the card and is reusing it deliberately,
-    // which is how the post-install pass runs.
-    if (channel == null && ForegroundCardSession.isOpen) {
-      _log.info(
-        'Skipping notification processing: a download holds a card session',
+    if (channel == null) {
+      await _queue.run(
+        () => _processRequest(
+          manager,
+          null,
+          readerName: readerName,
+          eid: eid,
+          autoSendInstall: autoSendInstall,
+          autoRemoveInstall: autoRemoveInstall,
+          autoSendEnable: autoSendEnable,
+          autoRemoveEnable: autoRemoveEnable,
+          deleteWithoutSendingEnable: deleteWithoutSendingEnable,
+          autoSendDisable: autoSendDisable,
+          autoRemoveDisable: autoRemoveDisable,
+          deleteWithoutSendingDisable: deleteWithoutSendingDisable,
+          autoSendDelete: autoSendDelete,
+          autoRemoveDelete: autoRemoveDelete,
+        ),
       );
-      return;
+    } else {
+      await _processRequest(
+        manager,
+        channel,
+        readerName: readerName,
+        eid: eid,
+        autoSendInstall: autoSendInstall,
+        autoRemoveInstall: autoRemoveInstall,
+        autoSendEnable: autoSendEnable,
+        autoRemoveEnable: autoRemoveEnable,
+        deleteWithoutSendingEnable: deleteWithoutSendingEnable,
+        autoSendDisable: autoSendDisable,
+        autoRemoveDisable: autoRemoveDisable,
+        deleteWithoutSendingDisable: deleteWithoutSendingDisable,
+        autoSendDelete: autoSendDelete,
+        autoRemoveDelete: autoRemoveDelete,
+      );
     }
-    isProcessing.value = true;
+  }
 
+  Future<void> _processRequest(
+    ProfileManager manager,
+    Channel? channel, {
+    String? readerName,
+    String? eid,
+    required bool autoSendInstall,
+    required bool autoRemoveInstall,
+    required bool autoSendEnable,
+    required bool autoRemoveEnable,
+    required bool deleteWithoutSendingEnable,
+    required bool autoSendDisable,
+    required bool autoRemoveDisable,
+    required bool deleteWithoutSendingDisable,
+    required bool autoSendDelete,
+    required bool autoRemoveDelete,
+  }) async {
+    if (channel == null && ForegroundCardSession.isOpen) return;
+    _activeRuns++;
+    isProcessing.value = true;
     try {
       // Use adapter.runExclusive (if Ccid) or just ensure single channel.
       // We'll wrap the whole flow in a single session if channel is null.
       if (channel == null) {
         await manager.adapter.runExclusive(() async {
+          if (readerName != null &&
+              manager.adapter.connectedReader?.id != readerName) {
+            return;
+          }
+          if (ForegroundCardSession.isOpen) return;
           final ch = await manager.openSession();
           try {
             await _runProcess(
@@ -170,7 +258,8 @@ class NotificationService {
       }
       _log.severe("Error fetching notifications: $e");
     } finally {
-      isProcessing.value = false;
+      _activeRuns--;
+      isProcessing.value = _activeRuns != 0;
     }
   }
 
@@ -200,11 +289,13 @@ class NotificationService {
 
     try {
       isFetching.value = true;
-      final currentEid =
-          eid ??
-          await manager
-              .getEid(useChannel: channel)
-              .catchError((_) => "Unknown");
+      final currentEid = await manager.getEid(useChannel: channel);
+      if (eid != null &&
+          eid != 'Unknown' &&
+          currentEid.toLowerCase() != eid.toLowerCase()) {
+        _log.info('Skipping notification request for a card that has changed');
+        return;
+      }
       final notifications = await manager.retrieveNotifications(
         useChannel: channel,
       );
@@ -258,7 +349,6 @@ class NotificationService {
     required bool autoSendDelete,
     required bool autoRemoveDelete,
   }) async {
-    isProcessing.value = true;
     final currentEid = eid ?? "Unknown";
     final seqsToRemove = <int>{};
     final seqToIccid = <int, String>{};
@@ -276,8 +366,9 @@ class NotificationService {
           !deleteWithoutSendingDisable &&
           !autoRemoveDelete;
       try {
-        final pendingDeletes = await DatabaseService()
-            .getDeletePendingNotifications(currentEid);
+        final pendingDeletes = await _database.getDeletePendingNotifications(
+          currentEid,
+        );
         for (final p in halSendOnly ? <NotificationRecord>[] : pendingDeletes) {
           seqsToRemove.add(p.seqNumber);
           seqToIccid[p.seqNumber] = p.iccid;
@@ -298,7 +389,7 @@ class NotificationService {
         var seq = metadata.seqNumber ?? -1;
 
         // Ensure resolution and backup
-        final existing = await DatabaseService().getNotification(
+        final existing = await _database.getNotification(
           currentEid,
           seq,
           iccid,
@@ -316,21 +407,31 @@ class NotificationService {
               ? HexUtils.swapNibbles(HexUtils.bytesToHex(metadata.iccid!))
               : iccid;
           seq = metadata.seqNumber ?? seq;
-          // Backup it now
-          _log.info("Backing up notification: seq=$seq iccid=$iccid");
-          await DatabaseService().saveNotification(
-            NotificationRecord(
-              eid: currentEid,
-              iccid: iccid,
-              seqNumber: seq,
-              content: base64Encode(n.encode()),
-              timestamp: DateTime.now().millisecondsSinceEpoch,
-              status: existing?.status ?? 0,
-              notificationServer: metadata.notificationAddress,
-              notificationType: _getNotificationType(metadata),
-              deletePending: 0,
-            ),
-          );
+          if (await _database.isNotificationSent(
+            currentEid,
+            seq,
+            iccid,
+            content: base64Encode(n.encode()),
+          )) {
+            processedAsSent.add(seq);
+          }
+          // Backup only an unsent payload. Deleting history must stay deleted.
+          if (!processedAsSent.contains(seq)) {
+            _log.info("Backing up notification: seq=$seq iccid=$iccid");
+            await _database.saveNotification(
+              NotificationRecord(
+                eid: currentEid,
+                iccid: iccid,
+                seqNumber: seq,
+                content: base64Encode(n.encode()),
+                timestamp: DateTime.now().millisecondsSinceEpoch,
+                status: existing?.status ?? 0,
+                notificationServer: metadata.notificationAddress,
+                notificationType: _getNotificationType(metadata),
+                deletePending: 0,
+              ),
+            );
+          }
         } else if (n.asn1 == null) {
           // Skeleton from card but we HAVE backup in DB -> Resolve from DB
           _log.info("Restoring notification from local backup: seq=$seq");
@@ -372,7 +473,7 @@ class NotificationService {
           _log.info(
             "Deleting notification without sending: seq=$seq iccid=$iccid",
           );
-          await DatabaseService().updateNotificationStatus(
+          await _database.updateNotificationStatus(
             currentEid,
             seq,
             iccid,
@@ -385,10 +486,11 @@ class NotificationService {
         }
 
         if (shouldSend && metadata.notificationAddress != null) {
-          final isSent = await DatabaseService().isNotificationSent(
+          final isSent = await _database.isNotificationSent(
             currentEid,
             seq,
             iccid,
+            content: base64Encode(n.encode()),
           );
           if (isSent) {
             processedAsSent.add(seq);
@@ -448,7 +550,7 @@ class NotificationService {
               }
 
               try {
-                await DatabaseService().saveNotification(
+                await _database.saveNotification(
                   NotificationRecord(
                     eid: currentEid,
                     iccid: iccid,
@@ -463,7 +565,7 @@ class NotificationService {
                 );
 
                 final result = await sendNotificationRaw(n, address);
-                await DatabaseService().updateNotificationStatus(
+                await _database.updateNotificationStatus(
                   currentEid,
                   seq,
                   iccid,
@@ -508,21 +610,9 @@ class NotificationService {
               continue;
             }
 
-            final status = await _performRemoval(manager, activeChannel, seq);
-            if (status ==
-                NotificationSentResponse_deleteNotificationStatus
-                    .undefinedError) {
-              _log.warning(
-                "Received undefinedError (127) while removing notification $seq.",
-              );
-            }
+            await _performRemoval(manager, activeChannel, seq);
             final iccid = seqToIccid[seq] ?? "Unknown";
-            await DatabaseService().setDeletePending(
-              currentEid,
-              seq,
-              iccid,
-              false,
-            );
+            await _database.setDeletePending(currentEid, seq, iccid, false);
 
             if (!processedAsSent.contains(seq)) {
               if (pendingCount.value > 0) pendingCount.value--;
@@ -531,12 +621,7 @@ class NotificationService {
           } catch (e) {
             _log.severe("Failed to remove notification $seq: $e");
             final iccid = seqToIccid[seq] ?? "Unknown";
-            await DatabaseService().setDeletePending(
-              currentEid,
-              seq,
-              iccid,
-              true,
-            );
+            await _database.setDeletePending(currentEid, seq, iccid, true);
           } finally {
             processingSeq.value = null;
           }
@@ -555,8 +640,6 @@ class NotificationService {
       }
     } catch (e) {
       _log.severe("Error in background notification processing: $e");
-    } finally {
-      isProcessing.value = false;
     }
   }
 
@@ -571,12 +654,27 @@ class NotificationService {
     }
   }
 
-  Future<NotificationSentResponse_deleteNotificationStatus?> _performRemoval(
+  Future<List<PendingNotification>> _performRemoval(
     ProfileManager manager,
     Channel channel,
     int seqNumber,
   ) async {
-    return await manager.removeNotification(seqNumber, useChannel: channel);
+    final status = await manager.removeNotification(
+      seqNumber,
+      useChannel: channel,
+    );
+    if (status != NotificationSentResponse_deleteNotificationStatus.ok &&
+        status !=
+            NotificationSentResponse_deleteNotificationStatus.nothingToDelete) {
+      throw StateError('Notification removal failed (${status?.value})');
+    }
+    final remaining = await manager.retrieveNotifications(useChannel: channel);
+    if (remaining.any(
+      (n) => ProfileManager.extractMetadata(n)?.seqNumber == seqNumber,
+    )) {
+      throw StateError('Notification removal was not confirmed by the card');
+    }
+    return remaining;
   }
 
   Future<int> syncAndGetCount(
@@ -588,7 +686,7 @@ class NotificationService {
         .whereType<int>()
         .toList();
 
-    final db = await DatabaseService().database;
+    final db = await _database.database;
     if (seqNumbersOnCard.isEmpty) {
       // None on card, delete all unsent/failed ones for this EID
       await db.delete(
@@ -606,32 +704,34 @@ class NotificationService {
       );
     }
 
-    // Calculate count of notifications on CURRENT card that are NOT sent
-    final dbNotifs = await DatabaseService().getNotifications(eid);
-    final unsentNotificationsOnCard = <PendingNotification>[];
-
-    for (final n in notificationsOnCard) {
-      final seq = ProfileManager.extractMetadata(n)?.seqNumber;
-      if (seq == null) continue;
-
-      bool alreadySent = false;
-      for (final r in dbNotifs) {
-        if (r.seqNumber == seq && r.status == 1) {
-          // 1 is Sent
-          alreadySent = true;
-          break;
-        }
-      }
-
-      if (!alreadySent) {
-        unsentNotificationsOnCard.add(n);
-      }
-    }
-
-    final unsentOnCard = unsentNotificationsOnCard.length;
+    final sent = await _database.getSentNotificationSequences(eid);
+    final unsentOnCard = notificationsOnCard
+        .where(
+          (n) => !sent.contains(ProfileManager.extractMetadata(n)?.seqNumber),
+        )
+        .length;
+    currentEid = eid;
     pendingCount.value = unsentOnCard;
-    currentNotifications.value = unsentNotificationsOnCard;
+    currentNotifications.value = List.unmodifiable(notificationsOnCard);
     return unsentOnCard;
+  }
+
+  /// Removing a retained card entry is independent of sending it to SM-DP+.
+  Future<void> removeFromCard(
+    ProfileManager manager,
+    Channel channel,
+    int seq, {
+    String? expectedEid,
+  }) async {
+    final eid = await manager.getEid(useChannel: channel);
+    if (expectedEid != null && eid.toLowerCase() != expectedEid.toLowerCase()) {
+      throw StateError(
+        'The selected eUICC changed before notification removal',
+      );
+    }
+    final remaining = await _performRemoval(manager, channel, seq);
+    await syncAndGetCount(eid, remaining);
+    removedSeq.value = seq;
   }
 
   String? _getNotificationType(NotificationMetadata? metadata) {

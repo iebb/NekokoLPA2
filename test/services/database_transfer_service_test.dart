@@ -117,6 +117,29 @@ void main() {
     ]);
   });
 
+  test(
+    'backup imports preserve receipts after visible history was deleted',
+    () async {
+      for (final database in [source, target]) {
+        await database.execute('''CREATE TABLE notification_delivery_receipts (
+        eid TEXT, seqNumber INTEGER, iccid TEXT, contentHash TEXT,
+        PRIMARY KEY(eid, seqNumber, iccid))''');
+      }
+      const receipt = {
+        'eid': 'test-card',
+        'seqNumber': 42,
+        'iccid': 'test-profile',
+        'contentHash': 'payload-sha256',
+      };
+      await source.insert('notification_delivery_receipts', receipt);
+      expect(
+        await DatabaseTransferService.merge(source: source, target: target),
+        1,
+      );
+      expect(await target.query('notification_delivery_receipts'), [receipt]);
+    },
+  );
+
   test('rejects SQLite files without supported NekokoLPA2 tables', () async {
     await source.execute('CREATE TABLE unrelated (value TEXT)');
 
