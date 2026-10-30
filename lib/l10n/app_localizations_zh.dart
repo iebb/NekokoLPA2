@@ -5979,4 +5979,7 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   @override
   String get omapiEuiccSystemDisableWarning =>
       'Disabling this SIM/eSIM slot in Android system settings may stop OMAPI from detecting it. Enable or switch profiles in this app instead. If the slot is already disabled, re-enable it in system settings and refresh the reader list.';
+
+  @override
+  String get deleteNotificationHistoryEntry => 'Delete local history entry';
 }

@@ -1184,5 +1184,9 @@
   "pluginEsimGgWelcome": "Welcome to eSIM.gg Portal",
   "pluginVisitWebsite": "Visit Website",
   "omapiEuiccDetectedTitle": "Keep this eUICC available",
-  "omapiEuiccSystemDisableWarning": "Disabling this SIM/eSIM slot in Android system settings may stop OMAPI from detecting it. Enable or switch profiles in this app instead. If the slot is already disabled, re-enable it in system settings and refresh the reader list."
+  "omapiEuiccSystemDisableWarning": "Disabling this SIM/eSIM slot in Android system settings may stop OMAPI from detecting it. Enable or switch profiles in this app instead. If the slot is already disabled, re-enable it in system settings and refresh the reader list.",
+  "deleteNotificationHistoryEntry": "Delete local history entry",
+  "@deleteNotificationHistoryEntry": {
+    "description": "Deletes the local notification history payload, without removing the notification from the eUICC or sending it again."
+  }
 }
