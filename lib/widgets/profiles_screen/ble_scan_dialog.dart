@@ -14,7 +14,7 @@ Future<String?> showBluetoothReaderPicker(BuildContext context) async {
     final supported = await setup.isSupported;
     if (!context.mounted) return null;
     if (!supported) {
-      return showDialog<String>(
+      return await showDialog<String>(
         context: context,
         builder: (_) => const BleScanDialog(),
       );
