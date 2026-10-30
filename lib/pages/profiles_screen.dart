@@ -1653,7 +1653,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       if (!mounted ||
           _selectedReader?.id != reader.id ||
           _showingOmapiEuiccNotice ||
-          !TickerMode.of(context) ||
+          !TickerMode.valuesOf(context).enabled ||
           _omapiEuiccNoticesShown.contains(key) ||
           WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
           ModalRoute.of(context)?.isCurrent != true) {
