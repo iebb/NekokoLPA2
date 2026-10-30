@@ -16,7 +16,7 @@ permissions:
   contents: write
 
 env:
-  ANDROID_PACKAGE_ID: ee.nekoko.nlpa2.open
+  ANDROID_ARTIFACT_PREFIX: ee.nekoko.nlpa2.community
   DESKTOP_PACKAGE_ID: ee.nekoko.nlpa2
   # Pinned so a stable-channel release cannot change the toolchain under us:
   # 3.47.2 turned Flutter's Gradle/AGP/Kotlin minimums from warnings into
@@ -78,9 +78,9 @@ jobs:
         run: |
           args=(--release --flavor "$BUILD_FLAVOR" --target lib/main.dart)
           if [ "$BUILD_FLAVOR" = privileged ]; then
-            args+=(--target-platform android-arm64 --dart-define=PRIVILEGED_BUILD=true --dart-define=APP_VARIANT=open-rooted)
+            args+=(--target-platform android-arm64 --dart-define=PRIVILEGED_BUILD=true --dart-define=APP_VARIANT=community-rooted)
           else
-            args+=(--dart-define=APP_VARIANT=open)
+            args+=(--dart-define=APP_VARIANT=community)
           fi
           flutter build apk "${args[@]}" --dart-define=GM_PSK_URL="$GM_PSK_URL"
       - name: Package Android artifacts
@@ -92,12 +92,12 @@ jobs:
           mkdir -p dist
           if [ "$BUILD_FLAVOR" = privileged ]; then
             APK=build/app/outputs/flutter-apk/app-privileged-release.apk
-            cp "$APK" "dist/${ANDROID_PACKAGE_ID}-${VERSION_CLEAN}-rooted-arm64-v8a.apk"
+            cp "$APK" "dist/${ANDROID_ARTIFACT_PREFIX}-${VERSION_CLEAN}-rooted-arm64-v8a.apk"
             python3 scripts/package_rooted_android.py --apk "$APK" \
-              --output "dist/${ANDROID_PACKAGE_ID}-${VERSION_CLEAN}-magisk.zip" --version "$VERSION"
+              --output "dist/${ANDROID_ARTIFACT_PREFIX}-${VERSION_CLEAN}-magisk.zip" --version "$VERSION"
           else
             cp build/app/outputs/flutter-apk/app-community-release.apk \
-              "dist/${ANDROID_PACKAGE_ID}-${VERSION_CLEAN}-android.apk"
+              "dist/${ANDROID_ARTIFACT_PREFIX}-${VERSION_CLEAN}-android.apk"
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -312,9 +312,9 @@ jobs:
           artifact_table="$(cat <<EOF
           | Artifact | Platform | Description |
           | --- | --- | --- |
-          | \`${ANDROID_PACKAGE_ID}-${VERSION_CLEAN}-android.apk\` | Android | Community APK |
-          | \`${ANDROID_PACKAGE_ID}-${VERSION_CLEAN}-rooted-arm64-v8a.apk\` | Rooted Android | Full privileged app APK |
-          | \`${ANDROID_PACKAGE_ID}-${VERSION_CLEAN}-magisk.zip\` | Rooted Android | Full app systemless module |
+          | \`${ANDROID_ARTIFACT_PREFIX}-${VERSION_CLEAN}-android.apk\` | Android | Community APK |
+          | \`${ANDROID_ARTIFACT_PREFIX}-${VERSION_CLEAN}-rooted-arm64-v8a.apk\` | Rooted Android | Full privileged app APK |
+          | \`${ANDROID_ARTIFACT_PREFIX}-${VERSION_CLEAN}-magisk.zip\` | Rooted Android | Full app systemless module |
           | \`otbridge-*.apk\` | Rooted Android | Small OMAPI/TMAPI helper |
           | \`otbridge-magisk-kernelsu-*.zip\` | Rooted Android | Helper systemless module |
           | \`${DESKTOP_PACKAGE_ID}.web-${VERSION_CLEAN}.zip\` | Web | Static web build |

@@ -288,8 +288,10 @@ class BleManager extends ChangeNotifier {
   }
 
   String addReader(ScanResult result) {
-    final info = BleReaderInfo.fromScanResult(result);
+    return addReaderInfo(BleReaderInfo.fromScanResult(result));
+  }
 
+  String addReaderInfo(BleReaderInfo info) {
     // Check if we already have this reader in the current session
     final existingIndex = _sessionReaders.indexWhere((r) => r.id == info.id);
     if (existingIndex >= 0) {

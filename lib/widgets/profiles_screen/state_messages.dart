@@ -337,9 +337,8 @@ class NoReadersState extends StatelessWidget {
                                 await onReadersLoaded();
                               }
                             } else {
-                              newReaderId = await showDialog<String>(
-                                context: context,
-                                builder: (context) => const BleScanDialog(),
+                              newReaderId = await showBluetoothReaderPicker(
+                                context,
                               );
                               if (newReaderId != null) {
                                 await onReadersLoaded();

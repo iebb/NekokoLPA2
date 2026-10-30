@@ -9,6 +9,13 @@ class AppLocalizationsEs extends AppLocalizations {
   AppLocalizationsEs([String locale = 'es']) : super(locale);
 
   @override
+  String get addBluetoothReader => 'Add Bluetooth reader';
+
+  @override
+  String get bluetoothSetupFailed =>
+      'Unable to set up the Bluetooth reader. Check that Bluetooth is on and the reader is nearby, then try again.';
+
+  @override
   String get settingsTitle => 'Ajustes';
 
   @override

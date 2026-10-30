@@ -1,24 +1,27 @@
 # Update delivery
 
-The updater, channel selection, metadata publisher and release workflow are maintained in NekokoLPA2. Android has an **Open** variant. Desktop and web builds are **NekokoLPA 2**, built from this public application.
+The updater, channel selection, metadata publisher and release workflow are maintained in NekokoLPA2. Android has an **Community** variant. Desktop and web builds are **NekokoLPA 2**, built from this public application.
 
 ## Channels
 
 | Platform / channel | Artifact |
 | --- | --- |
-| Android `open` | Public Open APK; the universal APK also supports ARMv7 clients |
-| Android `open-rooted` | Public full rooted APK with its existing rooted package identity |
+| Android `community` | Public Community APK; the universal APK also supports ARMv7 clients |
+| Android `community-rooted` | Public full rooted APK with its existing rooted package identity |
+| Android legacy `open` / `open-rooted` | Aliases to the matching Community normal/rooted APKs |
 | Windows `std` | NekokoLPA 2 installer |
 | Linux `std` / `std-appimage` / `std-tgz` | NekokoLPA 2 AppImage / AppImage / tarball |
 | Earlier desktop `open`, `open-portable`, `open-appimage`, `open-tgz`, `store` | Compatibility aliases to the same desktop downloads |
 
-Android selects the exact variant and signing certificate, then the highest build newer than the installed version. Normal and rooted Open APKs cannot match each other's channels. Windows/Linux standard feeds and historical public aliases now use the same desktop application. macOS/iOS use Store/TestFlight delivery.
+Android selects the exact variant and signing certificate, then the highest build newer than the installed version. Normal and rooted Community APKs cannot match each other's channels. Windows/Linux standard feeds and historical public aliases now use the same desktop application. macOS/iOS use Store/TestFlight delivery.
 
 ## Earlier builds
 
 The original 2.4.0+600 public artifacts embedded `store`. Windows/Linux compatibility entries point to the shared desktop downloads.
 
-Both original public Android flavors embedded `store` and used the same community certificate. Their updater cannot distinguish the normal package from the rooted package, so its compatibility entry opens the release chooser. Choose the Open Android APK for `ee.nekoko.nlpa2.open`, or the Open rooted APK/module for `ee.nekoko.nlpa2`. Vendor Android APKs retain their different package/signing identities.
+Both original public Android flavors embedded `store` and used the same community certificate. Their updater cannot distinguish the normal package from the rooted package, so its compatibility entry opens the release chooser. Choose the Community Android APK for `ee.nekoko.nlpa2.open`, or the Community rooted APK/module for `ee.nekoko.nlpa2`. Vendor Android APKs retain their different package/signing identities.
+
+New Android filenames use `ee.nekoko.nlpa2.community-<version>-...`; the normal APK keeps its installed package `ee.nekoko.nlpa2.open` and its certificate. The publisher prefers Community filenames and accepts older `.open-` assets. Both Community and legacy Open Android channels are written from the same verified APKs.
 
 Canonical desktop filenames omit `.open-`. Earlier filenames remain valid links to byte-identical downloads. The publisher accepts historical names for older releases, and prefers canonical desktop names when both exist.
 
@@ -27,7 +30,7 @@ Canonical desktop filenames omit `.open-`. Earlier filenames remain valid links 
 [Publish update feeds](../.github/workflows/publish_update_feeds.yml) runs after a stable release or successful public release build. It can also be dispatched manually with a published release tag. It:
 
 1. Requires the latest published stable release and every expected uploaded asset.
-2. Downloads and verifies Android Open APKs' community certificate.
+2. Downloads and verifies Android Community APKs' community certificate.
 3. Writes direct artifact URLs, sizes, version and build to each channel.
 4. Refuses a feed downgrade and fails if a write is rejected.
 

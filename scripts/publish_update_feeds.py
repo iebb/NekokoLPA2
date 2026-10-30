@@ -15,6 +15,15 @@ COMMUNITY_CERT = 'c47350c7ba682b34a3e584a0d58463ea42b1ad73'
 FEED = 'https://updates.lpa.ee/nlpa2.json'
 
 
+def android_filename(assets, suffix, tail):
+    """Prefer Community names while accepting previously published Open APKs."""
+    for name in ('community', 'open'):
+        filename = f'ee.nekoko.nlpa2.{name}-{suffix}-{tail}'
+        if filename in assets:
+            return filename
+    raise ValueError(f'Required Community Android asset is missing: {tail}')
+
+
 def api(path):
     result = subprocess.run(['gh', 'api', f'repos/{REPOSITORY}/{path}'],
                             check=True, capture_output=True, text=True)
@@ -40,23 +49,25 @@ def plan(release, channel, certificates, migrate_standard_desktop=False):
         result.append(metadata(platform, variant, version, build,
                                asset['browser_download_url'], signatures, asset['size']))
 
-    if channel in ('public', 'open'):
+    if channel in ('public', 'community', 'open'):
         prefix = f'ee.nekoko.nlpa2.open-{suffix}'
-        for variant, filename in [
-            ('open', f'{prefix}-android.apk'),
-            ('open-rooted', f'{prefix}-rooted-arm64-v8a.apk'),
+        for variants, tail in [
+            (('community', 'open'), 'android.apk'),
+            (('community-rooted', 'open-rooted'), 'rooted-arm64-v8a.apk'),
         ]:
+            filename = android_filename(assets, suffix, tail)
             signatures = certificates[filename]
             if signatures != [COMMUNITY_CERT]:
-                raise ValueError('Open APK must use the public community certificate')
-            add('android', variant, filename, signatures)
-            if variant == 'open':
-                add('android-armeabi-v7a', variant, filename, signatures)
+                raise ValueError('Community APK must use the public community certificate')
+            for variant in variants:
+                add('android', variant, filename, signatures)
+                if tail == 'android.apk':
+                    add('android-armeabi-v7a', variant, filename, signatures)
         # Before separate channels existed, both public Android flavors said
         # `store`. Their certificate/variant cannot distinguish rooted from
         # normal; give those legacy clients a chooser, never the wrong APK.
         legacy = metadata('android', 'store', version, build, release['html_url'], [COMMUNITY_CERT])
-        legacy['data']['changelog'] = ('Open update available. Choose the Open Android APK or the Open rooted module matching your installation; vendor APKs use different signing/package identities.')
+        legacy['data']['changelog'] = ('Community update available. Choose the Community Android APK or the Community rooted module matching your installation; vendor APKs use different signing/package identities.')
         result.append(legacy)
         result.append({**legacy, 'platform': 'android-armeabi-v7a'})
         def desktop(platform, variant, canonical, legacy):
@@ -86,7 +97,7 @@ def plan(release, channel, certificates, migrate_standard_desktop=False):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--release-tag', default='')
-    parser.add_argument('--channel', choices=['public', 'open', 'standard'], default='public')
+    parser.add_argument('--channel', choices=['public', 'community', 'open', 'standard'], default='public')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--migrate-standard-desktop', action='store_true')
     args = parser.parse_args()
@@ -98,10 +109,11 @@ def main():
     release = latest
     certificates = {}
     with tempfile.TemporaryDirectory() as tmp:
-        if args.channel in ('public', 'open'):
+        if args.channel in ('public', 'community', 'open'):
             suffix = tag[1:].replace('+', '-')
+            assets = {asset['name'] for asset in release['assets'] if asset['state'] == 'uploaded'}
             for tail in ['android.apk', 'rooted-arm64-v8a.apk']:
-                filename = f'ee.nekoko.nlpa2.open-{suffix}-{tail}'
+                filename = android_filename(assets, suffix, tail)
                 subprocess.run(['gh', 'release', 'download', tag, '--repo', REPOSITORY,
                                 '--pattern', filename, '--dir', tmp], check=True)
                 certificates[filename] = get_apk_signature(Path(tmp) / filename)

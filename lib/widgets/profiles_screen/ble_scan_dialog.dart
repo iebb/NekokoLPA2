@@ -1,9 +1,74 @@
 import 'package:flutter/material.dart';
+import '../../adapter/ble/ble_accessory_setup.dart';
 import '../../adapter/ble/ble_manager.dart';
+import '../../l10n/app_localizations.dart';
 import '../common/simple_dialog_container.dart';
 import '../common/loading_spinner.dart';
 import '../../theme/app_theme.dart';
 import 'reader_helper.dart';
+
+/// Uses the system picker where available. Cancelling it never starts a scan.
+Future<String?> showBluetoothReaderPicker(BuildContext context) async {
+  final setup = BleAccessorySetup.instance;
+  try {
+    final supported = await setup.isSupported;
+    if (!context.mounted) return null;
+    if (!supported) {
+      return showDialog<String>(
+        context: context,
+        builder: (_) => const BleScanDialog(),
+      );
+    }
+    final authorized = await setup.authorizedReaders();
+    if (!context.mounted) return null;
+    BleReaderInfo? reader;
+    if (authorized.isEmpty) {
+      reader = await setup.pickReader();
+    } else {
+      final l10n = AppLocalizations.of(context)!;
+      final choice = await showDialog<Object>(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: Text(l10n.scanBluetooth),
+          children: [
+            for (final accessory in authorized)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, accessory),
+                child: ListTile(
+                  leading: Icon(
+                    ReaderHelper.getBleAdapterIconData(accessory.type),
+                  ),
+                  title: Text(accessory.name),
+                  subtitle: Text(accessory.type.label),
+                ),
+              ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, 'add'),
+              child: ListTile(
+                leading: const Icon(Icons.add),
+                title: Text(l10n.addBluetoothReader),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (choice is BleReaderInfo) reader = choice;
+      if (choice == 'add' && context.mounted) reader = await setup.pickReader();
+    }
+    if (reader == null || !context.mounted) return null;
+    return BleManager().addReaderInfo(reader);
+  } catch (error, stack) {
+    debugPrint('Bluetooth accessory setup failed: $error\n$stack');
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context)!.bluetoothSetupFailed),
+        ),
+      );
+    }
+    return null;
+  }
+}
 
 class BleScanDialog extends StatefulWidget {
   const BleScanDialog({super.key});

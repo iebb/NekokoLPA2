@@ -95,12 +95,19 @@ android {
         create("privileged") {
             dimension = "version"
             applicationId = "ee.nekoko.nlpa2"
-            manifestPlaceholders["appName"] = "NekokoLPA 2 Rooted"
+            manifestPlaceholders["appName"] = "NekokoLPA 2 Community Rooted"
             if (hasSigningValues("community")) {
                 signingConfig = signingConfigs.getByName("community")
             }
         }
 
+    }
+
+    // Public rooted builds share the Community dolphin artwork.
+    sourceSets {
+        getByName("privileged") {
+            res.setSrcDirs(listOf("src/community/res"))
+        }
     }
 
     defaultConfig {

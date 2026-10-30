@@ -22,6 +22,7 @@ class TyBlePlugin extends ProfilePlugin {
         ? displayName
         : advertisedName.trim(),
     scanKeywords: const ['SCT-BT', 'TES-BT'],
+    accessorySetupNames: const ['SCT-BT', 'TES-BT', '9eSIM'],
     scanServiceUuids: const ['49535343-fe7d-4ae5-8fa9-9fafd205e455'],
   );
 

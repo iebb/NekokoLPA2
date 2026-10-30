@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: open-update-feeds
+  group: community-update-feeds
   cancel-in-progress: false
 
 jobs:

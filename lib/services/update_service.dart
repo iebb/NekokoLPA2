@@ -82,7 +82,9 @@ class UpdateService {
   }
 
   Future<UpdateInfo?> _checkAndroidUpdate(dynamic osConfig) async {
-    final variant = AppSettings().variant;
+    // A separate package may share feature flags without sharing APK updates.
+    const channel = String.fromEnvironment('APP_UPDATE_CHANNEL');
+    final variant = channel.isEmpty ? AppSettings().variant : channel;
 
     // Check if configuration exists for Android
     if (osConfig is! Map) {

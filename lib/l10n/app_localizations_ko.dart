@@ -9,6 +9,13 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get addBluetoothReader => 'Add Bluetooth reader';
+
+  @override
+  String get bluetoothSetupFailed =>
+      'Unable to set up the Bluetooth reader. Check that Bluetooth is on and the reader is nearby, then try again.';
+
+  @override
   String get settingsTitle => '설정';
 
   @override

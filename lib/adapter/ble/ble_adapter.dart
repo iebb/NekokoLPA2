@@ -117,6 +117,7 @@ class BleReaderKind {
     this.readerName,
     this.scanKeywords = const [],
     this.scanServiceUuids = const [],
+    this.accessorySetupNames,
   }) : type = BleAdapterType._(id, label);
 
   final BleAdapterType type;
@@ -137,4 +138,8 @@ class BleReaderKind {
 
   /// GATT service UUIDs, lower-case, that identify a reader in a scan.
   final List<String> scanServiceUuids;
+
+  /// ASK name filters paired with [scanServiceUuids]. Defaults to scanKeywords.
+  /// The iOS host must declare these names and services in its Info.plist.
+  final List<String>? accessorySetupNames;
 }

@@ -10,17 +10,31 @@ class UpdateFeed {
     required Iterable<String> signatures,
     required int currentBuild,
   }) {
+    final channel = switch (variant) {
+      'open' => 'community',
+      'open-rooted' => 'community-rooted',
+      _ => variant,
+    };
+    final channels = [
+      channel,
+      if (channel == 'community') 'open',
+      if (channel == 'community-rooted') 'open-rooted',
+    ];
     final installed = signatures.map((s) => s.toLowerCase()).toSet();
     Map<String, dynamic>? best;
     var highest = currentBuild;
     for (final entry in config.entries) {
       final key = entry.key.toString();
-      // `open-rooted-<cert>` must never match the `open` channel.
-      final suffix = key.startsWith('$variant-')
-          ? key.substring(variant.length + 1)
-          : '';
-      if (key != variant &&
-          (suffix.isEmpty || !suffix.split('-').every(_signature.hasMatch))) {
+      // Normal and rooted packages must never cross their signing channels.
+      final matchesChannel = channels.any((name) {
+        if (key == name) return true;
+        final suffix = key.startsWith('$name-')
+            ? key.substring(name.length + 1)
+            : '';
+        return suffix.isNotEmpty &&
+            suffix.split('-').every(_signature.hasMatch);
+      });
+      if (!matchesChannel) {
         continue;
       }
       final releases = entry.value is List
@@ -33,7 +47,8 @@ class UpdateFeed {
         final allowed = value['signatures'];
         final unrestricted =
             allowed == null || (allowed is List && allowed.isEmpty);
-        final publicBuild = variant == 'open' || variant == 'open-rooted';
+        final publicBuild =
+            channel == 'community' || channel == 'community-rooted';
         if (unrestricted && publicBuild) continue;
         final matches =
             unrestricted ||

@@ -7,15 +7,20 @@ import 'package:nlpa2/utils/platform_adapter.dart';
 void main() {
   group('BuildCapabilities', () {
     test(
-      'Open names are Android-only; other platforms use the standard app',
+      'Community names are Android-only and accept legacy Open identities',
       () {
-        for (final variant in ['open', 'open-rooted']) {
+        for (final entry in {
+          'open': 'community',
+          'community': 'community',
+          'open-rooted': 'community-rooted',
+          'community-rooted': 'community-rooted',
+        }.entries) {
           expect(
-            BuildCapabilities.variantForPlatform(variant, isAndroid: true),
-            variant,
+            BuildCapabilities.variantForPlatform(entry.key, isAndroid: true),
+            entry.value,
           );
           expect(
-            BuildCapabilities.variantForPlatform(variant, isAndroid: false),
+            BuildCapabilities.variantForPlatform(entry.key, isAndroid: false),
             'std',
           );
         }

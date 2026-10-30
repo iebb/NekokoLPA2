@@ -113,6 +113,18 @@ abstract class AppLocalizations {
     Locale('zh'),
   ];
 
+  /// No description provided for @addBluetoothReader.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Bluetooth reader'**
+  String get addBluetoothReader;
+
+  /// No description provided for @bluetoothSetupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to set up the Bluetooth reader. Check that Bluetooth is on and the reader is nearby, then try again.'**
+  String get bluetoothSetupFailed;
+
   /// No description provided for @settingsTitle.
   ///
   /// In en, this message translates to:

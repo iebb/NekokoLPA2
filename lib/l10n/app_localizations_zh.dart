@@ -9,6 +9,13 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get addBluetoothReader => 'Add Bluetooth reader';
+
+  @override
+  String get bluetoothSetupFailed =>
+      'Unable to set up the Bluetooth reader. Check that Bluetooth is on and the reader is nearby, then try again.';
+
+  @override
   String get settingsTitle => '设置';
 
   @override

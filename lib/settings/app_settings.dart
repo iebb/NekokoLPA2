@@ -108,11 +108,15 @@ class AppSettings extends ChangeNotifier {
     }
 
     // Public Android identity wins over stale rebranding assets.
-    if (PlatformX.isAndroid && _packageName.endsWith('.open')) return 'open';
+    if (PlatformX.isAndroid && _packageName.endsWith('.open')) {
+      return 'community';
+    }
     if (PlatformX.isAndroid &&
         kIsPrivileged &&
-        (_flavorFileVariant == 'open' || _flavorFileVariant == 'store')) {
-      return 'open-rooted';
+        (_flavorFileVariant == 'open' ||
+            _flavorFileVariant == 'community' ||
+            _flavorFileVariant == 'store')) {
+      return 'community-rooted';
     }
 
     // 2. Check if flavor.json defines a variant
@@ -138,12 +142,17 @@ class AppSettings extends ChangeNotifier {
   }
 
   String get logoAsset {
+    if (variant == 'community' || variant == 'community-rooted') {
+      return 'assets/logo-community.png';
+    }
     return 'assets/logo.png';
   }
 
   String get appName {
     final v = variant;
     if (v == 'esim9') return '9eSIM';
+    if (v == 'community') return 'NekokoLPA 2 Community';
+    if (v == 'community-rooted') return 'NekokoLPA 2 Community Rooted';
     return 'NekokoLPA 2';
   }
 

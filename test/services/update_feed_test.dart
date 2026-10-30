@@ -37,6 +37,41 @@ void main() {
     expect(result?['build'], 601);
   });
 
+  test(
+    'Community accepts old feeds without crossing into rooted or vendor APKs',
+    () {
+      final result = UpdateFeed.selectAndroid(
+        {
+          'open-$cert': release(601),
+          'community-$cert': release(602),
+          'community-rooted-$cert': release(900),
+          'std-$cert': release(950),
+        },
+        variant: 'community',
+        signatures: [cert],
+        currentBuild: 600,
+      );
+      expect(result?['build'], 602);
+    },
+  );
+
+  test('legacy Open identities accept Community feeds', () {
+    for (final entry in {
+      'open': 'community',
+      'open-rooted': 'community-rooted',
+    }.entries) {
+      expect(
+        UpdateFeed.selectAndroid(
+          {'${entry.value}-$cert': release(601)},
+          variant: entry.key,
+          signatures: [cert],
+          currentBuild: 600,
+        )?['build'],
+        601,
+      );
+    }
+  });
+
   test('Android rejects a newer APK signed by another certificate', () {
     final result = UpdateFeed.selectAndroid(
       {
@@ -82,6 +117,20 @@ void main() {
       currentBuild: 600,
     );
     expect(result?['build'], 601);
+  });
+
+  test('lineage experiment does not select a normal multi-signer APK', () {
+    expect(
+      UpdateFeed.selectAndroid(
+        {
+          'multi-$cert-$vendor': release(700, [cert, vendor]),
+        },
+        variant: 'lineage',
+        signatures: [cert, vendor],
+        currentBuild: 600,
+      ),
+      isNull,
+    );
   });
 
   test('Open desktop cannot fall back to the standard distribution', () {

@@ -2109,10 +2109,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
                 } catch (_) {}
               }
             } else {
-              final newReaderId = await showDialog<String>(
-                context: context,
-                builder: (context) => const ble.BleScanDialog(),
-              );
+              final newReaderId = await ble.showBluetoothReaderPicker(context);
               if (newReaderId != null && mounted) {
                 await _loadReaders(skipLoading: true);
                 try {

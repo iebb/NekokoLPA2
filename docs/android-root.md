@@ -26,7 +26,7 @@ New public helper builds use the already-public community signing certificate. A
 
 The `privileged` flavor sets `PRIVILEGED_BUILD=true`, requests the privileged telephony/eSIM permissions, and enables the built-in Telephony path. Enable its connector in reader settings. Device firmware can still restrict what that path permits.
 
-Public artifacts are named `ee.nekoko.nlpa2.open-<version>-rooted-arm64-v8a.apk` and `ee.nekoko.nlpa2.open-<version>-magisk.zip`. The APK's actual package is `ee.nekoko.nlpa2`, matching the module's permission allowlist. Install the module for privileged operation; installing the APK normally does not make it a system app. Public builds use the community certificate. Kasutera separately retains its vendor-signed privileged APK/module; switching signers can require uninstalling the other build.
+Public artifacts are named `ee.nekoko.nlpa2.community-<version>-rooted-arm64-v8a.apk` and `ee.nekoko.nlpa2.community-<version>-magisk.zip`. The APK's actual package is `ee.nekoko.nlpa2`, matching the module's permission allowlist. Install the module for privileged operation; installing the APK normally does not make it a system app. Public builds use the community certificate. Kasutera separately retains its vendor-signed privileged APK/module; switching signers can require uninstalling the other build.
 
 Build from the public repository with its pinned Flutter/Rust/Android toolchains:
 

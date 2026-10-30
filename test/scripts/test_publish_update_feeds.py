@@ -26,12 +26,31 @@ class FeedPublisherTest(unittest.TestCase):
 
     def test_all_public_channels_point_to_their_own_artifacts(self):
         payloads = feeds.plan(self.release, 'open', self.certs)
-        self.assertEqual(len(payloads), 12)
+        self.assertEqual(len(payloads), 15)
         normal = next(p for p in payloads if p['platform'] == 'android' and p['identifier'].startswith('open-' + feeds.COMMUNITY_CERT))
         rooted = next(p for p in payloads if p['identifier'].startswith('open-rooted-'))
         self.assertTrue(normal['data']['download_url'].endswith('-android.apk'))
         self.assertTrue(rooted['data']['download_url'].endswith('-rooted-arm64-v8a.apk'))
         self.assertFalse(any(p['identifier'] == 'std' for p in payloads))
+
+    def test_community_names_and_legacy_channels_share_verified_artifacts(self):
+        renamed = deepcopy(self.release)
+        certs = dict(self.certs)
+        for asset in list(self.release['assets']):
+            if not asset['name'].endswith('.apk'):
+                continue
+            name = asset['name'].replace('.open-', '.community-')
+            renamed['assets'].append({**asset, 'name': name,
+                'browser_download_url': asset['browser_download_url'].replace(asset['name'], name)})
+            certs[name] = [feeds.COMMUNITY_CERT]
+        payloads = feeds.plan(renamed, 'community', certs)
+        for platform in ['android', 'android-armeabi-v7a']:
+            for channel in ['community', 'open']:
+                entry = next(p for p in payloads if p['platform'] == platform and p['identifier'] == channel + '-' + feeds.COMMUNITY_CERT)
+                self.assertIn('.community-', entry['data']['download_url'])
+        for channel in ['community-rooted', 'open-rooted']:
+            entry = next(p for p in payloads if p['platform'] == 'android' and p['identifier'] == channel + '-' + feeds.COMMUNITY_CERT)
+            self.assertTrue(entry['data']['download_url'].endswith('-rooted-arm64-v8a.apk'))
 
     def test_explicit_desktop_migration_points_standard_users_to_public_builds(self):
         payloads = feeds.plan(self.release, 'open', self.certs, migrate_standard_desktop=True)

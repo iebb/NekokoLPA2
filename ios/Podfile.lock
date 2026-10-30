@@ -136,7 +136,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   app_links: a754cbec3c255bd4bbb4d236ecc06f28cd9a7ce8
-  ble: 12cdc4b77f389bc9adc8c2293c257b267e31a68a
+  ble: 5234daedafcd1b961b8204abf651829a175bd976
   ccid: bb5018a9d8894873e19fe72d9afd0eabc1143676
   device_info_plus: 21fcca2080fbcd348be798aa36c3e5ed849eefbe
   DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
