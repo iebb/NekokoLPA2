@@ -5674,6 +5674,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Visit Website'**
   String get pluginVisitWebsite;
+
+  /// No description provided for @omapiEuiccDetectedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep this eUICC available'**
+  String get omapiEuiccDetectedTitle;
+
+  /// No description provided for @omapiEuiccSystemDisableWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Disabling this SIM/eSIM slot in Android system settings may stop OMAPI from detecting it. Enable or switch profiles in this app instead. If the slot is already disabled, re-enable it in system settings and refresh the reader list.'**
+  String get omapiEuiccSystemDisableWarning;
 }
 
 class _AppLocalizationsDelegate

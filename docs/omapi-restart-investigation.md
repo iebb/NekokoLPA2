@@ -29,3 +29,9 @@ This is a code-supported explanation consistent with #58. It has not been reprod
 Five Dart regression tests cover background flushing, active operations, reuse, foreground restoration and a close queued behind a reborrow. These establish adapter behavior with a mock native channel; they do not establish physical Xiaomi/HyperOS compatibility.
 
 If an older build already left a reboot-required marker, installing 602 does not erase it. Restart the phone once, then test first launch, Home/resume, clearing recent apps and reopening. A real `Channel.close()` failure must still require reboot; [Samsung issue #46](https://github.com/iebb/NekokoLPA2/issues/46) explains why blindly clearing this protection is unsafe.
+
+## ATR eUICC notice
+
+602 also parses the ATR's interface-byte chain. Under [ETSI TS 102 221 V17.1.0, section 6.3.3/Table 6.7](https://www.etsi.org/deliver/etsi_ts/102200_102299/102221/17.01.00_60/ts_102221v170100p.pdf#page=37), bits b8 and b2 of the first global TB(i > 2) after T=15 advertise eUICC functions. Historical bytes and protocol-specific TB bytes are not scanned for this pattern; malformed or checksum-invalid ATRs are unknown.
+
+When an Android OMAPI connection advertises this capability, the visible Manage page shows a notice once per reader/ATR during that app session: keep the SIM/eSIM slot enabled in Android settings and switch profiles in the app. This is advice about possible system-slot unavailability, not a claim that the ATR identifies the cause of #57. The optional flag's absence never marks a card unsupported, and the notice does not block profile operations.

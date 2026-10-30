@@ -10,6 +10,7 @@ All notable changes to NekokoLPA2 will be documented in this file.
 - Retry WebCard AID selection on the basic channel when a driver allocates a logical channel but SELECT returns 6881 (#31).
 
 ### Added
+- Recognize the optional ATR eUICC capability flag and show OMAPI users a notice about keeping the SIM/eSIM slot enabled in Android system settings.
 - Published the 3HK number, line-expiry and package-status plugin. All provider plugins now live in the public repository.
 - Added iOS accessory setup for supported Bluetooth readers.
 

@@ -27,6 +27,7 @@ import '../adapter/telephony/telephony_adapter.dart';
 import '../logic/profile_manager.dart';
 import '../logic/profile_state_transition.dart';
 import '../utils/apdu_exception.dart';
+import '../utils/atr_capabilities.dart';
 import '../utils/profile_tag_utils.dart';
 import '../utils/profile_redaction.dart';
 import '../services/profile_metadata_service.dart';
@@ -175,6 +176,8 @@ class _ProfilesScreenState extends State<ProfilesScreen>
   final CompositeAdapter _adapter = CompositeAdapter();
   late ProfileManager _manager;
   final Map<String, ReaderState> _readerStates = {};
+  final Set<String> _omapiEuiccNoticesShown = {};
+  bool _showingOmapiEuiccNotice = false;
   List<EuiccProfile>? _profiles;
   List<Reader> _readers = [];
   bool _reloadingHalModes = false;
@@ -966,7 +969,8 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
       unawaited(
         _adapter.setAppInBackground(true).catchError((Object error) {
           _log.warning(
@@ -1637,6 +1641,45 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     await _listProfiles();
   }
 
+  void _maybeShowOmapiEuiccNotice(Reader reader, String? atr) {
+    if (!PlatformX.isAndroid ||
+        !reader.id.startsWith('omapi:') ||
+        AtrCapabilities.supportsEuicc(atr) != true) {
+      return;
+    }
+    final key = '${reader.id}:$atr';
+    if (_omapiEuiccNoticesShown.contains(key)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          _selectedReader?.id != reader.id ||
+          _showingOmapiEuiccNotice ||
+          !TickerMode.of(context) ||
+          _omapiEuiccNoticesShown.contains(key) ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+          ModalRoute.of(context)?.isCurrent != true) {
+        return;
+      }
+      _omapiEuiccNoticesShown.add(key);
+      _showingOmapiEuiccNotice = true;
+      final l10n = AppLocalizations.of(context)!;
+      unawaited(
+        showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(l10n.omapiEuiccDetectedTitle),
+            content: Text(l10n.omapiEuiccSystemDisableWarning),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(l10n.ok),
+              ),
+            ],
+          ),
+        ).whenComplete(() => _showingOmapiEuiccNotice = false),
+      );
+    });
+  }
+
   // _handleReaderSelection removed
 
   Future<void> _listProfiles({
@@ -1660,6 +1703,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
     String? eid;
     EUICCInfo2? info2;
+    String? connectedAtr;
 
     try {
       _updateReaderSession(reader.id, (s) => s.isConnecting = true);
@@ -1686,6 +1730,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         try {
           // Ensure reader is still the selected one or at least the one we started with
           await _adapter.connect(reader);
+          connectedAtr = _adapter.lastAtr;
           if (reopenHal) await _adapter.reconnect();
         } finally {
           _adapter.connectProgress.removeListener(showConnectStep);
@@ -1977,6 +2022,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         s.isConnecting = false;
         s.operationLoadingMessage = null;
       });
+      _maybeShowOmapiEuiccNotice(reader, connectedAtr);
     }
   }
 
