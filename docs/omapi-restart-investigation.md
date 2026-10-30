@@ -1,4 +1,4 @@
-# OMAPI restart investigation: 2.3.0 to 2.4.1+602
+# OMAPI restart investigation: 2.3.0 to 2.4.2+602
 
 Investigated on 2026-10-31. [Issue #58](https://github.com/iebb/NekokoLPA2/issues/58) shows **2.4.1 build 601** reading SIM1/SIM2 on first launch, followed by Android's recent-apps cleanup, then `OMAPI_SESSION_CORRUPTED` on relaunch. Its reason is `OMAPI safety guard survived an unclean process exit on this boot`. This is a restored safety marker, before reader enumeration; it is not evidence that the SIM disappeared or that its applet is unsupported.
 

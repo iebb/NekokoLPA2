@@ -18,7 +18,7 @@ All provider plugins are public: eSIM.cc rewards/portal actions, eSIM.gg number/
 | eSIM.cc, eSIM.gg and 3HK profile extras | Included in current source | Same plugins |
 | Extra navigation and artwork | Public defaults | Optional brand/provider web tabs and flavor assets |
 
-The 2.4.1+602 release includes all three public provider integrations. The 2.4.1+601 binaries include eSIM.cc/eSIM.gg and the OMAPI restart fix. They predate the 3HK promotion: the public 3HK plugin is included from the next build. Adding canonical desktop filenames to the 601 release does not change those binaries. The original 2.4.0+600 public binaries predate all three provider promotions and the OMAPI restart fix.
+The 2.4.2+602 release includes all three public provider integrations. The 2.4.1+601 binaries include eSIM.cc/eSIM.gg and the OMAPI restart fix. They predate the 3HK promotion: the public 3HK plugin is included from the next build. Adding canonical desktop filenames to the 601 release does not change those binaries. The original 2.4.0+600 public binaries predate all three provider promotions and the OMAPI restart fix.
 
 OS limits apply equally: the app has no Linux BLE transport. Desktop IMS provides experimental SMS; the separate iOS implementation provides reader-backed calling.
 

@@ -1,4 +1,4 @@
-# Open-issue review for 2.4.1+602
+# Open-issue review for 2.4.2+602
 
 Reviewed 2026-10-31. Hardware reports remain open until device confirmation; a regression test or packaged build alone does not establish that a vendor-specific problem is solved.
 

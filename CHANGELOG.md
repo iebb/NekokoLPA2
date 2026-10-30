@@ -2,7 +2,7 @@
 
 All notable changes to NekokoLPA2 will be documented in this file.
 
-## [2.4.1+602] - 2026-10-31
+## [2.4.2+602] - 2026-10-31
 
 ### Fixed
 - Close released cached OMAPI channels immediately when Android enters the background, addressing the restart safety-marker path reported in #58. Keep active operations and reboot protection after a real channel-close failure.
