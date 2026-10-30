@@ -3,7 +3,9 @@
 // BSD-style license that can be found in the LICENSE file.
 
 #import "FlutterBluePlusPlugin.h"
+#if !TARGET_OS_OSX
 #import "BLEAccessorySetupPlugin.h"
+#endif
 
 #define Log(LEVEL, FORMAT, ...)                                                \
   [self log:LEVEL format:@"[FBP-iOS] " FORMAT, ##__VA_ARGS__]
@@ -52,7 +54,9 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
 
 @implementation FlutterBluePlusPlugin
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar> *)registrar {
+#if !TARGET_OS_OSX
   [BLEAccessorySetupPlugin registerWithRegistrar:registrar];
+#endif
   FlutterMethodChannel *methodChannel =
       [FlutterMethodChannel methodChannelWithName:NAMESPACE @"/methods"
                                   binaryMessenger:[registrar messenger]];
