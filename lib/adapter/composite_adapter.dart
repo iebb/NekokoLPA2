@@ -54,6 +54,10 @@ class CompositeAdapter extends BaseAdapter {
 
   Future<Reader?> scanScrp() => _scrpAdapter.scanScrp();
 
+  Future<void> setAppInBackground(bool value) async {
+    if (PlatformX.isAndroid) await _omapiAdapter.setAppInBackground(value);
+  }
+
   final Map<String, RemoCardAdapter> _remoteAdapters = {};
   final Set<String> _remoteInitTried = {};
 

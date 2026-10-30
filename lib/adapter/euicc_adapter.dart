@@ -619,6 +619,9 @@ abstract class BaseAdapter implements Adapter {
     );
   }
 
+  /// WebCard drivers may allocate a channel that rejects SELECT with 6881.
+  bool get fallbackToBasicChannelOnSelect6881 => false;
+
   /// Common helper to open a logical channel using MANAGE CHANNEL
   Future<Channel> openLogicalChannel({
     List<String>? aids,
@@ -693,6 +696,19 @@ abstract class BaseAdapter implements Adapter {
         } catch (e) {
           log.warning("Failed to select any AID on opened channel: $e");
           await channel.close();
+          // Some WebCard reader/driver combinations allocate a logical channel
+          // but reject SELECT there with 6881. Retry SELECT on channel zero only;
+          // subsequent commands use the returned channel without CLA rewriting.
+          if (fallbackToBasicChannelOnSelect6881 &&
+              channel.channelNumber != 0 &&
+              e is CardBusyException) {
+            log.info(
+              'Logical-channel SELECT returned 6881; trying basic channel',
+            );
+            final basic = BaseChannel(this, 0);
+            final selectedAid = await selectAid(basic, aids);
+            return _AidAwareChannel(basic, selectedAid);
+          }
           rethrow;
         }
       }

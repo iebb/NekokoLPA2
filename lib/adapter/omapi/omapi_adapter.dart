@@ -67,6 +67,7 @@ class OmapiAdapter extends BaseAdapter {
   final OmapiChannelOwnershipTracker _channelOwnership =
       OmapiChannelOwnershipTracker();
   bool _profileSwitchInProgress = false;
+  bool _appInBackground = false;
   List<Reader>? _lastReaders;
   DateTime? _lastListTime;
 
@@ -126,6 +127,25 @@ class OmapiAdapter extends BaseAdapter {
   void invalidateReaderCache() {
     _lastReaders = null;
     _lastListTime = null;
+  }
+
+  /// Flush only released handles before Android can suspend Dart timers.
+  /// Live references (including downloads/profile operations) remain untouched.
+  Future<void> setAppInBackground(bool value) async {
+    _appInBackground = value;
+    if (!value) return;
+    log.info(
+      'OMAPI background cleanup: ${_pendingCloses.length} released channels, '
+      '${_refCounts.values.where((refs) => refs > 0).length} active handles retained',
+    );
+    for (final channelId in _pendingCloses.keys.toList()) {
+      _pendingCloses.remove(channelId)?.cancel();
+      final aid = _channelMappings[channelId];
+      final token = _channelOwnership.currentToken(channelId);
+      if (aid != null && token != null) {
+        await _finalizeCloseChannel(channelId, aid, token);
+      }
+    }
   }
 
   @override
@@ -481,7 +501,7 @@ class OmapiAdapter extends BaseAdapter {
 
     _refCounts[channelId] = (_refCounts[channelId] ?? 1) - 1;
     if (_refCounts[channelId]! <= 0) {
-      if (_profileSwitchInProgress || immediate) {
+      if (_profileSwitchInProgress || immediate || _appInBackground) {
         await _finalizeCloseChannel(channelId, aidHex, ownershipToken);
         return;
       }
@@ -489,14 +509,18 @@ class OmapiAdapter extends BaseAdapter {
         'Channel $channelId close request pending: delaying 3s for AID $aidHex...',
       );
       _pendingCloses[channelId]?.cancel();
-      _pendingCloses[channelId] = Timer(const Duration(seconds: 3), () async {
+      late final Timer timer;
+      timer = Timer(const Duration(seconds: 3), () async {
         try {
           await _finalizeCloseChannel(channelId, aidHex, ownershipToken);
         } catch (e) {
           log.severe('Deferred channel close failed: $e');
         }
-        _pendingCloses.remove(channelId);
+        if (identical(_pendingCloses[channelId], timer)) {
+          _pendingCloses.remove(channelId);
+        }
       });
+      _pendingCloses[channelId] = timer;
     } else {
       log.info(
         'Channel $channelId decrement: still held by ${_refCounts[channelId]} refs',
@@ -517,6 +541,8 @@ class OmapiAdapter extends BaseAdapter {
         );
         return;
       }
+      // A close may have waited behind an operation that borrowed this AID again.
+      if ((_refCounts[channelId] ?? 0) > 0) return;
 
       try {
         await _invoke('closeChannel', {

@@ -18,7 +18,7 @@ All provider plugins are public: eSIM.cc rewards/portal actions, eSIM.gg number/
 | eSIM.cc, eSIM.gg and 3HK profile extras | Included in current source | Same plugins |
 | Extra navigation and artwork | Public defaults | Optional brand/provider web tabs and flavor assets |
 
-The 2.4.1+601 binaries include eSIM.cc/eSIM.gg and the OMAPI restart fix. They predate the 3HK promotion: the public 3HK plugin is included from the next build. Adding canonical desktop filenames to the 601 release does not change those binaries. The original 2.4.0+600 public binaries predate all three provider promotions and the OMAPI restart fix.
+The 2.4.1+602 release includes all three public provider integrations. The 2.4.1+601 binaries include eSIM.cc/eSIM.gg and the OMAPI restart fix. They predate the 3HK promotion: the public 3HK plugin is included from the next build. Adding canonical desktop filenames to the 601 release does not change those binaries. The original 2.4.0+600 public binaries predate all three provider promotions and the OMAPI restart fix.
 
 OS limits apply equally: the app has no Linux BLE transport. Desktop IMS provides experimental SMS; the separate iOS implementation provides reader-backed calling.
 
@@ -32,6 +32,7 @@ OS limits apply equally: the app has no Linux BLE transport. Desktop IMS provide
 | Multi-signer | `ee.nekoko.nlpa2.multi` | Multiple vendor/community certificates; ARM64 and ARMv7 |
 | Community/sekiu | `ee.nekoko.nlpa2.sekiu` | Community certificate and its flavor assets |
 | 9eSIM | `ee.nekoko.nlpa.flavor1` | 9eSIM branding/certificate and build restrictions |
+| Lineage experiment (not in normal releases) | `ee.nekoko.nlpa2.multi.lineage` | Separate API 28+ experiment using a signing-certificate history; it does not replace multi-signer APKs |
 | Full rooted app | `ee.nekoko.nlpa2` | Public rooted build uses the community certificate; vendor build uses its vendor certificate |
 
 Signing certificates can affect card access through OMAPI: the card and firmware must accept the certificate/permissions. Ordinary APK installation grants neither root nor system privileges. See [OTBridge and the rooted app](android-root.md).
@@ -55,3 +56,9 @@ Android Community and rooted Community use isolated `community` and `community-r
 The first public 2.4.0+600 Android artifacts embedded `store`. Both normal and rooted APKs used that variant and the same certificate, so their compatibility feed opens the release chooser. Choose the matching Community Android APK or rooted module. New Android builds carry distinct identities. See [update delivery](update-feeds.md).
 
 macOS/iOS use Store/TestFlight delivery. Kasutera retains signing material, platform/flavor assets and release infrastructure; all Dart application and provider code is public.
+
+## What remains in Kasutera
+
+Kasutera holds flavor icons/artwork and optional provider navigation, Android/iOS/macOS/Windows platform branding, vendor signing material, store configuration, and the scripts/workflows that assemble and publish those branded builds. It also holds the separate Android signing-lineage experiment. These are distribution and identity differences; there are no private Dart provider plugins or private LPA/IMS features left. Public source includes the iOS accessory setup flow. Locale validation and Crowdin synchronization now live in NekokoLPA2; the overlay only keeps compatibility script entry points.
+
+Published platform projects can be replaced by the overlay, so a platform change must also be mirrored to its branded project before release. Card OMAPI access rules can distinguish certificates even when the shared application code is identical.

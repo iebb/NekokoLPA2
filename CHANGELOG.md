@@ -2,14 +2,24 @@
 
 All notable changes to NekokoLPA2 will be documented in this file.
 
-## Unreleased
+## [2.4.1+602] - 2026-10-31
+
+### Fixed
+- Close released cached OMAPI channels immediately when Android enters the background, addressing the restart safety-marker path reported in #58. Keep active operations and reboot protection after a real channel-close failure.
+- Retry WebCard AID selection on the basic channel when a driver allocates a logical channel but SELECT returns 6881 (#31).
 
 ### Added
 - Published the 3HK number, line-expiry and package-status plugin. All provider plugins now live in the public repository.
+- Added iOS accessory setup for supported Bluetooth readers.
 
 ### Changed
-- Use Open only for Android variant names; Windows, macOS, Linux and web use NekokoLPA 2.
+- Name the public Android variant Community, retaining the existing package ID and signing certificate for upgrades. Desktop and web builds use NekokoLPA 2.
 - Publish the shared Windows/Linux builds to standard desktop update feeds, retaining earlier channel and filename compatibility.
+- Move Crowdin synchronization, validation and translation documentation into NekokoLPA2.
+
+### Upgrade notes
+- An existing reboot-required OMAPI marker still needs one device restart after updating; clearing app data is unnecessary.
+- Xiaomi and WebCard fixes have automated regression coverage; confirmation on the affected hardware is pending. See [issue review](docs/issue-audit-602.md).
 
 ## [2.4.1+601] - 2026-10-29
 

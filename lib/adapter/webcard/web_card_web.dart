@@ -90,6 +90,9 @@ class WebCardAdapter extends BaseAdapter {
   }
 
   @override
+  bool get fallbackToBasicChannelOnSelect6881 => true;
+
+  @override
   Future<Channel> openChannel({List<String>? aids}) async {
     return await openLogicalChannel(aids: aids);
   }

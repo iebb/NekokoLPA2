@@ -1,0 +1,15 @@
+# Open-issue review for 2.4.1+602
+
+Reviewed 2026-10-31. Hardware reports remain open until device confirmation; a regression test or packaged build alone does not establish that a vendor-specific problem is solved.
+
+| Issue | Finding and action |
+| --- | --- |
+| [#58: second launch after clearing background](https://github.com/iebb/NekokoLPA2/issues/58) | Screenshots confirm build 601 and a restored same-boot OMAPI marker. 602 flushes released cached channels on background. See the [APK comparison and validation limits](omapi-restart-investigation.md). |
+| [#31: WebCard SELECT returns 6881 on channel 1](https://github.com/iebb/NekokoLPA2/issues/31) | 602 retries AID selection on the basic channel only for this WebCard failure. Further APDUs use the selected channel normally. Seven tests cover success, failure, CLA handling and preserving other transports/statuses. Physical reader confirmation is pending. |
+| [#50: Windows installer missing](https://github.com/iebb/NekokoLPA2/issues/50) | Public Windows pipeline produces the setup executable and ZIP; the 601 release already has the installer. 602 retains both and standard desktop feeds. |
+| [#46: Samsung Android 16 cleanup CPU loop](https://github.com/iebb/NekokoLPA2/issues/46) | Individual-channel cleanup, immediate stop on close failure and durable reboot protection are retained. Official 9eSIM-signed builds carry the workaround. The final Samsung profile-switch/CPU validation still needs the affected hardware. |
+| [#57: POCO SIM2 system toggle](https://github.com/iebb/NekokoLPA2/issues/57) | Describes system subscription/slot mapping after a system-settings toggle. It does not provide the OMAPI exception needed to equate it with #58. Needs system/app logs and a hardware reproduction; no speculative modem reset added. |
+| [#43: enable/delete notifications not automatic on iOS](https://github.com/iebb/NekokoLPA2/issues/43) | Requires a reproduction through profile-switch/reconnection and notification-trigger settings on the specified card. No claim of a verified fix in 602. |
+| [#42: retained delete notification reappears](https://github.com/iebb/NekokoLPA2/issues/42) | Manual removal and automatic send/remove paths need separate reproduction with `auto-remove=false`. Avoid assuming that a visible entry proves a second network send. No verified fix in 602. |
+| [#30: eSTK.me BLE mode/timeout](https://github.com/iebb/NekokoLPA2/issues/30) | Needs the reader, mode transition and redacted transport log. Increasing timeouts without that evidence does not address the reported CCID/BLE switching behavior. |
+| [#19: rooted POCO X3 NFC adapter missing](https://github.com/iebb/NekokoLPA2/issues/19) | Public OTBridge and full rooted app/module builds are available; these need validation against the device's telephony interface/module installation. See [rooted setup](android-root.md). |

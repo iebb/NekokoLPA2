@@ -966,7 +966,17 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      unawaited(
+        _adapter.setAppInBackground(true).catchError((Object error) {
+          _log.warning(
+            'Unable to close released OMAPI channels on background: $error',
+          );
+        }),
+      );
+    }
     if (state == AppLifecycleState.resumed) {
+      unawaited(_adapter.setAppInBackground(false));
       _log.info("App resumed, refreshing readers and checking for deep links");
       // Reload readers when app returns to foreground (e.g. after USB permission dialog)
       _loadReaders(skipLoading: true);
