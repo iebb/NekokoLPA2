@@ -1,0 +1,85 @@
+name: Crowdin Sync
+on:
+  push:
+    branches: [master]
+    paths:
+      - l10n/app_en.arb
+      - scripts/crowdin_sync.py
+      - scripts/check_l10n.py
+      - .github/workflows/crowdin_sync.yml
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      upload_source:
+        description: Upload l10n/app_en.arb before downloading translations
+        type: boolean
+        default: false
+permissions:
+  contents: write
+concurrency:
+  group: crowdin-sync
+  cancel-in-progress: true
+env:
+  FLUTTER_VERSION: 3.47.2
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: master
+          fetch-depth: 0
+      - name: Select source upload
+        id: source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          UPLOAD_SOURCE: ${{ inputs.upload_source }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          upload=false
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            upload="$UPLOAD_SOURCE"
+          elif [[ "$EVENT_NAME" == push ]]; then
+            if ! git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null ||
+               ! git diff --quiet "$BEFORE_SHA" "$AFTER_SHA" -- l10n/app_en.arb; then
+              upload=true
+            fi
+          fi
+          echo "upload_source=$upload" >> "$GITHUB_OUTPUT"
+      - name: Validate English and locale files
+        run: python3 scripts/check_l10n.py
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - name: Sync Crowdin
+        env:
+          CROWDIN_TOKEN: ${{ secrets.CROWDIN_TOKEN }}
+          UPLOAD_SOURCE: ${{ steps.source.outputs.upload_source }}
+        run: |
+          args=()
+          if [[ "$UPLOAD_SOURCE" == true ]]; then args+=(--upload-source); fi
+          python3 scripts/crowdin_sync.py "${args[@]}"
+          python3 scripts/check_l10n.py
+      - name: Commit translations to public master
+        run: |
+          set -euo pipefail
+          files=(l10n/app_de.arb l10n/app_es.arb l10n/app_fr.arb l10n/app_it.arb
+                 l10n/app_ja.arb l10n/app_ko.arb l10n/app_ru.arb l10n/app_zh.arb
+                 l10n/app_zh-TW.arb lib/l10n/app_localizations*.dart untranslated.json)
+          if [[ -z "$(git status --porcelain -- "${files[@]}")" ]]; then
+            echo 'No translation changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "${files[@]}"
+          git commit -m 'chore(l10n): sync Crowdin translations'
+          # A concurrent source change must be re-synced rather than overwritten.
+          git push origin HEAD:master
