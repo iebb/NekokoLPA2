@@ -1,10 +1,41 @@
 # Bluetooth reader setup on iOS
 
-On iOS/iPadOS 18 or later the Bluetooth reader button uses AccessorySetupKit
-to show Apple's accessory discovery and authorization sheet. Android, older
-iOS versions, simulators, and other platforms keep their existing discovery
-flow. Cancelling the system sheet does not start a general Bluetooth scan or
-request Bluetooth/location permissions.
+Shipping iOS/iPadOS builds use the standard CoreBluetooth permission and the
+in-app Bluetooth scanner, including on iOS 18 or later. This supports readers
+that are discoverable by their advertised name without advertising a service
+UUID, such as BeeSIM's name-based reference discovery flow.
+
+## Why AccessorySetupKit is disabled
+
+The initial integration enabled AccessorySetupKit for every iOS 18+ device.
+Its BeeSIM filter required both the `BeeSIM` name and the `AE30` service UUID.
+The BeeSIM reference client instead filters only by name and lists `AE30` as
+an optional GATT service. A service accessible after connecting is not proof
+that the reader advertises it. The AccessorySetupKit filter therefore added
+an unverified discovery requirement, and BeeSIM stopped working for users.
+
+Declaring `Bluetooth` in `NSAccessorySetupKitSupports` also changes the app's
+Bluetooth authorization model: CoreBluetooth scans only return accessories
+already authorized through the system picker. Adding an in-app scan fallback
+cannot restore discovery of a reader the picker cannot authorize. The opt-in
+has consequently been removed from both the public and branded Info.plist.
+The Bluetooth usage descriptions remain so the ordinary permission flow works.
+
+## Retained experimental integration
+
+The native plugin and Dart picker remain available for development. They are
+inactive unless a test host explicitly adds `Bluetooth` to the
+`NSAccessorySetupKitSupports` array. The plugin reports unsupported without
+that declaration, selecting the existing in-app scanner.
+
+Before enabling the system picker again, capture and verify the advertisements
+of every supported reader and firmware family, including BeeSIM. Test both
+fresh installs and upgrades from the AccessorySetupKit build on physical iOS
+devices. A runtime switch alone cannot change the bundle's authorization model.
+
+When explicitly enabled on iOS/iPadOS 18 or later, AccessorySetupKit shows
+Apple's discovery and authorization sheet. Cancelling it does not start a
+general Bluetooth scan or request Bluetooth/location permissions.
 
 Previously authorized readers are listed on subsequent uses of the reader
 button. Select one to reconnect or choose **Add Bluetooth reader** for the
@@ -27,7 +58,7 @@ name with its service UUID. No custom pairing protocol, MFi authentication,
 firmware extension or mandatory BLE bonding is added by this integration.
 Devices must actually advertise the configured identifiers while discoverable.
 
-The host declares Bluetooth support, names and service UUIDs in Info.plist.
+An opted-in test host declares Bluetooth support, names and service UUIDs in Info.plist.
 The plugin filters every request against these declarations before calling the
 framework, because undeclared filters can terminate the app.
 Plugin-provided readers use `scanServiceUuids` with `accessorySetupNames`
@@ -46,6 +77,7 @@ Real-device verification is still needed for each reader's advertisements,
 authorization sheet, cancellation, Settings revocation and reconnect behavior.
 Simulators do not provide this system Bluetooth onboarding experience.
 
-References: [AccessorySetupKit](https://developer.apple.com/documentation/accessorysetupkit),
+References: [Meet AccessorySetupKit (discovery and CoreBluetooth authorization)](https://developer.apple.com/videos/play/wwdc2024/10203/),
+[AccessorySetupKit](https://developer.apple.com/documentation/accessorysetupkit),
 [Discovering and configuring accessories](https://developer.apple.com/documentation/accessorysetupkit/discovering-and-configuring-accessories),
 [ASDiscoveryDescriptor](https://developer.apple.com/documentation/accessorysetupkit/asdiscoverydescriptor).

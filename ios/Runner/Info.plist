@@ -28,8 +28,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSAccessorySetupKitSupports</key>
-	<array><string>Bluetooth</string></array>
+	<!-- Keep standard Bluetooth authorization for name-only readers such as
+	     BeeSIM. Enabling AccessorySetupKit hides unapproved BLE peripherals. -->
 	<key>NSAccessorySetupBluetoothNames</key>
 	<array>
 		<string>ESTKme RED</string>
