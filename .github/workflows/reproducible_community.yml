@@ -1,0 +1,38 @@
+name: Reproducible Community APKs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths: ['android/**', 'lib/**', 'assets/**', 'l10n/**', 'local_packages/**', 'rust/**', 'rust_builder/**', 'pubspec.*', 'scripts/reproducible/**', 'scripts/reproduce_community.py', '.github/workflows/reproducible_community.yml']
+  pull_request:
+    branches: [master, release]
+    paths: ['android/**', 'lib/**', 'assets/**', 'l10n/**', 'local_packages/**', 'rust/**', 'rust_builder/**', 'pubspec.*', 'scripts/reproducible/**', 'scripts/reproduce_community.py', '.github/workflows/reproducible_community.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-repro-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reproduce:
+    name: Compare two clean ${{ matrix.variant }} builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [community, privileged]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build twice with the public key and compare APK bytes
+        run: python3 scripts/reproduce_community.py --variant '${{ matrix.variant }}' --verify --output dist/reproducible
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reproducible-${{ matrix.variant }}
+          path: dist/reproducible/

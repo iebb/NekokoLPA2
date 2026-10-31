@@ -76,13 +76,10 @@ jobs:
         env:
           BUILD_FLAVOR: ${{ matrix.flavor }}
         run: |
-          args=(--release --flavor "$BUILD_FLAVOR" --target lib/main.dart)
-          if [ "$BUILD_FLAVOR" = privileged ]; then
-            args+=(--target-platform android-arm64 --dart-define=PRIVILEGED_BUILD=true --dart-define=APP_VARIANT=community-rooted)
-          else
-            args+=(--dart-define=APP_VARIANT=community)
-          fi
-          flutter build apk "${args[@]}" --dart-define=GM_PSK_URL="$GM_PSK_URL"
+          python3 scripts/reproduce_community.py --variant "$BUILD_FLAVOR" --verify --output build/reproduced
+          mkdir -p build/app/outputs/flutter-apk
+          cp build/reproduced/community.apk "build/app/outputs/flutter-apk/app-${BUILD_FLAVOR}-release.apk"
+
       - name: Package Android artifacts
         env:
           VERSION_CLEAN: ${{ needs.meta.outputs.version_clean }}

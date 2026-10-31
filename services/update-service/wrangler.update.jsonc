@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "nlpa2-update-local",
+  "main": "src/update.ts",
+  "compatibility_date": "2026-10-31",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nlpa2-updates-local",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "vars": {
+    "DEFAULT_COLLECTION": "app_updates"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

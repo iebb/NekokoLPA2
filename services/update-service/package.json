@@ -1,0 +1,19 @@
+{
+  "name": "@nekokolpa/update-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "bundle:update": "wrangler deploy --config wrangler.update.jsonc --dry-run",
+    "bundle:config": "wrangler deploy --config wrangler.config.jsonc --dry-run"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261030.1",
+    "@types/node": "^26.0.0",
+    "typescript": "7.0.2",
+    "wrangler": "4.156.0"
+  },
+  "license": "MIT"
+}

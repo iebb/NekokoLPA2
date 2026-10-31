@@ -1,0 +1,36 @@
+name: Public release tools
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths: ['scripts/**', 'services/**', 'test_release/**', '.github/workflows/public_tools.yml']
+  pull_request:
+    branches: [master, release]
+    paths: ['scripts/**', 'services/**', 'test_release/**', '.github/workflows/public_tools.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+      - run: python3 -m unittest discover -s test_release -v
+      - run: npm ci
+        working-directory: services/update-service
+      - name: Check and test public service without credentials
+        working-directory: services/update-service
+        run: |
+          npm run typecheck
+          npm test
+          npm run bundle:update
+          npm run bundle:config
