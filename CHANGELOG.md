@@ -4,11 +4,19 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+## [2.4.3+603] - 2026-10-31
+
 ### Fixed
+- Restore standard iOS Bluetooth discovery so BeeSIM and other name-discovered readers are not excluded by AccessorySetupKit service filters.
+- Keep Bluetooth reader setup errors inside the dialog error handler.
 - Keep delivered notifications visible while they remain on the eUICC, and verify card removal before reporting success (#42).
 - Preserve a minimal delivery receipt when local history is deleted, preventing an already delivered notification from being sent again (#42).
 - Queue automatic notification processing after profile operations instead of losing requests during a concurrent badge refresh (#43).
 - Send notifications without requiring an unrelated connectivity-probe server to be reachable (#43).
+
+### Build and distribution
+- Build Community and rooted Community Android APKs from public source without private credentials, verifying identical signed APKs across two clean builds.
+- Publish shared build and release tooling in NekokoLPA2; keep brand data and distribution credentials separate.
 
 ## [2.4.2+602] - 2026-10-31
 
