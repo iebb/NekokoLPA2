@@ -30,6 +30,14 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
+    // AGP encrypts this optional record with a fresh nonce. It is outside the
+    // signed payload and makes otherwise identical APKs differ between builds.
+    // Public Community APKs must be reproducible without Google Play metadata.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+
     packagingOptions {
         jniLibs {
             useLegacyPackaging = true

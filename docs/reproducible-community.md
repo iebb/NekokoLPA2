@@ -25,6 +25,7 @@ python3 scripts/reproduce_community.py --ref HEAD --variant privileged --verify 
 - Android platform 36, build-tools 36.0.0 and NDK 28.2.13676358 are selected explicitly.
 - Rust is pinned to 1.99.1, including the Android targets. Cargokit honors that explicit version and uses `--locked`.
 - Pub dependencies must match `pubspec.lock`; Cargo dependencies use the committed lockfile.
+- Optional encrypted SDK-dependency records are disabled in the public Gradle configuration. The [AGP documentation](https://developer.android.com/build/dependencies#dependency-info) describes this signing-block metadata. In the initial four-build test, only record `0x504b4453` differed; all APK payload files, ZIP metadata and v2 signatures matched.
 - Container source/cache paths and locale are fixed. `SOURCE_DATE_EPOCH` comes from the source commit.
 
 The public release workflow uses the same recipe and requires the two-build comparison. The separate **Reproducible Community APKs** workflow can verify a source change without publishing a release. Both build with the public Community key and contain no repository-secret references.
