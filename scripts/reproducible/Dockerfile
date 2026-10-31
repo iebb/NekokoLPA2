@@ -15,7 +15,9 @@ ENV PATH=/usr/local/cargo/bin:$PATH \
 RUN rm -rf /sdks/flutter/bin/cache \
     && git -C /sdks/flutter fetch --depth 1 origin d3b14c876900e553bc736ca19295fc09e3853e8e \
     && git -C /sdks/flutter checkout --detach d3b14c876900e553bc736ca19295fc09e3853e8e \
+    && git -C /sdks/flutter tag --force 3.47.2 d3b14c876900e553bc736ca19295fc09e3853e8e \
     && flutter --disable-analytics \
+    && flutter --version --machine | jq -e '.frameworkVersion == "3.47.2" and .frameworkRevision == "d3b14c876900e553bc736ca19295fc09e3853e8e"' \
     && flutter precache --android \
     && sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358' \
     && rustup target add --toolchain 1.99.1 aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
