@@ -1,0 +1,37 @@
+name: Diagnose Community APK differences
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Reproducibility run containing saved mismatch artifacts
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [community, privileged]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: reproducible-${{ matrix.variant }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: inputs
+      - name: Compare payload, ZIP and signing records
+        run: |
+          python3 scripts/compare_apks.py inputs/mismatch/first/community.apk inputs/mismatch/second/community.apk > comparison.json
+          cat comparison.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-comparison-${{ matrix.variant }}
+          path: comparison.json
