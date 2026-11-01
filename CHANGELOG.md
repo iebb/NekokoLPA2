@@ -4,6 +4,8 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+## [2.4.4+604] - 2026-11-01
+
 ### Fixed
 - Allow bound UDP sockets in sandboxed macOS release builds, fixing VoWiFi ePDG attachment failing with "Operation not permitted".
 
