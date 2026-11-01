@@ -12,6 +12,9 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- ePDG/IMS binds a UDP socket to receive replies; UDP needs both roles. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
 	<key>com.apple.security.smartcard</key>
 	<true/>
 </dict>
