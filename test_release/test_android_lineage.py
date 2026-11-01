@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +13,53 @@ spec = importlib.util.spec_from_file_location("android_lineage", ROOT / "scripts
 lineage = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = lineage
 spec.loader.exec_module(lineage)
+
+
+class FindApksignerTest(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name).resolve()
+        self.script = self.directory / "app/scripts/android_lineage.py"
+        self.script.parent.mkdir(parents=True)
+        self.home = self.directory / "home"
+
+    def jar(self, relative):
+        path = self.directory / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+        return path
+
+    def find(self, **environment):
+        with patch.dict(os.environ, environment, clear=True), \
+                patch.object(lineage, "__file__", str(self.script)), \
+                patch.object(Path, "home", return_value=self.home):
+            return lineage.find_apksigner()
+
+    def test_prefers_recursive_bundled_signers_before_sdk(self):
+        local = self.jar("app/scripts/tools/apksigner.jar")
+        legacy = self.jar("signer/apksigner.jar")
+        self.jar("sdk/build-tools/36.0.0/lib/apksigner.jar")
+        sdk = str(self.directory / "sdk")
+        self.assertEqual(self.find(ANDROID_HOME=sdk), local)
+        local.unlink()
+        self.assertEqual(self.find(ANDROID_HOME=sdk), legacy)
+
+    def test_missing_or_empty_android_home_falls_back_to_other_roots(self):
+        sdk_root = self.jar("sdk/build-tools/36.0.0/lib/apksigner.jar")
+        for android_home in ("", str(self.directory / "missing")):
+            with self.subTest(android_home=android_home):
+                self.assertEqual(self.find(
+                    ANDROID_HOME=android_home,
+                    ANDROID_SDK_ROOT=str(self.directory / "sdk"),
+                ), sdk_root)
+        default = self.jar("home/Library/Android/sdk/build-tools/35.0.0/lib/apksigner.jar")
+        self.assertEqual(self.find(ANDROID_HOME=str(self.directory / "missing")), default)
+
+    def test_selects_newest_numeric_build_tools_version(self):
+        self.jar("sdk/build-tools/9.0.0/lib/apksigner.jar")
+        newest = self.jar("sdk/build-tools/36.0.0/lib/apksigner.jar")
+        self.assertEqual(self.find(ANDROID_HOME=str(self.directory / "sdk")), newest)
 
 
 class LineageIntegrationTest(unittest.TestCase):

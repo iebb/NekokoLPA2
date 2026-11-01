@@ -17,15 +17,27 @@ def find_apksigner():
     explicit = os.environ.get("NLPA_APKSIGNER_JAR")
     if explicit:
         return Path(explicit)
+    script_dir = Path(__file__).resolve().parent
     # Release overlays keep the same keys and bundled signer beside the app.
-    legacy = Path(__file__).resolve().parents[2] / "signer/apksigner.jar"
-    if legacy.is_file():
-        return legacy
-    sdk = Path(os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or Path.home() / "Library/Android/sdk")
-    candidates = list((sdk / "build-tools").glob("*/lib/apksigner.jar"))
+    legacy = script_dir.parents[1] / "signer/apksigner.jar"
+    base_paths = [
+        script_dir,
+        legacy.parent,
+        os.environ.get("ANDROID_HOME"),
+        os.environ.get("ANDROID_SDK_ROOT"),
+        Path.home() / "Library/Android/sdk",
+    ]
+
     def version(path):
         return tuple(int(part) if part.isdigit() else 0 for part in path.parents[1].name.split('.'))
-    return max(candidates, key=version) if candidates else legacy
+
+    roots = dict.fromkeys(Path(base).expanduser() for base in base_paths if base)
+    for root in roots:
+        candidates = (path for path in root.rglob("apksigner.jar") if path.is_file())
+        signer = max(candidates, key=version, default=None)
+        if signer is not None:
+            return signer
+    return legacy
 
 DEFAULT_APKSIGNER = find_apksigner()
 
