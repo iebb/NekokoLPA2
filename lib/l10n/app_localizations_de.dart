@@ -997,6 +997,19 @@ class AppLocalizationsDe extends AppLocalizations {
       'VoWiFi ist experimentell. Es kommuniziert direkt mit Ihrem Mobilfunkanbieter und funktioniert nur mit einem kompatiblen externen SIM-/eSIM-Leser, der rohe APDUs unterstützt. Die Kompatibilität von Anbietern und Lesern kann variieren.';
 
   @override
+  String get vowifiAutoRenewTitle => 'Auto-renew sessions';
+
+  @override
+  String get vowifiAutoRenewSubtitle =>
+      'Renew sessions with less than 10% time remaining, switching profiles and authenticating when needed.';
+
+  @override
+  String get vowifiAutoRenewEnabled => 'Auto-renew enabled';
+
+  @override
+  String get vowifiAutoRenewDue => 'Renewal due (<10% remaining)';
+
+  @override
   String get processing => 'Wird verarbeitet...';
 
   @override

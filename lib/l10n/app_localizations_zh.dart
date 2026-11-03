@@ -931,6 +931,19 @@ class AppLocalizationsZh extends AppLocalizations {
       'VoWiFi 为实验性功能。它会直接与您的移动网络运营商通信，且仅支持兼容原始 APDU 的外置 SIM/eSIM 读卡器。运营商与读卡器的兼容性可能有所不同。';
 
   @override
+  String get vowifiAutoRenewTitle => 'Auto-renew sessions';
+
+  @override
+  String get vowifiAutoRenewSubtitle =>
+      'Renew sessions with less than 10% time remaining, switching profiles and authenticating when needed.';
+
+  @override
+  String get vowifiAutoRenewEnabled => 'Auto-renew enabled';
+
+  @override
+  String get vowifiAutoRenewDue => 'Renewal due (<10% remaining)';
+
+  @override
   String get processing => '处理中...';
 
   @override

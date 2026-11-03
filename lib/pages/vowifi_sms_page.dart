@@ -5,12 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nlpa2/vowifi_sms/vowifi_sms_plugin.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/vowifi_sms_service.dart';
+import '../settings/app_settings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/styled_header_scaffold.dart';
 
 class VowifiSmsPage extends StatefulWidget {
-  const VowifiSmsPage({super.key});
+  const VowifiSmsPage({super.key, this.initialSessionId});
+
+  final String? initialSessionId;
 
   @override
   State<VowifiSmsPage> createState() => _VowifiSmsPageState();
@@ -27,6 +31,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
   @override
   void initState() {
     super.initState();
+    _selectedSessionId = widget.initialSessionId;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         setState(() {});
@@ -47,8 +52,9 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: _service,
+      listenable: Listenable.merge([_service, AppSettings()]),
       builder: (context, _) {
+        final l10n = AppLocalizations.of(context)!;
         final sessions = _service.sessions;
         if (sessions.isNotEmpty &&
             !sessions.any((session) => session.id == _selectedSessionId)) {
@@ -63,6 +69,19 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
           title: 'VoWiFi',
           subtitle: '${sessions.length} active session(s)',
           actions: [
+            IconButton(
+              tooltip: l10n.vowifiAutoRenewSubtitle,
+              isSelected: AppSettings().vowifiAutoRenew,
+              onPressed: () => AppSettings().setVowifiAutoRenew(
+                !AppSettings().vowifiAutoRenew,
+              ),
+              icon: Icon(
+                Icons.autorenew,
+                color: AppSettings().vowifiAutoRenew
+                    ? Theme.of(context).colorScheme.primary
+                    : null,
+              ),
+            ),
             IconButton(
               tooltip: 'Disconnect all',
               onPressed: _service.busy || sessions.isEmpty
@@ -265,6 +284,31 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                     style: theme.textTheme.labelSmall,
                   ),
                 ),
+                if (AppSettings().vowifiAutoRenew) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.autorenew,
+                        size: 11,
+                        color: session.needsAutoRenew
+                            ? theme.colorScheme.primary
+                            : AppTheme.onSurfaceSubtle(context),
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        AppLocalizations.of(context)!.vowifiAutoRenewTitle,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontSize: 9,
+                          color: session.needsAutoRenew
+                              ? theme.colorScheme.primary
+                              : AppTheme.onSurfaceSubtle(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ],
@@ -554,6 +598,35 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                   fontWeight: FontWeight.w800,
                 ),
               ),
+              if (AppSettings().vowifiAutoRenew)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.autorenew,
+                        size: 13,
+                        color: session.needsAutoRenew
+                            ? theme.colorScheme.primary
+                            : AppTheme.onSurfaceSubtle(context),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        session.needsAutoRenew
+                            ? AppLocalizations.of(context)!.vowifiAutoRenewDue
+                            : AppLocalizations.of(
+                                context,
+                              )!.vowifiAutoRenewEnabled,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: session.needsAutoRenew
+                              ? theme.colorScheme.primary
+                              : AppTheme.onSurfaceSubtle(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ],

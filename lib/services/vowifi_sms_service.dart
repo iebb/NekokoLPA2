@@ -7,8 +7,10 @@ import 'package:nlpa2/vowifi_sms/vowifi_sms_plugin.dart';
 import '../adapter/euicc_adapter.dart';
 import '../models/euicc_profile.dart';
 import 'operator_icon_service.dart';
+import 'local_notification_service.dart';
 import 'vowifi_sim_service.dart';
 import '../settings/app_settings.dart';
+import '../vowifi/privacy_redaction.dart';
 import '../utils/imei_codec.dart';
 import '../utils/vowifi_reader_support.dart';
 
@@ -61,6 +63,8 @@ class VowifiSessionInfo {
   List<String> associatedIdentities = <String>[];
   String selectedIdentity = '';
   DateTime? expiresAt;
+  Duration? totalDuration;
+  DateTime? lastRenewalAttempt;
 
   Duration get remaining {
     final expiresAt = this.expiresAt;
@@ -69,6 +73,17 @@ class VowifiSessionInfo {
     }
     final diff = expiresAt.difference(DateTime.now());
     return diff.isNegative ? Duration.zero : diff;
+  }
+
+  bool get needsAutoRenew {
+    if (state != VowifiSmsConnectionState.registered || expiresAt == null) {
+      return false;
+    }
+    final total = totalDuration ?? const Duration(seconds: 3600);
+    if (total <= Duration.zero) {
+      return false;
+    }
+    return remaining.inMicroseconds * 10 < total.inMicroseconds;
   }
 
   Future<void> dispose() async {
@@ -80,14 +95,22 @@ class VowifiSessionInfo {
 class VowifiSmsService extends ChangeNotifier {
   VowifiSmsService._()
     : _simService = VowifiSimService(),
+      _notificationService = LocalNotificationService(),
       _clientFactory = null;
 
   @visibleForTesting
   VowifiSmsService.forTesting({
     required VowifiSimService simService,
+    LocalNotificationService? notificationService,
     VowifiSmsClientFactory? clientFactory,
+    bool startTimer = false,
   }) : _simService = simService,
-       _clientFactory = clientFactory;
+       _notificationService = notificationService ?? LocalNotificationService(),
+       _clientFactory = clientFactory {
+    if (startTimer) {
+      _startAutoRenewTimer();
+    }
+  }
 
   static final VowifiSmsService _instance = VowifiSmsService._();
   factory VowifiSmsService() => _instance;
@@ -95,9 +118,11 @@ class VowifiSmsService extends ChangeNotifier {
   static final Logger _log = Logger('VowifiSmsService');
 
   final VowifiSimService _simService;
+  final LocalNotificationService _notificationService;
   final VowifiSmsClientFactory? _clientFactory;
   final Map<String, VowifiSessionInfo> _sessions =
       <String, VowifiSessionInfo>{};
+  Timer? _autoRenewTimer;
   bool _busy = false;
   int _operationEpoch = 0;
   String? _lastInfo;
@@ -120,6 +145,8 @@ class VowifiSmsService extends ChangeNotifier {
     final operationEpoch = _beginOperation();
     requireVowifiReader(adapter, reader);
     return _runBusy(() async {
+      await _notificationService.requestDesktopNotificationPermission();
+      _ensureOperationActive(operationEpoch);
       onLog?.call('Loading current SIM from ${reader.name}');
       _log.info('Loading current SIM to VoWiFi reader=${reader.name}');
       final info = await _simService.probe(adapter, reader, onLog: onLog);
@@ -201,6 +228,11 @@ class VowifiSmsService extends ChangeNotifier {
       }
       session.state = VowifiSmsConnectionState.registered;
       session.expiresAt = client.registeredUntil;
+      session.totalDuration =
+          client.registeredDuration ??
+          session.expiresAt?.difference(DateTime.now()) ??
+          const Duration(seconds: 3600);
+      _startAutoRenewTimer();
       session.associatedIdentity = client.publicIdentity;
       session.associatedIdentities = client.associatedIdentities;
       session.selectedIdentity = client.preferredIdentity;
@@ -258,6 +290,10 @@ class VowifiSmsService extends ChangeNotifier {
             await session.client.refreshRegistration();
             _ensureOperationActive(operationEpoch);
             session.expiresAt = session.client.registeredUntil;
+            session.totalDuration =
+                session.client.registeredDuration ??
+                session.totalDuration ??
+                const Duration(seconds: 3600);
             session.lastInfo = 'Registration refreshed';
             notifyListeners();
             return;
@@ -292,6 +328,10 @@ class VowifiSmsService extends ChangeNotifier {
         _ensureOperationActive(operationEpoch);
         session.state = VowifiSmsConnectionState.registered;
         session.expiresAt = session.client.registeredUntil;
+        session.totalDuration =
+            session.client.registeredDuration ??
+            session.totalDuration ??
+            const Duration(seconds: 3600);
         session.associatedIdentity = session.client.publicIdentity;
         session.associatedIdentities = session.client.associatedIdentities;
         session.selectedIdentity = session.client.preferredIdentity;
@@ -312,6 +352,10 @@ class VowifiSmsService extends ChangeNotifier {
       return;
     }
     await session.dispose();
+    if (_sessions.isEmpty) {
+      _autoRenewTimer?.cancel();
+      _autoRenewTimer = null;
+    }
     _lastInfo = 'Disconnected ${session.profileName}';
     notifyListeners();
   }
@@ -324,6 +368,8 @@ class VowifiSmsService extends ChangeNotifier {
   }
 
   Future<void> disableAndDisconnect() async {
+    _autoRenewTimer?.cancel();
+    _autoRenewTimer = null;
     _operationEpoch++;
     final sessions = _sessions.values.toList(growable: false);
     _sessions.clear();
@@ -409,11 +455,62 @@ class VowifiSmsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _startAutoRenewTimer() {
+    _autoRenewTimer?.cancel();
+    _autoRenewTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _checkAutoRenew(),
+    );
+  }
+
+  Future<void> _checkAutoRenew() async {
+    if (!AppSettings().vowifiEnabled || !AppSettings().vowifiAutoRenew) {
+      return;
+    }
+    if (_busy) {
+      return;
+    }
+    final now = DateTime.now();
+    for (final session in sessions) {
+      if (!session.needsAutoRenew) {
+        continue;
+      }
+      final lastAttempt = session.lastRenewalAttempt;
+      if (lastAttempt != null &&
+          now.difference(lastAttempt) < const Duration(seconds: 30)) {
+        continue;
+      }
+      session.lastRenewalAttempt = now;
+      _log.info(
+        'Auto-renewing VoWiFi session ${session.id} (${session.profileName}): '
+        'remaining=${session.remaining.inSeconds}s '
+        'threshold=${((session.totalDuration ?? const Duration(seconds: 3600)).inSeconds * 0.1).round()}s',
+      );
+      try {
+        await refreshSession(session.id);
+      } catch (error, stackTrace) {
+        _log.warning(
+          'Auto-renewal failed for VoWiFi session ${session.id}: $error',
+          error,
+          stackTrace,
+        );
+      }
+      break;
+    }
+  }
+
+  @visibleForTesting
+  Future<void> checkAutoRenewForTesting() => _checkAutoRenew();
+
   void _handleEvent(VowifiSessionInfo session, VowifiSmsEvent event) {
     if (event.state != null) {
       session.state = event.state!;
       if (event.state == VowifiSmsConnectionState.registered) {
         session.expiresAt = session.client.registeredUntil;
+        session.totalDuration =
+            session.client.registeredDuration ??
+            session.totalDuration ??
+            const Duration(seconds: 3600);
         session.associatedIdentity = session.client.publicIdentity;
         session.associatedIdentities = session.client.associatedIdentities;
         session.selectedIdentity = session.client.preferredIdentity;
@@ -434,8 +531,49 @@ class VowifiSmsService extends ChangeNotifier {
     }
     if (event.message != null) {
       session.messages.add(event.message!);
+      if (event.message!.direction == VowifiSmsDirection.inbound) {
+        unawaited(_notifyIncomingSms(session, event.message!));
+      }
     }
     notifyListeners();
+  }
+
+  Future<void> _notifyIncomingSms(
+    VowifiSessionInfo session,
+    VowifiSmsMessage message,
+  ) async {
+    try {
+      final rawSender = message.peer.trim();
+      final rawText = message.text.trim();
+      final displaySender = VoWifiPrivacy.isEnabled
+          ? (rawSender.isNotEmpty
+                ? VoWifiPrivacy.phoneNumber(rawSender)
+                : 'SMS')
+          : (rawSender.isNotEmpty ? rawSender : 'SMS');
+      final displayText = VoWifiPrivacy.isEnabled
+          ? VoWifiPrivacy.privateText(rawText, '••••••')
+          : rawText;
+      await _notificationService.showVoWifiSmsNotification(
+        sender: displaySender,
+        body: displayText,
+        subtitle: session.profileName.isNotEmpty
+            ? VoWifiPrivacy.identifiers(session.profileName)
+            : null,
+        lineKey: session.id,
+      );
+    } catch (error, stackTrace) {
+      _log.warning(
+        'Failed to show SMS notification: $error',
+        error,
+        stackTrace,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoRenewTimer?.cancel();
+    super.dispose();
   }
 
   Future<T> _runBusy<T>(Future<T> Function() action) async {

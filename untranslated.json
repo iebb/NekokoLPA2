@@ -1,1 +1,64 @@
-{}
+{
+  "de": [
+    "vowifiAutoRenewTitle",
+    "vowifiAutoRenewSubtitle",
+    "vowifiAutoRenewEnabled",
+    "vowifiAutoRenewDue"
+  ],
+
+  "es": [
+    "vowifiAutoRenewTitle",
+    "vowifiAutoRenewSubtitle",
+    "vowifiAutoRenewEnabled",
+    "vowifiAutoRenewDue"
+  ],
+
+  "fr": [
+    "vowifiAutoRenewTitle",
+    "vowifiAutoRenewSubtitle",
+    "vowifiAutoRenewEnabled",
+    "vowifiAutoRenewDue"
+  ],
+
+  "it": [
+    "vowifiAutoRenewTitle",
+    "vowifiAutoRenewSubtitle",
+    "vowifiAutoRenewEnabled",
+    "vowifiAutoRenewDue"
+  ],
+
+  "ja": [
+    "vowifiAutoRenewTitle",
+    "vowifiAutoRenewSubtitle",
+    "vowifiAutoRenewEnabled",
+    "vowifiAutoRenewDue"
+  ],
+
+  "ko": [
+    "vowifiAutoRenewTitle",
+    "vowifiAutoRenewSubtitle",
+    "vowifiAutoRenewEnabled",
+    "vowifiAutoRenewDue"
+  ],
+
+  "ru": [
+    "vowifiAutoRenewTitle",
+    "vowifiAutoRenewSubtitle",
+    "vowifiAutoRenewEnabled",
+    "vowifiAutoRenewDue"
+  ],
+
+  "zh": [
+    "vowifiAutoRenewTitle",
+    "vowifiAutoRenewSubtitle",
+    "vowifiAutoRenewEnabled",
+    "vowifiAutoRenewDue"
+  ],
+
+  "zh_TW": [
+    "vowifiAutoRenewTitle",
+    "vowifiAutoRenewSubtitle",
+    "vowifiAutoRenewEnabled",
+    "vowifiAutoRenewDue"
+  ]
+}

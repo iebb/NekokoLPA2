@@ -29,6 +29,8 @@ class LocalNotificationService {
   final Logger _log = Logger('LocalNotificationService');
   bool _initialized = false;
   Future<void>? _initialization;
+  int _nextSmsNotificationId =
+      DateTime.now().millisecondsSinceEpoch & 0x3fffffff;
 
   // Stream for notification taps
   final _payloadController = StreamController<String?>.broadcast();
@@ -94,6 +96,89 @@ class LocalNotificationService {
     _log.info('LocalNotificationService initialized');
   }
 
+  Future<bool> requestDesktopNotificationPermission() async {
+    if (kIsWeb) return false;
+    try {
+      await init();
+      if (PlatformX.isMacOS) {
+        return await _notificationsPlugin
+                .resolvePlatformSpecificImplementation<
+                  fln.MacOSFlutterLocalNotificationsPlugin
+                >()
+                ?.requestPermissions(alert: true, badge: false, sound: true) ??
+            false;
+      }
+      return true;
+    } catch (e) {
+      _log.warning('Could not request desktop notification permissions: $e');
+      return false;
+    }
+  }
+
+  /// Displays an SMS with system notifications on desktop and supported platforms.
+  Future<void> showVoWifiSmsNotification({
+    required String sender,
+    required String body,
+    String? lineKey,
+    String? subtitle,
+    int? messageId,
+  }) async {
+    if (kIsWeb) return;
+    await init();
+
+    final id = messageId != null
+        ? (0x40000000 | (messageId & 0x3fffffff))
+        : (0x40000000 | (_nextSmsNotificationId++ & 0x3fffffff));
+
+    final title = sender.trim().isNotEmpty ? sender.trim() : 'SMS';
+
+    final darwinDetails = fln.DarwinNotificationDetails(
+      presentAlert: true,
+      presentBanner: true,
+      presentList: true,
+      presentSound: true,
+      presentBadge: false,
+      subtitle: subtitle,
+      threadIdentifier: 'vowifi.sms',
+    );
+
+    const linuxDetails = fln.LinuxNotificationDetails();
+    const windowsDetails = fln.WindowsNotificationDetails();
+
+    const androidDetails = fln.AndroidNotificationDetails(
+      'vowifi_sms_channel',
+      'VoWiFi SMS',
+      channelDescription: 'Incoming VoWiFi SMS notifications',
+      importance: fln.Importance.high,
+      priority: fln.Priority.high,
+    );
+
+    final details = fln.NotificationDetails(
+      iOS: darwinDetails,
+      macOS: darwinDetails,
+      linux: linuxDetails,
+      windows: windowsDetails,
+      android: androidDetails,
+    );
+
+    final payload = jsonEncode({
+      'type': 'vowifi_sms',
+      'lineKey': lineKey ?? '',
+    });
+
+    await _notificationsPlugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: details,
+      payload: payload,
+    );
+
+    _foregroundNotificationController.add(
+      ForegroundNotification(title: title, body: body, payload: payload),
+    );
+  }
+
   /// Ask from the Connect action; delivery never prompts for authorization.
   Future<bool> requestVoWifiSmsPermission() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return false;
@@ -150,28 +235,23 @@ class LocalNotificationService {
   Future<bool> checkPermission() async {
     if (kIsWeb) return false;
     if (PlatformX.isIOS) {
-      // Use permission_handler for status check first as it is more reliable for just checking
       final status = await Permission.notification.status;
       if (status.isGranted || status.isProvisional) {
         return true;
       }
-
-      // Fallback: If not definitively granted, try requesting via the plugin
-      if (PlatformX.isIOS) {
-        final res = await _notificationsPlugin
-            .resolvePlatformSpecificImplementation<
-              fln.IOSFlutterLocalNotificationsPlugin
-            >()
-            ?.requestPermissions(alert: true, badge: true, sound: true);
-        return res ?? false;
-      } else {
-        final res = await _notificationsPlugin
-            .resolvePlatformSpecificImplementation<
-              fln.MacOSFlutterLocalNotificationsPlugin
-            >()
-            ?.requestPermissions(alert: true, badge: true, sound: true);
-        return res ?? false;
-      }
+      final res = await _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+            fln.IOSFlutterLocalNotificationsPlugin
+          >()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+      return res ?? false;
+    } else if (PlatformX.isMacOS) {
+      final res = await _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+            fln.MacOSFlutterLocalNotificationsPlugin
+          >()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+      return res ?? false;
     } else if (PlatformX.isAndroid) {
       return await _notificationsPlugin
               .resolvePlatformSpecificImplementation<

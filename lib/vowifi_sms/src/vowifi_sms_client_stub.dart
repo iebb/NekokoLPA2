@@ -24,6 +24,7 @@ class VowifiSmsClient {
 
   Stream<VowifiSmsEvent> get events => _events.stream;
   DateTime? get registeredUntil => null;
+  Duration? get registeredDuration => null;
   String get publicIdentity => '';
   List<String> get associatedIdentities => const <String>[];
   String get preferredIdentity => '';

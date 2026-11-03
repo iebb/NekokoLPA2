@@ -991,6 +991,19 @@ class AppLocalizationsRu extends AppLocalizations {
       'VoWiFi — экспериментальная функция. Она напрямую взаимодействует с вашим мобильным оператором и работает только с совместимым внешним считывателем SIM/eSIM, поддерживающим сырые APDU. Совместимость с оператором и считывателем может отличаться.';
 
   @override
+  String get vowifiAutoRenewTitle => 'Auto-renew sessions';
+
+  @override
+  String get vowifiAutoRenewSubtitle =>
+      'Renew sessions with less than 10% time remaining, switching profiles and authenticating when needed.';
+
+  @override
+  String get vowifiAutoRenewEnabled => 'Auto-renew enabled';
+
+  @override
+  String get vowifiAutoRenewDue => 'Renewal due (<10% remaining)';
+
+  @override
   String get processing => 'Обработка…';
 
   @override

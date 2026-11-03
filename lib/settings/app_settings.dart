@@ -445,9 +445,11 @@ class AppSettings extends ChangeNotifier {
 
   static const String _vowifiEnabledKey = 'vowifiEnabled';
   static const String _vowifiConsentVersionKey = 'vowifiConsentVersion';
+  static const String _vowifiAutoRenewKey = 'vowifiAutoRenew';
 
   bool _vowifiEnabled = false;
   int? _vowifiConsentVersion;
+  bool _vowifiAutoRenew = false;
   bool get vowifiAvailable => BuildCapabilities.isVowifiAvailable(
     isEsim9Build: isEsim9Build,
     isAndroid: PlatformX.isAndroid,
@@ -458,6 +460,18 @@ class AppSettings extends ChangeNotifier {
     storedEnabled: _vowifiEnabled,
     consentVersion: _vowifiConsentVersion,
   );
+  bool get vowifiAutoRenew => _vowifiAutoRenew && vowifiEnabled;
+
+  Future<void> setVowifiAutoRenew(bool value) async {
+    final was = vowifiAutoRenew;
+    _vowifiAutoRenew = value;
+    if (value) {
+      await _prefs?.setBool(_vowifiAutoRenewKey, true);
+    } else {
+      await _prefs?.remove(_vowifiAutoRenewKey);
+    }
+    if (was != vowifiAutoRenew) notifyListeners();
+  }
 
   Future<void> setRemoCardPassword(String? value) async {
     _remoCardPassword = value;
@@ -677,6 +691,7 @@ class AppSettings extends ChangeNotifier {
     _aids = _prefs?.getStringList('aids') ?? _aids;
     _vowifiEnabled = _prefs?.getBool(_vowifiEnabledKey) ?? false;
     _vowifiConsentVersion = _prefs?.getInt(_vowifiConsentVersionKey);
+    _vowifiAutoRenew = _prefs?.getBool(_vowifiAutoRenewKey) ?? false;
 
     final phoneFormatIdx = _prefs?.getInt('phoneFormatStrategy');
     if (phoneFormatIdx != null &&
@@ -717,7 +732,9 @@ class AppSettings extends ChangeNotifier {
 
     if (!vowifiEnabled) {
       _vowifiEnabled = false;
+      _vowifiAutoRenew = false;
       await _prefs?.remove(_vowifiEnabledKey);
+      await _prefs?.remove(_vowifiAutoRenewKey);
       if (!vowifiAvailable ||
           _vowifiConsentVersion != BuildCapabilities.vowifiConsentVersion) {
         _vowifiConsentVersion = null;
@@ -1316,7 +1333,9 @@ class AppSettings extends ChangeNotifier {
 
     if (!value || !vowifiAvailable || !disclaimerAccepted) {
       _vowifiEnabled = false;
+      _vowifiAutoRenew = false;
       await _prefs?.remove(_vowifiEnabledKey);
+      await _prefs?.remove(_vowifiAutoRenewKey);
       if (!vowifiAvailable) {
         _vowifiConsentVersion = null;
         await _prefs?.remove(_vowifiConsentVersionKey);

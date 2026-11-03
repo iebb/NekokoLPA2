@@ -63,6 +63,7 @@ class VowifiSmsClient {
   VowifiAkaResponse? _lastDigestAka;
   VowifiSmsConnectionState _state = VowifiSmsConnectionState.disconnected;
   DateTime? _registeredUntil;
+  Duration? _registeredDuration;
   String _publicIdentity = '';
   List<String> _associatedIdentities = const <String>[];
   String _preferredIdentityOverride = '';
@@ -72,6 +73,7 @@ class VowifiSmsClient {
   final Set<String> _recentIncomingKeySet = <String>{};
 
   DateTime? get registeredUntil => _registeredUntil;
+  Duration? get registeredDuration => _registeredDuration;
   String get publicIdentity => _publicIdentity;
   List<String> get associatedIdentities =>
       List<String>.unmodifiable(_associatedIdentities);
@@ -147,6 +149,7 @@ class VowifiSmsClient {
     _pendingRequest = null;
     _serviceRoutes = const [];
     _registrationExpires = null;
+    _registeredDuration = null;
     _digest.clear();
     _smsReportQueue.clear();
     _smsReportNotifier = null;
@@ -1205,7 +1208,8 @@ class VowifiSmsClient {
     ).firstMatch(contact);
     final contactExpires = int.tryParse(contactMatch?.group(1) ?? '');
     final seconds = contactExpires ?? directExpires ?? config.registerExpires;
-    return DateTime.now().add(Duration(seconds: seconds));
+    _registeredDuration = Duration(seconds: seconds);
+    return DateTime.now().add(_registeredDuration!);
   }
 
   String _extractAssociatedIdentity(_SipMessage response) {

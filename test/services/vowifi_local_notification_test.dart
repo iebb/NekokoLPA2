@@ -72,6 +72,48 @@ void main() {
     );
   });
 
+  test(
+    'showVoWifiSmsNotification delivers explicit sender, body, and payload',
+    () async {
+      const sender = '+12025550123';
+      const body = 'Hello from carrier Wi-Fi';
+      const lineKey = 'test-session-1';
+
+      await service.showVoWifiSmsNotification(
+        sender: sender,
+        body: body,
+        lineKey: lineKey,
+        subtitle: 'Profile Alpha',
+      );
+
+      expect(calls.map((call) => call.method), ['show']);
+      final notification = calls.single.arguments as Map;
+      expect(notification['title'], sender);
+      expect(notification['body'], body);
+      expect(jsonDecode(notification['payload'] as String), {
+        'type': 'vowifi_sms',
+        'lineKey': lineKey,
+      });
+      expect(
+        notification['platformSpecifics'],
+        containsPair('subtitle', 'Profile Alpha'),
+      );
+    },
+  );
+
+  test('SMS notifications in a burst use distinct IDs', () async {
+    await Future.wait([
+      for (var index = 0; index < 3; index++)
+        service.showVoWifiSmsNotification(sender: 'Sender', body: 'SMS $index'),
+    ]);
+
+    final ids = calls
+        .where((call) => call.method == 'show')
+        .map((call) => (call.arguments as Map)['id'])
+        .toSet();
+    expect(ids, hasLength(3));
+  });
+
   for (final permission in <bool?>[true, false, null]) {
     test(
       'explicit permission request returns ${permission ?? false}',

@@ -945,6 +945,19 @@ class AppLocalizationsKo extends AppLocalizations {
       'VoWiFi는 실험적 기능입니다. 이동통신사와 직접 통신하며, 원시 APDU를 지원하는 호환 외장 SIM/eSIM 리더에서만 작동합니다. 통신사와 리더에 따라 호환성이 다를 수 있습니다.';
 
   @override
+  String get vowifiAutoRenewTitle => 'Auto-renew sessions';
+
+  @override
+  String get vowifiAutoRenewSubtitle =>
+      'Renew sessions with less than 10% time remaining, switching profiles and authenticating when needed.';
+
+  @override
+  String get vowifiAutoRenewEnabled => 'Auto-renew enabled';
+
+  @override
+  String get vowifiAutoRenewDue => 'Renewal due (<10% remaining)';
+
+  @override
   String get processing => '처리 중...';
 
   @override

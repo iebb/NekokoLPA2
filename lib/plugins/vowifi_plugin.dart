@@ -25,16 +25,30 @@ class VowifiPlugin extends ProfilePlugin {
   @override
   List<PluginSettingsToggle> settingsToggles(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    return [
+    final settings = AppSettings();
+    final toggles = <PluginSettingsToggle>[
       PluginSettingsToggle(
         icon: Icons.wifi_calling_3_outlined,
         color: Colors.blueAccent,
         title: l10n.vowifi,
         subtitle: l10n.vowifiSubtitle,
-        value: AppSettings().vowifiEnabled,
+        value: settings.vowifiEnabled,
         onChanged: _setEnabled,
       ),
     ];
+    if (settings.vowifiEnabled) {
+      toggles.add(
+        PluginSettingsToggle(
+          icon: Icons.autorenew,
+          color: Colors.teal,
+          title: l10n.vowifiAutoRenewTitle,
+          subtitle: l10n.vowifiAutoRenewSubtitle,
+          value: settings.vowifiAutoRenew,
+          onChanged: (context, value) => settings.setVowifiAutoRenew(value),
+        ),
+      );
+    }
+    return toggles;
   }
 
   Future<void> _setEnabled(BuildContext context, bool enabled) async {
