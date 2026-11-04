@@ -93,7 +93,6 @@ Translations are managed on [Crowdin](https://crowdin.com/project/nekokolpa2).
 | --- | --- | --- | --- | --- |
 | Experimental desktop SMS over IMS | Opt-in, external raw-APDU reader | — | Disabled | — |
 | Reader-backed Wi-Fi calling | — | External USB CCID or supported RED BLE reader | Disabled | — |
-| VoWiFi through OMAPI | Disabled | Disabled | Disabled | — |
 
 ### Desktop setup
 
