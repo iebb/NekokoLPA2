@@ -1388,6 +1388,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get configuredServers => 'Serveurs configurés';
 
   @override
+  String get favoriteServers => 'Favorite RemoCard Servers';
+
+  @override
   String get secureHttps => 'Sécurisé (HTTPS)';
 
   @override

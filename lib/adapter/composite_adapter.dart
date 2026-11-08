@@ -420,8 +420,7 @@ class CompositeAdapter extends BaseAdapter {
 
     for (final url in AppSettings().remoCardUrls) {
       try {
-        final adapter = RemoCardAdapter(url);
-        remoteReaders.addAll(await adapter.listReaders());
+        remoteReaders.addAll(await loadRemoteReadersFromUrl(url));
       } catch (e) {
         _log.warning('Failed to list RemoCard readers at $url: $e');
         if (e is RemoCardInvalidPasswordException) {
@@ -438,12 +437,38 @@ class CompositeAdapter extends BaseAdapter {
       );
     }
 
-    // Update cache and internal list
-    for (final r in remoteReaders) {
-      _readerCache[r.id] = r;
+    return remoteReaders;
+  }
+
+  /// Loads the readers exposed by one favorite RemoCard server only.
+  Future<List<Reader>> loadRemoteReadersFromUrl(String url) async {
+    final adapter = _remoteAdapters.putIfAbsent(
+      url,
+      () => RemoCardAdapter(url),
+    );
+    final readers = await adapter.listReaders();
+    for (final reader in readers) {
+      _readerCache[reader.id] = reader;
+    }
+    _remoteInitTried.add(url);
+    return readers;
+  }
+
+  /// Permanently forgets a favorite server after an explicit trash action.
+  Future<void> forgetRemoteServer(String url) async {
+    final connected = _connectedAdapter;
+    if (connected is RemoCardAdapter && connected.baseUrl == url) {
+      await disconnect();
     }
 
-    return remoteReaders;
+    _readerCache.removeWhere((_, reader) {
+      final source = reader.source;
+      return source is RemoCardAdapter && source.baseUrl == url;
+    });
+    _remoteAdapters.remove(url);
+    _remoteInitTried.remove(url);
+    await AppSettings().removeRemoCardUrl(url);
+    _log.info('Forgot favorite RemoCard server: $url');
   }
 
   void removeReader(String readerId) {
@@ -451,13 +476,10 @@ class CompositeAdapter extends BaseAdapter {
       final reader = _readerCache[readerId]!;
       _readerCache.remove(readerId);
 
-      // Also remove from persistence
-      if (reader.source is RemoCardAdapter) {
-        final url = (reader.source as RemoCardAdapter).baseUrl;
-        if (url != null) {
-          AppSettings().removeRemoCardUrl(url);
-        }
-      } else if (reader.source is BleAdapter) {
+      // Removing or disconnecting a live RemoCard reader must not forget its
+      // favorite server. Only forgetRemoteServer(), called by the red trash
+      // action in settings, changes persistent RemoCard configuration.
+      if (reader.source is BleAdapter) {
         // Extract ID from name "type: name|ID"
         final parts = readerId.split('|');
         if (parts.length > 1) {

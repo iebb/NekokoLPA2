@@ -1525,7 +1525,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     if (_selectedReader == null) return;
     final reader = _selectedReader!;
 
-    _log.info("Disconnecting and removing reader: ${reader.id}");
+    _log.info("Disconnecting session reader: ${reader.id}");
 
     setState(() {
       _loading = true;
@@ -5080,14 +5080,6 @@ class _ProfilesScreenState extends State<ProfilesScreen>
           ),
         ),
         actions: [
-          if (url != null)
-            TextButton(
-              onPressed: () => Navigator.pop(context, "DELETE_CONNECTION"),
-              child: Text(
-                AppLocalizations.of(context)!.deleteConnection,
-                style: const TextStyle(color: Colors.red),
-              ),
-            ),
           TextButton(
             onPressed: () => Navigator.pop(context, null),
             child: Text(AppLocalizations.of(context)!.cancel),
@@ -5136,14 +5128,6 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         try {
           String? result;
           result = await _promptForRemotePassword(url: targetUrl);
-
-          if (result == "DELETE_CONNECTION") {
-            if (targetUrl != null) {
-              await AppSettings().removeRemoCardUrl(targetUrl);
-              await _loadReaders(skipLoading: true);
-            }
-            return false;
-          }
 
           final password = result;
           if (password != null && password.isNotEmpty) {

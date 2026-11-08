@@ -1379,6 +1379,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get configuredServers => 'Настроенные серверы';
 
   @override
+  String get favoriteServers => 'Favorite RemoCard Servers';
+
+  @override
   String get secureHttps => 'Защищённое (HTTPS)';
 
   @override

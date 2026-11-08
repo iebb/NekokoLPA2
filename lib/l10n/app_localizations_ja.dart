@@ -1325,6 +1325,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get configuredServers => '構成済みのサーバー';
 
   @override
+  String get favoriteServers => 'Favorite RemoCard Servers';
+
+  @override
   String get secureHttps => 'セキュア (HTTPS)';
 
   @override

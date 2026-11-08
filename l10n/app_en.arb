@@ -455,6 +455,10 @@
   "portLabel": "Port",
   "passwordOptionalLabel": "Password (Optional)",
   "configuredServers": "Configured Servers",
+  "favoriteServers": "Favorite RemoCard Servers",
+  "@favoriteServers": {
+    "description": "Heading for persistent RemoCard server favorites"
+  },
   "secureHttps": "Secure (HTTPS)",
   "insecureHttp": "Insecure (HTTP)",
   "urlCopied": "URL copied",
