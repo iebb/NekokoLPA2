@@ -263,6 +263,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
   Timer? _simChangeDebounce;
   StreamSubscription<String>? _deepLinkSub;
   StreamSubscription? _simChangeSub;
+  StreamSubscription<void>? _readerListChangedSub;
 
   bool _isBle(Reader? reader) {
     return reader?.source is BleAdapter;
@@ -638,6 +639,14 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       }
     });
 
+    // Remote settings can discover or remove RemoCard readers while this
+    // screen is behind the settings route. Refresh the Select Device list as
+    // soon as that shared adapter cache changes.
+    _readerListChangedSub = _adapter.readerListChangedStream.listen((_) {
+      if (!mounted || _voWifiOwnsReader) return;
+      unawaited(_loadReaders(skipLoading: true));
+    });
+
     // Check initial values
     _onPendingLpaChanged();
     _onPendingSigningUriChanged();
@@ -662,6 +671,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     ProfilesScreen.isSwitchingGlobal = false;
     _simChangeDebounce?.cancel();
     _simChangeSub?.cancel();
+    _readerListChangedSub?.cancel();
     BleManager().removeListener(_onBleManagerChanged);
     AppSettings().removeListener(_onSettingsChanged);
     NotificationService().isProcessing.removeListener(_onProcessingChanged);

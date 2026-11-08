@@ -459,6 +459,8 @@
   "@favoriteServers": {
     "description": "Heading for persistent RemoCard server favorites"
   },
+  "addToFavorites": "Add to favorites",
+  "removeFromFavorites": "Remove from favorites",
   "secureHttps": "Secure (HTTPS)",
   "insecureHttp": "Insecure (HTTP)",
   "urlCopied": "URL copied",

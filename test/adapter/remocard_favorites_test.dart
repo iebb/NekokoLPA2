@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nlpa2/adapter/composite_adapter.dart';
 import 'package:nlpa2/adapter/remote/remocard_adapter.dart';
+import 'package:nlpa2/settings/app_settings.dart';
 
 void main() {
   late CompositeAdapter composite;
@@ -46,11 +47,14 @@ void main() {
     );
   }
 
-  test('loads only the favorite selected by its cloud action', () async {
+  test('loads only the server selected by its cloud action', () async {
     final first = await startServer('Favorite A');
     final second = await startServer('Favorite B');
 
+    final changed = expectLater(composite.readerListChangedStream, emits(null));
+
     final readers = await composite.loadRemoteReadersFromUrl(first.url);
+    await changed;
 
     expect(first.paths, ['/listSlots']);
     expect(second.paths, isEmpty);
@@ -58,6 +62,8 @@ void main() {
     expect(readers.single.id, 'remocard:${first.url}|Favorite A');
     expect(readers.single.source, isA<RemoCardAdapter>());
     expect((readers.single.source as RemoCardAdapter).baseUrl, first.url);
+    expect(composite.remoteServerUrls, contains(first.url));
+    expect(AppSettings().remoCardUrls, isNot(contains(first.url)));
   });
 
   test(

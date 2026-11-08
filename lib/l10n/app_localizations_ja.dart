@@ -1328,6 +1328,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get favoriteServers => 'Favorite RemoCard Servers';
 
   @override
+  String get addToFavorites => 'Add to favorites';
+
+  @override
+  String get removeFromFavorites => 'Remove from favorites';
+
+  @override
   String get secureHttps => 'セキュア (HTTPS)';
 
   @override

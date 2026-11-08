@@ -41,6 +41,11 @@ class CompositeAdapter extends BaseAdapter {
   Stream<Map<String, dynamic>> get simChangeEventStream =>
       _simChangeEventController.stream;
 
+  final StreamController<void> _readerListChangedController =
+      StreamController<void>.broadcast();
+  Stream<void> get readerListChangedStream =>
+      _readerListChangedController.stream;
+
   final CcidAdapter _ccidAdapter = CcidAdapter();
   final WebCardAdapter _webCardAdapter = WebCardAdapter();
   final NBridgeAdapter _nbridgeAdapter = NBridgeAdapter();
@@ -60,6 +65,11 @@ class CompositeAdapter extends BaseAdapter {
 
   final Map<String, RemoCardAdapter> _remoteAdapters = {};
   final Set<String> _remoteInitTried = {};
+
+  /// RemoCard servers known during this app session. Persisted favorites are
+  /// included first, followed by temporary servers connected by the user.
+  List<String> get remoteServerUrls =>
+      <String>{...AppSettings().remoCardUrls, ..._remoteAdapters.keys}.toList();
 
   // Debouncing for SIM change events
   Timer? _simChangeDebounceTimer;
@@ -440,7 +450,7 @@ class CompositeAdapter extends BaseAdapter {
     return remoteReaders;
   }
 
-  /// Loads the readers exposed by one favorite RemoCard server only.
+  /// Loads the readers exposed by one RemoCard server only.
   Future<List<Reader>> loadRemoteReadersFromUrl(String url) async {
     final adapter = _remoteAdapters.putIfAbsent(
       url,
@@ -451,6 +461,7 @@ class CompositeAdapter extends BaseAdapter {
       _readerCache[reader.id] = reader;
     }
     _remoteInitTried.add(url);
+    _readerListChangedController.add(null);
     return readers;
   }
 
@@ -468,7 +479,8 @@ class CompositeAdapter extends BaseAdapter {
     _remoteAdapters.remove(url);
     _remoteInitTried.remove(url);
     await AppSettings().removeRemoCardUrl(url);
-    _log.info('Forgot favorite RemoCard server: $url');
+    _readerListChangedController.add(null);
+    _log.info('Removed RemoCard server: $url');
   }
 
   void removeReader(String readerId) {

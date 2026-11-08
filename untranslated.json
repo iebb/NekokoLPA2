@@ -1,37 +1,55 @@
 {
   "de": [
-    "favoriteServers"
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
   ],
 
   "es": [
-    "favoriteServers"
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
   ],
 
   "fr": [
-    "favoriteServers"
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
   ],
 
   "it": [
-    "favoriteServers"
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
   ],
 
   "ja": [
-    "favoriteServers"
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
   ],
 
   "ko": [
-    "favoriteServers"
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
   ],
 
   "ru": [
-    "favoriteServers"
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
   ],
 
   "zh": [
-    "favoriteServers"
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
   ],
 
   "zh_TW": [
-    "favoriteServers"
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
   ]
 }

@@ -23,7 +23,7 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
   final _globalPasswordController = TextEditingController();
   bool _useHttps = false;
   bool _isConnecting = false;
-  final Set<String> _connectingFavorites = {};
+  final Set<String> _connectingServers = {};
   String? _connectionError;
 
   @override
@@ -79,11 +79,9 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
         finalUrl = finalUrl.substring(0, finalUrl.length - 1);
       }
 
-      // Verify the server and cache its readers for the main reader list.
+      // Verify the server and cache its readers for the main reader list. The
+      // server remains temporary until the user explicitly taps the star.
       await CompositeAdapter().loadRemoteReadersFromUrl(finalUrl);
-
-      // Save
-      await AppSettings().addRemoCardUrl(finalUrl);
 
       _hostController.clear();
       _passwordController.clear();
@@ -122,8 +120,8 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
   }
 
   Future<void> _connectFavorite(String url) async {
-    if (_connectingFavorites.contains(url)) return;
-    setState(() => _connectingFavorites.add(url));
+    if (_connectingServers.contains(url)) return;
+    setState(() => _connectingServers.add(url));
 
     try {
       final readers = await CompositeAdapter().loadRemoteReadersFromUrl(url);
@@ -152,12 +150,21 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
       );
     } finally {
       if (mounted) {
-        setState(() => _connectingFavorites.remove(url));
+        setState(() => _connectingServers.remove(url));
       }
     }
   }
 
-  Future<void> _deleteFavorite(String url) async {
+  Future<void> _toggleFavorite(String url) async {
+    final settings = AppSettings();
+    if (settings.remoCardUrls.contains(url)) {
+      await settings.removeRemoCardUrl(url);
+    } else {
+      await settings.addRemoCardUrl(url);
+    }
+  }
+
+  Future<void> _deleteServer(String url) async {
     await CompositeAdapter().forgetRemoteServer(url);
   }
 
@@ -169,7 +176,7 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
     return ListenableBuilder(
       listenable: settings,
       builder: (context, _) {
-        final urls = settings.remoCardUrls;
+        final urls = CompositeAdapter().remoteServerUrls;
 
         return StyledHeaderScaffold(
           title: AppLocalizations.of(context)!.remoteReaders,
@@ -530,14 +537,8 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
               if (urls.isNotEmpty) ...[
                 Row(
                   children: [
-                    const Icon(
-                      Icons.star_rounded,
-                      size: 18,
-                      color: Colors.amber,
-                    ),
-                    const SizedBox(width: 6),
                     Text(
-                      AppLocalizations.of(context)!.favoriteServers,
+                      AppLocalizations.of(context)!.configuredServers,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
@@ -674,7 +675,8 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
 
   Widget _buildUrlCard(BuildContext context, String url) {
     final theme = Theme.of(context);
-    final isConnecting = _connectingFavorites.contains(url);
+    final isConnecting = _connectingServers.contains(url);
+    final isFavorite = AppSettings().remoCardUrls.contains(url);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -743,8 +745,21 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
             },
           ),
           IconButton(
+            tooltip: isFavorite
+                ? AppLocalizations.of(context)!.removeFromFavorites
+                : AppLocalizations.of(context)!.addToFavorites,
+            icon: Icon(
+              isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+              color: isFavorite
+                  ? Colors.amber
+                  : AppTheme.onSurfaceSubtle(context),
+              size: 21,
+            ),
+            onPressed: isConnecting ? null : () => _toggleFavorite(url),
+          ),
+          IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-            onPressed: isConnecting ? null : () => _deleteFavorite(url),
+            onPressed: isConnecting ? null : () => _deleteServer(url),
           ),
         ],
       ),
