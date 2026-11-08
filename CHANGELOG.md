@@ -4,6 +4,9 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Send STORE DATA in 120-byte blocks by default, as lpac does, fixing profile downloads that stalled over OMAPI on modems that reject larger blocks. The APDU segment size setting now ranges from 60 to 240.
+
 ## [2.4.4+604] - 2026-11-01
 
 ### Fixed

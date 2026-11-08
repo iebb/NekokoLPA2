@@ -293,7 +293,11 @@ class AppSettings extends ChangeNotifier {
   bool get ensureSingleChannel => true;
 
   // Connection
-  int _mss = 240;
+  // lpac's segment size; some modems fail STORE DATA with larger blocks.
+  static const int defaultMss = 120;
+  static const int minMss = 60;
+  static const int maxMss = 240;
+  int _mss = defaultMss;
   int get mss => _mss;
 
   String? _locale;
@@ -616,7 +620,7 @@ class AppSettings extends ChangeNotifier {
         _prefs?.getBool('notifDeleteWithoutSendingDelete') ?? false;
     _sizeUnit =
         _prefs?.getString('sizeUnit') ?? "settings_item_unit_adaptive_si";
-    _mss = _prefs?.getInt('mss') ?? 233;
+    _mss = (_prefs?.getInt('mss') ?? defaultMss).clamp(minMss, maxMss);
     _developerModeEnabled = _prefs?.getBool('developerModeEnabled') ?? false;
     _showLogConsole = _prefs?.getBool('showLogConsole') ?? false;
     _decodeAsn1 = _prefs?.getBool('decodeAsn1') ?? false;

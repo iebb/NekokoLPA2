@@ -2080,7 +2080,7 @@ class _MssSliderDialogState extends State<_MssSliderDialog> {
   @override
   void initState() {
     super.initState();
-    _value = widget.settings.mss;
+    _value = widget.settings.mss.clamp(AppSettings.minMss, AppSettings.maxMss);
   }
 
   @override
@@ -2112,9 +2112,9 @@ class _MssSliderDialogState extends State<_MssSliderDialog> {
           const SizedBox(height: 8),
           Slider(
             value: _value.toDouble(),
-            min: 128,
-            max: 255,
-            divisions: 127,
+            min: AppSettings.minMss.toDouble(),
+            max: AppSettings.maxMss.toDouble(),
+            divisions: AppSettings.maxMss - AppSettings.minMss,
             onChanged: (v) {
               setState(() {
                 _value = v.toInt();
