@@ -93,15 +93,8 @@ class CompositeAdapter extends BaseAdapter {
   String? get lastAtr => _connectedAdapter?.lastAtr;
 
   @override
-  ReaderStrategy get readerStrategy =>
-      _connectedAdapter?.readerStrategy ?? ReaderStrategy.fast;
-
-  @override
   NotificationStrategy get notificationStrategy =>
       _connectedAdapter?.notificationStrategy ?? NotificationStrategy.combined;
-
-  @override
-  String? get simIccid => _connectedAdapter?.simIccid;
 
   @override
   Reader? get connectedReader => _currentReader;
@@ -119,11 +112,14 @@ class CompositeAdapter extends BaseAdapter {
   Future<List<Reader>> listReaders({bool force = false}) async {
     if (!force && _listReadersFuture != null) return await _listReadersFuture!;
 
-    _listReadersFuture = _doListReaders(force: force);
+    // A forced listing can replace one still in flight. Only the newest may
+    // clear the slot, or a third caller would start another alongside it.
+    final listing = _doListReaders(force: force);
+    _listReadersFuture = listing;
     try {
-      return await _listReadersFuture!;
+      return await listing;
     } finally {
-      _listReadersFuture = null;
+      if (identical(_listReadersFuture, listing)) _listReadersFuture = null;
     }
   }
 
