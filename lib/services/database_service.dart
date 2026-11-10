@@ -1,4 +1,3 @@
-// ignore_for_file: unused_element
 import 'dart:io';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
@@ -39,6 +38,21 @@ class NotificationRecord {
     this.deletePending = 0,
   });
 
+  factory NotificationRecord.fromMap(Map<String, dynamic> map) =>
+      NotificationRecord(
+        eid: map['eid'],
+        iccid: map['iccid'],
+        seqNumber: map['seqNumber'],
+        content: map['content'],
+        timestamp: map['timestamp'],
+        status: map['status'],
+        responseCode: map['responseCode'],
+        responseContent: map['responseContent'],
+        notificationServer: map['notificationServer'],
+        notificationType: map['notificationType'],
+        deletePending: map['deletePending'] ?? 0,
+      );
+
   Map<String, dynamic> toMap() {
     return {
       'eid': eid,
@@ -68,10 +82,18 @@ class DatabaseService {
   final Map<String, int?> _profileSizeCache = {};
   static final Logger _log = Logger('DatabaseService');
 
+  Future<Database>? _opening;
+
+  /// Opened once: concurrent first callers share the same open rather than
+  /// each running the create and upgrade steps.
   Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDatabase();
-    return _database!;
+    final existing = _database;
+    if (existing != null) return existing;
+    try {
+      return _database = await (_opening ??= _initDatabase());
+    } finally {
+      _opening = null;
+    }
   }
 
   Future<Database> _initDatabase() async {
@@ -81,21 +103,15 @@ class DatabaseService {
     if (kIsWeb) {
       path = 'nekokolpa2.db';
     } else {
-      // On Windows, use a user-writable directory instead of Program Files
-      if (PlatformX.isWindows) {
-        // Use %LOCALAPPDATA%\NekokoLPA2\databases\ for user data
-        final localAppData = PlatformX.getEnv('LOCALAPPDATA');
-        if (localAppData != null && localAppData.isNotEmpty) {
-          final dbDir = join(localAppData, 'NekokoLPA2', 'databases');
-          // Ensure directory exists
-          PlatformX.ensureDirectory(dbDir);
-          path = join(dbDir, 'nekokolpa2.db');
-        } else {
-          path = join(
-            await (factory?.getDatabasesPath() ?? getDatabasesPath()),
-            'nekokolpa2.db',
-          );
-        }
+      // On Windows, use a user-writable directory instead of Program Files:
+      // %LOCALAPPDATA%\NekokoLPA2\databases\.
+      final localAppData = PlatformX.isWindows
+          ? PlatformX.getEnv('LOCALAPPDATA')
+          : null;
+      if (localAppData != null && localAppData.isNotEmpty) {
+        final dbDir = join(localAppData, 'NekokoLPA2', 'databases');
+        PlatformX.ensureDirectory(dbDir);
+        path = join(dbDir, 'nekokolpa2.db');
       } else {
         path = join(
           await (factory?.getDatabasesPath() ?? getDatabasesPath()),
@@ -214,7 +230,6 @@ class DatabaseService {
               );
             }
 
-            if (oldVersion < 8) {}
             if (oldVersion < 9) {
               await db.execute('''
               CREATE TABLE IF NOT EXISTS operator_icons (
@@ -345,7 +360,7 @@ class DatabaseService {
       if (kDebugMode) _log.info('Database opened successfully');
       return db;
     } catch (e) {
-      if (kDebugMode) _log.severe('Error opening database: $e');
+      _log.severe('Error opening database: $e');
       rethrow;
     }
   }
@@ -456,19 +471,7 @@ class DatabaseService {
       whereArgs: [eid, seqNumber, iccid],
     );
     if (maps.isEmpty) return null;
-    return NotificationRecord(
-      eid: maps.first['eid'],
-      iccid: maps.first['iccid'],
-      seqNumber: maps.first['seqNumber'],
-      content: maps.first['content'],
-      timestamp: maps.first['timestamp'],
-      status: maps.first['status'],
-      responseCode: maps.first['responseCode'],
-      responseContent: maps.first['responseContent'],
-      notificationServer: maps.first['notificationServer'],
-      notificationType: maps.first['notificationType'],
-      deletePending: maps.first['deletePending'] ?? 0,
-    );
+    return NotificationRecord.fromMap(maps.first);
   }
 
   Future<List<NotificationRecord>> getNotifications(String eid) async {
@@ -479,21 +482,7 @@ class DatabaseService {
       whereArgs: [eid],
       orderBy: 'timestamp DESC',
     );
-    return List.generate(maps.length, (i) {
-      return NotificationRecord(
-        eid: maps[i]['eid'],
-        iccid: maps[i]['iccid'],
-        seqNumber: maps[i]['seqNumber'],
-        content: maps[i]['content'],
-        timestamp: maps[i]['timestamp'],
-        status: maps[i]['status'],
-        responseCode: maps[i]['responseCode'],
-        responseContent: maps[i]['responseContent'],
-        notificationServer: maps[i]['notificationServer'],
-        notificationType: maps[i]['notificationType'],
-        deletePending: maps[i]['deletePending'] ?? 0,
-      );
-    });
+    return maps.map(NotificationRecord.fromMap).toList();
   }
 
   Future<List<NotificationRecord>> getAllNotifications() async {
@@ -502,21 +491,7 @@ class DatabaseService {
       'notifications',
       orderBy: 'timestamp DESC',
     );
-    return List.generate(maps.length, (i) {
-      return NotificationRecord(
-        eid: maps[i]['eid'],
-        iccid: maps[i]['iccid'],
-        seqNumber: maps[i]['seqNumber'],
-        content: maps[i]['content'],
-        timestamp: maps[i]['timestamp'],
-        status: maps[i]['status'],
-        responseCode: maps[i]['responseCode'],
-        responseContent: maps[i]['responseContent'],
-        notificationServer: maps[i]['notificationServer'],
-        notificationType: maps[i]['notificationType'],
-        deletePending: maps[i]['deletePending'] ?? 0,
-      );
-    });
+    return maps.map(NotificationRecord.fromMap).toList();
   }
 
   Future<void> setDeletePending(
@@ -544,21 +519,7 @@ class DatabaseService {
       where: 'eid = ? COLLATE NOCASE AND deletePending = 1',
       whereArgs: [eid],
     );
-    return List.generate(maps.length, (i) {
-      return NotificationRecord(
-        eid: maps[i]['eid'],
-        iccid: maps[i]['iccid'],
-        seqNumber: maps[i]['seqNumber'],
-        content: maps[i]['content'],
-        timestamp: maps[i]['timestamp'],
-        status: maps[i]['status'],
-        responseCode: maps[i]['responseCode'],
-        responseContent: maps[i]['responseContent'],
-        notificationServer: maps[i]['notificationServer'],
-        notificationType: maps[i]['notificationType'],
-        deletePending: maps[i]['deletePending'] ?? 0,
-      );
-    });
+    return maps.map(NotificationRecord.fromMap).toList();
   }
 
   Future<void> deleteNotification(
@@ -650,19 +611,6 @@ class DatabaseService {
       'msisdn': msisdn,
       'lastUpdated': DateTime.now().millisecondsSinceEpoch,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
-  }
-
-  Future<String?> getMsisdn(String iccid) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'profile_msisdn',
-      where: 'iccid = ?',
-      whereArgs: [iccid],
-    );
-    if (maps.isNotEmpty) {
-      return maps.first['msisdn'] as String?;
-    }
-    return null;
   }
 
   Future<void> saveProfileSize(
@@ -878,225 +826,6 @@ class DatabaseService {
   Future<void> deleteRemoteServer(String url) async {
     final db = await database;
     await db.delete('remote_servers', where: 'url = ?', whereArgs: [url]);
-  }
-
-  Future<void> _onCreateCallback(Database db, int version) async {
-    if (kDebugMode) _log.fine('Creating database tables...');
-    await db.execute('''
-      CREATE TABLE notifications (
-        eid TEXT,
-        iccid TEXT,
-        seqNumber INTEGER,
-        content TEXT,
-        timestamp INTEGER,
-        status INTEGER,
-        responseCode INTEGER,
-        responseContent TEXT,
-        notificationServer TEXT,
-        notificationType TEXT,
-        deletePending INTEGER DEFAULT 0,
-        PRIMARY KEY (eid, seqNumber, iccid)
-      )
-    ''');
-    await createNotificationDeliveryReceipts(db);
-    await db.execute('''
-      CREATE TABLE profile_storage (
-        eid TEXT,
-        iccid TEXT,
-        spaceConsumed INTEGER,
-        version INTEGER,
-        info2Before TEXT,
-        info2After TEXT,
-        bppLength INTEGER,
-        PRIMARY KEY (eid, iccid)
-      )
-    ''');
-    await db.execute('''
-      CREATE TABLE profile_metadata (
-        iccid TEXT PRIMARY KEY,
-        nickname TEXT,
-        name TEXT,
-        providerName TEXT,
-        mcc TEXT,
-        mnc TEXT,
-        enabled INTEGER,
-        profileClass INTEGER,
-        profileSize INTEGER,
-        gid1 TEXT,
-        gid2 TEXT,
-        tags TEXT,
-        lastSeen INTEGER,
-        eid TEXT,
-        customIcon TEXT
-      )
-    ''');
-    await db.execute('''
-      CREATE TABLE profile_msisdn (
-        iccid TEXT PRIMARY KEY,
-        msisdn TEXT,
-        lastUpdated INTEGER
-      )
-    ''');
-    await db.execute('''
-      CREATE TABLE operator_icons (
-        mcc TEXT,
-        mnc TEXT,
-        gid1 TEXT,
-        gid2 TEXT,
-        image TEXT,
-        lastUpdated INTEGER,
-        PRIMARY KEY (mcc, mnc, gid1, gid2)
-      )
-    ''');
-    await db.execute('''
-      CREATE TABLE card_status_cache (
-        iccid TEXT PRIMARY KEY,
-        data TEXT,
-        lastUpdated INTEGER,
-        expiry INTEGER
-      )
-    ''');
-    await db.execute('''
-      CREATE TABLE remote_servers (
-        url TEXT PRIMARY KEY,
-        lastConnected INTEGER
-      )
-    ''');
-    await db.execute('''
-      CREATE TABLE scheduled_notifications (
-        text TEXT,
-        scheduledDate INTEGER,
-        iccid TEXT,
-        lastUpdated INTEGER,
-        eid TEXT,
-        PRIMARY KEY (text, scheduledDate)
-      )
-    ''');
-  }
-
-  Future<void> _onUpgradeCallback(
-    Database db,
-    int oldVersion,
-    int newVersion,
-  ) async {
-    if (kDebugMode) {
-      _log.info('Upgrading database from \$oldVersion to \$newVersion...');
-    }
-
-    if (oldVersion < 8) {}
-    if (oldVersion < 9) {
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS operator_icons (
-          mcc TEXT,
-          mnc TEXT,
-          gid1 TEXT,
-          gid2 TEXT,
-          image TEXT,
-          lastUpdated INTEGER,
-          PRIMARY KEY (mcc, mnc, gid1, gid2)
-        )
-      ''');
-    }
-    if (oldVersion < 10) {
-      try {
-        await db.execute('ALTER TABLE profile_metadata ADD COLUMN gid1 TEXT');
-        await db.execute('ALTER TABLE profile_metadata ADD COLUMN gid2 TEXT');
-      } catch (e) {
-        if (kDebugMode) _log.warning('Error upgrading to v10: \$e');
-      }
-    }
-    if (oldVersion < 11) {
-      if (kDebugMode) {
-        _log.info('Upgrading to v11: Creating card_status_cache table...');
-      }
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS card_status_cache (
-          iccid TEXT PRIMARY KEY,
-          data TEXT,
-          lastUpdated INTEGER,
-          expiry INTEGER
-        )
-      ''');
-    }
-    if (oldVersion < 12) {
-      if (kDebugMode) {
-        _log.info('Upgrading to v12: Creating remote_servers table...');
-      }
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS remote_servers (
-          url TEXT PRIMARY KEY,
-          lastConnected INTEGER
-        )
-      ''');
-    }
-    if (oldVersion < 13) {
-      if (kDebugMode) {
-        _log.info(
-          'Upgrading to v13: Adding tags column to profile_metadata...',
-        );
-      }
-      try {
-        await db.execute('ALTER TABLE profile_metadata ADD COLUMN tags TEXT');
-      } catch (e) {
-        if (kDebugMode) _log.warning('Error upgrading to v13: \$e');
-      }
-    }
-    if (oldVersion < 14) {
-      if (kDebugMode) {
-        _log.info(
-          'Upgrading to v14: Creating scheduled_notifications table...',
-        );
-      }
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS scheduled_notifications (
-          text TEXT,
-          scheduledDate INTEGER,
-          iccid TEXT,
-          lastUpdated INTEGER,
-          eid TEXT,
-          PRIMARY KEY (text, scheduledDate)
-        )
-      ''');
-    }
-    if (oldVersion < 15) {
-      if (kDebugMode) {
-        _log.info('Upgrading to v15: Adding eid column to profile_metadata...');
-      }
-      try {
-        await db.execute('ALTER TABLE profile_metadata ADD COLUMN eid TEXT');
-      } catch (e) {
-        if (kDebugMode) _log.warning('Error upgrading to v15: \$e');
-      }
-    }
-    if (oldVersion < 16) {
-      if (kDebugMode) {
-        _log.info(
-          'Upgrading to v16: Adding eid column to scheduled_notifications...',
-        );
-      }
-      try {
-        await db.execute(
-          'ALTER TABLE scheduled_notifications ADD COLUMN eid TEXT',
-        );
-      } catch (e) {
-        if (kDebugMode) _log.warning('Error upgrading to v16: \$e');
-      }
-    }
-    if (oldVersion < 17) {
-      if (kDebugMode) {
-        _log.info(
-          'Upgrading to v17: Adding customIcon column to profile_metadata...',
-        );
-      }
-      try {
-        await db.execute(
-          'ALTER TABLE profile_metadata ADD COLUMN customIcon TEXT',
-        );
-      } catch (e) {
-        if (kDebugMode) _log.warning('Error upgrading to v17: \$e');
-      }
-    }
-    if (oldVersion < 18) await createNotificationDeliveryReceipts(db);
   }
 
   Future<void> resetDatabase() async {

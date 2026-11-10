@@ -19,11 +19,16 @@ class GmDatabase {
   GmDatabase._internal();
 
   Database? _db;
+  Future<Database>? _opening;
 
   Future<Database> get database async {
-    if (_db != null) return _db!;
-    _db = await _initDb();
-    return _db!;
+    final existing = _db;
+    if (existing != null) return existing;
+    try {
+      return _db = await (_opening ??= _initDb());
+    } finally {
+      _opening = null;
+    }
   }
 
   Future<Database> _initDb() async {
@@ -232,39 +237,12 @@ class GmPlugin extends SessionPlugin {
 
     _log.info("GmPlugin: PSK not in cache, attempting query...");
 
-    // // 2. Try read ICCID locally if channel is provided
-    // String? iccid;
-    // if (channel != null) {
-    //   _log.info("GmPlugin: Attempting to read ICCID via FE0C sequence...");
-    //   try {
-    //     await channel.adapter.sendRawApdu(HexUtils.hexToBytes("FE0C010001"));
-    //     await channel.adapter.sendRawApdu(
-    //       HexUtils.hexToBytes("00A4000C022FE2"),
-    //     );
-    //     final resp = await channel.adapter.sendRawApdu(
-    //       HexUtils.hexToBytes("00B000000A"),
-    //     );
-
-    //     if (resp.length >= 10) {
-    //       iccid = IccidFormatter.forDisplay(
-    //         HexUtils.swapNibbles(HexUtils.bytesToHex(resp.sublist(0, 10))),
-    //       );
-    //       _log.info("GmPlugin: Read ICCID for query: $iccid");
-    //     }
-    //   } catch (e) {
-    //     _log.warning("GmPlugin: Failed to read ICCID via APDU: $e");
-    //   } finally {}
-    // }
-
-    // 3. Query worker
+    // 2. Query worker
     if (_pskUrl.isEmpty) {
       _log.warning("GmPlugin: No PSK service in this build (GM_PSK_URL)");
       return null;
     }
     final url = Uri.parse(_pskUrl).replace(queryParameters: {'eid': eid});
-    // if (iccid != null && iccid.isNotEmpty) {
-    //   params.add('iccid=$iccid');
-    // }
 
     _log.info("GmPlugin: Requesting PSK from worker");
 
@@ -319,19 +297,4 @@ class GmPlugin extends SessionPlugin {
     }
     return res.sublist(0, 4);
   }
-
-  @override
-  Future<List<AdapterMode>> getAvailableModes(
-    Adapter adapter,
-    Reader reader,
-  ) async {
-    return [];
-  }
-
-  @override
-  Future<void> switchMode(
-    Adapter adapter,
-    Reader reader,
-    AdapterMode mode,
-  ) async {}
 }

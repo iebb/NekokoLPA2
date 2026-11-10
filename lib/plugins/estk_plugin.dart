@@ -19,11 +19,16 @@ class EstkDatabase {
   EstkDatabase._internal();
 
   Database? _database;
+  Future<Database>? _opening;
 
   Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDatabase();
-    return _database!;
+    final existing = _database;
+    if (existing != null) return existing;
+    try {
+      return _database = await (_opening ??= _initDatabase());
+    } finally {
+      _opening = null;
+    }
   }
 
   Future<Database> _initDatabase() async {
@@ -203,19 +208,6 @@ class EstkPlugin extends ProfilePlugin implements SessionPlugin {
 
   @override
   bool isMatch(EuiccProfile profile) => false;
-
-  @override
-  Future<void> onProfilesLoaded(
-    String eid,
-    List<EuiccProfile> profiles, {
-    VoidCallback? onUpdate,
-  }) async {
-    // Check if we already have metadata
-    final metadata = await _db.getMetadata(eid);
-    if (metadata != null) {
-      // Could trigger update if needed
-    }
-  }
 
   @override
   List<PluginAction> getEidActions(

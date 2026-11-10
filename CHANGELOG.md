@@ -6,6 +6,13 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ### Changed
 - Sentry, and with it the "Send report" button, is part of the 9eSIM build only. Every other build ignores a Sentry DSN and sends nothing.
+- Startup no longer asks the OTBridge helper for its slot list once the OMAPI and TMAPI reader choices are stored, and waits at most 5 seconds for it otherwise.
+
+### Fixed
+- Show a 3HK number as soon as it has been looked up, instead of only after the next profile reload.
+- Run each provider plugin's profile lookup independently, so a slow or failing one no longer delays or cancels the others.
+- Give the update check, operator icon downloads and installation statistics a timeout, so an unresponsive server cannot leave them waiting forever.
+- Unregister the Android SIM state receiver when the app's engine is torn down; it was previously left registered each time the activity was recreated.
 
 ## [2.5.0+606] - 2026-11-10
 

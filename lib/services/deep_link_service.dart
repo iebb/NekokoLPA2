@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logic/signing_logic.dart';
 import '../adapter/composite_adapter.dart';
-import '../utils/platform_adapter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../main.dart'; // To get navigatorKey
 
@@ -20,6 +19,7 @@ class DeepLinkService {
 
   final _appLinks = AppLinks();
   StreamSubscription<Uri>? _linkSubscription;
+  StreamSubscription<String>? _stringLinkSubscription;
 
   final _linkController = StreamController<String>.broadcast();
   Stream<String> get linkStream => _linkController.stream;
@@ -27,7 +27,6 @@ class DeepLinkService {
   final ValueNotifier<String?> pendingLpa = ValueNotifier<String?>(null);
   final ValueNotifier<Uri?> pendingSigningUri = ValueNotifier<Uri?>(null);
   final ValueNotifier<bool> triggerSelection = ValueNotifier<bool>(false);
-  String? get pendingCode => pendingLpa.value;
 
   static const String _prefPendingLpa = 'pending_lpa_code';
   static const String _prefPendingSigning = 'pending_signing_uri';
@@ -42,7 +41,7 @@ class DeepLinkService {
       },
     );
 
-    _appLinks.stringLinkStream.listen(
+    _stringLinkSubscription = _appLinks.stringLinkStream.listen(
       (link) {
         _handleString(link);
       },
@@ -57,10 +56,6 @@ class DeepLinkService {
 
     // Initial check (especially for cold start)
     checkInitialLink();
-
-    if (PlatformX.isWindows) {
-      _registerWindowsProtocol();
-    }
 
     // Load persisted pending LPA
     SharedPreferences.getInstance().then((prefs) {
@@ -294,45 +289,6 @@ class DeepLinkService {
     }
   }
 
-  Future<void> _registerWindowsProtocol() async {
-    if (!PlatformX.isWindows) return;
-    // const protocol = 'lpa';
-    // try {
-    //   final appPath = Platform.resolvedExecutable;
-
-    //   // Basic protocol registration via reg.exe
-    //   // Registry path: HKEY_CURRENT_USER\Software\Classes\lpa
-    //   await Process.run('reg', [
-    //     'add',
-    //     'HKCU\\Software\\Classes\\$protocol',
-    //     '/ve',
-    //     '/d',
-    //     'URL:$protocol Protocol',
-    //     '/f'
-    //   ]);
-    //   await Process.run('reg', [
-    //     'add',
-    //     'HKCU\\Software\\Classes\\$protocol',
-    //     '/v',
-    //     'URL Protocol',
-    //     '/d',
-    //     '',
-    //     '/f'
-    //   ]);
-    //   await Process.run('reg', [
-    //     'add',
-    //     'HKCU\\Software\\Classes\\$protocol\\shell\\open\\command',
-    //     '/ve',
-    //     '/d',
-    //     '\"$appPath\" \"%1\"',
-    //     '/f'
-    //   ]);
-    //   _log.info('Registered $protocol protocol on Windows');
-    // } catch (e) {
-    //   _log.warning('Failed to register $protocol protocol on Windows: $e');
-    // }
-  }
-
   void _checkCommandLineArgs() {
     // Only called when !kIsWeb
     try {
@@ -349,6 +305,7 @@ class DeepLinkService {
 
   void dispose() {
     _linkSubscription?.cancel();
+    _stringLinkSubscription?.cancel();
     _linkController.close();
   }
 }

@@ -103,11 +103,6 @@ class EsimGgPlugin extends ProfilePlugin {
   }
 
   @override
-  Widget? buildHeader(BuildContext context, String? eid) {
-    return null;
-  }
-
-  @override
   Map<String, WidgetBuilder> get routes => {
     '/plugin/esim_gg': (context) => const EsimGgPortalPage(),
   };

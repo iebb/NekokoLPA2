@@ -174,7 +174,6 @@ class AppSettings extends ChangeNotifier {
 
   ThemeMode _themeMode = ThemeMode.system;
   ThemeMode get themeMode => _themeMode;
-  bool get isDarkMode => _themeMode == ThemeMode.dark;
 
   AppThemeType _themeType = AppThemeType.custom;
   AppThemeType get themeType => _themeType;
@@ -213,9 +212,6 @@ class AppSettings extends ChangeNotifier {
   bool _notifAutoRemoveInstall = true;
   bool get notifAutoRemoveInstall =>
       _notifAutoRemoveInstall && _notifAutoSendInstall;
-  bool _notifDeleteWithoutSendingInstall = false;
-  bool get notifDeleteWithoutSendingInstall =>
-      _notifDeleteWithoutSendingInstall;
 
   // Enable
   bool _notifAutoSendEnable = true;
@@ -242,8 +238,6 @@ class AppSettings extends ChangeNotifier {
   bool _notifAutoRemoveDelete = true;
   bool get notifAutoRemoveDelete =>
       _notifAutoRemoveDelete && _notifAutoSendDelete;
-  bool _notifDeleteWithoutSendingDelete = false;
-  bool get notifDeleteWithoutSendingDelete => _notifDeleteWithoutSendingDelete;
 
   // Size Unit
   String _sizeUnit = "settings_item_unit_adaptive_si";
@@ -320,15 +314,6 @@ class AppSettings extends ChangeNotifier {
   Future<void> setShowProfileSearch(bool value) async {
     _showProfileSearch = value;
     await _prefs?.setBool('showProfileSearch', value);
-    notifyListeners();
-  }
-
-  bool _showHardwareTab = true;
-  bool get showHardwareTab => _showHardwareTab;
-
-  Future<void> setShowHardwareTab(bool value) async {
-    _showHardwareTab = value;
-    await _prefs?.setBool('showHardwareTab', value);
     notifyListeners();
   }
 
@@ -489,18 +474,6 @@ class AppSettings extends ChangeNotifier {
 
   List<String> get remoCardUrls => _remoCardUrls;
 
-  Future<void> setRemoCardUrls(List<String> values) async {
-    _remoCardUrls = values.where((v) => v.isNotEmpty).toList();
-    // Sync to DB: For simplicity, we just save them all.
-    // Ideally we should remove ones not in list, but we lack bulk delete currently without clearing all.
-    // Assuming this is used for adding/reordering, saving all is safe for existence.
-    // If used for deletion, we rely on removeRemoCardUrl logic.
-    for (final url in _remoCardUrls) {
-      await DatabaseService().saveRemoteServer(url);
-    }
-    notifyListeners();
-  }
-
   Future<void> addRemoCardUrl(String value) async {
     if (value.isEmpty || _remoCardUrls.contains(value)) return;
     _remoCardUrls.add(value);
@@ -513,6 +486,11 @@ class AppSettings extends ChangeNotifier {
       await DatabaseService().deleteRemoteServer(value);
       notifyListeners();
     }
+  }
+
+  /// `remove` is a platform round trip even for a key that is not stored.
+  Future<void> _removePrefIfPresent(String key) async {
+    if (_prefs?.containsKey(key) == true) await _prefs?.remove(key);
   }
 
   Future<void> init() async {
@@ -610,14 +588,10 @@ class AppSettings extends ChangeNotifier {
     _notifProcessAfterInstall =
         _prefs?.getBool('notifProcessAfterInstall') ?? true;
 
-    _notifDeleteWithoutSendingInstall =
-        _prefs?.getBool('notifDeleteWithoutSendingInstall') ?? false;
     _notifDeleteWithoutSendingEnable =
         _prefs?.getBool('notifDeleteWithoutSendingEnable') ?? false;
     _notifDeleteWithoutSendingDisable =
         _prefs?.getBool('notifDeleteWithoutSendingDisable') ?? false;
-    _notifDeleteWithoutSendingDelete =
-        _prefs?.getBool('notifDeleteWithoutSendingDelete') ?? false;
     _sizeUnit =
         _prefs?.getString('sizeUnit') ?? "settings_item_unit_adaptive_si";
     _mss = (_prefs?.getInt('mss') ?? defaultMss).clamp(minMss, maxMss);
@@ -630,8 +604,6 @@ class AppSettings extends ChangeNotifier {
     _forceDeviceDropdown = _prefs?.getBool('forceDeviceDropdown') ?? false;
     _enableNekokoStats = _prefs?.getBool('enableNekokoStats') ?? true;
     _estimateProfileSize = _prefs?.getBool('estimateProfileSize') ?? true;
-    _enableProfileStatusEnhancer =
-        _prefs?.getBool('enableProfileStatusEnhancer') ?? true;
     _enableProfileStatusEnhancer =
         _prefs?.getBool('enableProfileStatusEnhancer') ?? true;
     _enableScheduledNotifications =
@@ -657,9 +629,17 @@ class AppSettings extends ChangeNotifier {
       _nbridgeProviderAvailable = await NBridgeService.isAvailable();
       _rootDetected = await NBridgeService.isRooted();
 
-      if (_nbridgeProviderAvailable) {
+      // Only the connector defaults need the helper's slot list, and this runs
+      // before the first frame: skip it once both are stored, and do not wait
+      // on a helper that does not answer.
+      final needsConnectorDefaults =
+          _prefs?.containsKey('enableOmapiConnector') != true ||
+          _prefs?.containsKey('enableTmapiConnector') != true;
+      if (_nbridgeProviderAvailable && needsConnectorDefaults) {
         try {
-          final slots = await NBridgeService.listSlots();
+          final slots = await NBridgeService.listSlots().timeout(
+            const Duration(seconds: 5),
+          );
           otbridgeHasOmapi = slots.any(
             (s) => s['id']?.toString().startsWith('omapi:') == true,
           );
@@ -716,7 +696,6 @@ class AppSettings extends ChangeNotifier {
     // Default showProfileSearch based on platform
     final isDesktop = PlatformX.isDesktop;
     _showProfileSearch = _prefs?.getBool('showProfileSearch') ?? isDesktop;
-    _showHardwareTab = _prefs?.getBool('showHardwareTab') ?? true;
     _enableBrowser =
         _prefs?.getBool('enableBrowser') ??
         _prefs?.getBool('showVariantTabs') ??
@@ -737,12 +716,12 @@ class AppSettings extends ChangeNotifier {
     if (!vowifiEnabled) {
       _vowifiEnabled = false;
       _vowifiAutoRenew = false;
-      await _prefs?.remove(_vowifiEnabledKey);
-      await _prefs?.remove(_vowifiAutoRenewKey);
+      await _removePrefIfPresent(_vowifiEnabledKey);
+      await _removePrefIfPresent(_vowifiAutoRenewKey);
       if (!vowifiAvailable ||
           _vowifiConsentVersion != BuildCapabilities.vowifiConsentVersion) {
         _vowifiConsentVersion = null;
-        await _prefs?.remove(_vowifiConsentVersionKey);
+        await _removePrefIfPresent(_vowifiConsentVersionKey);
       }
     }
 
@@ -852,11 +831,6 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setString(String key, String value) async {
-    await _prefs?.setString(key, value);
-    notifyListeners();
-  }
-
   Future<void> setThemeMode(ThemeMode value) async {
     _themeMode = value;
     await _prefs?.setString('themeMode', value.name);
@@ -901,12 +875,6 @@ class AppSettings extends ChangeNotifier {
   Future<void> setNotifAutoRemoveInstall(bool value) async {
     _notifAutoRemoveInstall = value;
     await _prefs?.setBool('notifAutoRemoveInstall', value);
-    notifyListeners();
-  }
-
-  Future<void> setNotifDeleteWithoutSendingInstall(bool value) async {
-    _notifDeleteWithoutSendingInstall = value;
-    await _prefs?.setBool('notifDeleteWithoutSendingInstall', value);
     notifyListeners();
   }
 
@@ -955,12 +923,6 @@ class AppSettings extends ChangeNotifier {
   Future<void> setNotifAutoRemoveDelete(bool value) async {
     _notifAutoRemoveDelete = value;
     await _prefs?.setBool('notifAutoRemoveDelete', value);
-    notifyListeners();
-  }
-
-  Future<void> setNotifDeleteWithoutSendingDelete(bool value) async {
-    _notifDeleteWithoutSendingDelete = value;
-    await _prefs?.setBool('notifDeleteWithoutSendingDelete', value);
     notifyListeners();
   }
 
@@ -1225,34 +1187,6 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> disableAllRedactions() async {
-    _revealSensitiveProfileData = false;
-    _redactEidFirst = true;
-    _redactEidMiddle = true;
-    _redactEidLast = true;
-    _redactIccidFirst = true;
-    _redactIccidMiddle = true;
-    _redactIccidLast = true;
-    _nicknameRedactionMode = NicknameRedactionMode.none;
-    _operatorRedactionMode = OperatorRedactionMode.none;
-    _tagsRedactionMode = TagsRedactionMode.none;
-    _iconRedactionMode = IconRedactionMode.none;
-    _flagRedactionMode = FlagRedactionMode.none;
-
-    await _prefs?.setBool('redactEidFirst', _redactEidFirst);
-    await _prefs?.setBool('redactEidMiddle', _redactEidMiddle);
-    await _prefs?.setBool('redactEidLast', _redactEidLast);
-    await _prefs?.setBool('redactIccidFirst', _redactIccidFirst);
-    await _prefs?.setBool('redactIccidMiddle', _redactIccidMiddle);
-    await _prefs?.setBool('redactIccidLast', _redactIccidLast);
-    await _prefs?.setInt('nicknameRedactionMode', _nicknameRedactionMode.index);
-    await _prefs?.setInt('operatorRedactionMode', _operatorRedactionMode.index);
-    await _prefs?.setInt('tagsRedactionMode', _tagsRedactionMode.index);
-    await _prefs?.setInt('iconRedactionMode', _iconRedactionMode.index);
-    await _prefs?.setInt('flagRedactionMode', _flagRedactionMode.index);
-    notifyListeners();
-  }
-
   void setRevealSensitiveProfileData(bool value) {
     if (_revealSensitiveProfileData == value) return;
     _revealSensitiveProfileData = value;
@@ -1300,17 +1234,6 @@ class AppSettings extends ChangeNotifier {
       await _prefs?.setBool('tab_enabled_$url', value);
       notifyListeners();
     }
-  }
-
-  String get buyPageUrl {
-    const envUrl = String.fromEnvironment('BUY_PAGE_URL');
-    if (envUrl.isNotEmpty) return envUrl;
-
-    if (variant == 'esim9') {
-      return 'https://9es.im/';
-    }
-
-    return 'https://n.lpa.ee/products';
   }
 
   Future<void> setLocale(String? value) async {
@@ -1415,11 +1338,6 @@ class AppSettings extends ChangeNotifier {
   Uint8List? _cachedTac;
 
   bool get sendFullImei => _prefs?.getBool('deviceImeiSendFull') ?? false;
-
-  String? get imeiString {
-    final hex = _prefs?.getString('deviceImei');
-    return hex;
-  }
 
   Future<void> setImeiString(String? value) async {
     if (value == null || value.trim().isEmpty) {

@@ -15,5 +15,5 @@ const String kSentryDsn = bool.fromEnvironment('ESIM9_BUILD')
 const bool kSentryEnabled = kSentryDsn != '';
 
 class AppConfig {
-  static String appName = 'NekokoLPA 2';
+  static const String appName = 'NekokoLPA 2';
 }

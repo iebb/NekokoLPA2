@@ -18,11 +18,6 @@ class EsimCcPlugin extends ProfilePlugin {
   }
 
   @override
-  Widget? buildHeader(BuildContext context, String? eid) {
-    return null; // No special global header for now
-  }
-
-  @override
   Widget? buildProfileCardExtra(BuildContext context, EuiccProfile profile) {
     if (!isMatch(profile)) return null;
 
