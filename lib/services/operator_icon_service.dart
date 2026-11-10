@@ -179,7 +179,9 @@ class OperatorIconService {
   ) async {
     try {
       _log.info("Downloading icon from: $imageUrl");
-      final imageResponse = await http.get(Uri.parse(imageUrl));
+      final imageResponse = await http
+          .get(Uri.parse(imageUrl))
+          .timeout(const Duration(seconds: 30));
 
       if (imageResponse.statusCode == 200) {
         // Convert to base64 for local storage
@@ -193,13 +195,6 @@ class OperatorIconService {
             gid2: gid2,
             image: base64Image,
           );
-          final cacheKey = _getCacheKey(mcc, mnc, gid1, gid2);
-          _memoryCache[cacheKey] = base64Image;
-          _decodeAndCacheBytes(cacheKey, base64Image);
-
-          // Notify UI to update with debouncing to avoid excessive rebuilds
-          _triggerNotify();
-
           _log.info(
             "Successfully cached icon for $mcc-$mnc (${imageResponse.bodyBytes.length} bytes)",
           );
@@ -207,12 +202,14 @@ class OperatorIconService {
           _log.severe(
             "Failed to save icon to database for $mcc-$mnc: $dbError",
           );
-          // Still cache in memory even if DB save fails
-          final cacheKey = _getCacheKey(mcc, mnc, gid1, gid2);
-          _memoryCache[cacheKey] = base64Image;
-          _decodeAndCacheBytes(cacheKey, base64Image);
-          _triggerNotify();
         }
+        // Cached in memory whether or not the DB save worked.
+        final cacheKey = _getCacheKey(mcc, mnc, gid1, gid2);
+        _memoryCache[cacheKey] = base64Image;
+        _decodeAndCacheBytes(cacheKey, base64Image);
+
+        // Notify UI to update with debouncing to avoid excessive rebuilds
+        _triggerNotify();
       } else {
         _log.warning(
           "Failed to download icon from $imageUrl: ${imageResponse.statusCode}",

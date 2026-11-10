@@ -33,17 +33,19 @@ class NekokoStatsPlugin extends ProfilePlugin {
       final payload = await _buildPayload(report);
       final url = report.isSuccess ? _successUrl : _failUrl;
 
-      await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': AppSettings().userAgent,
-          'X-App-Version': AppSettings().version,
-          'X-App-Build': AppSettings().buildNumber,
-          'X-App-OS': PlatformX.operatingSystem,
-        },
-        body: jsonEncode(payload),
-      );
+      await http
+          .post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'User-Agent': AppSettings().userAgent,
+              'X-App-Version': AppSettings().version,
+              'X-App-Build': AppSettings().buildNumber,
+              'X-App-OS': PlatformX.operatingSystem,
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 15));
       _log.info('Installation stats reported to $url');
     } catch (e) {
       _log.warning('Failed to report stats: $e');

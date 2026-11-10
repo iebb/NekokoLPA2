@@ -68,9 +68,25 @@ class PluginManager extends ChangeNotifier {
     String eid,
     List<EuiccProfile> profiles,
   ) async {
-    for (final plugin in _availablePlugins) {
-      await plugin.onProfilesLoaded(eid, profiles, onUpdate: notifyListeners);
-    }
+    // Independent lookups: a slow or failing plugin must not hold up the rest.
+    await Future.wait([
+      for (final plugin in _availablePlugins)
+        () async {
+          try {
+            await plugin.onProfilesLoaded(
+              eid,
+              profiles,
+              onUpdate: notifyListeners,
+            );
+          } catch (e, stackTrace) {
+            _log.warning(
+              'Plugin ${plugin.id} failed while handling loaded profiles: $e',
+              e,
+              stackTrace,
+            );
+          }
+        }(),
+    ]);
     notifyListeners();
   }
 

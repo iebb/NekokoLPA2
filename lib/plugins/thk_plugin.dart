@@ -90,17 +90,12 @@ class ThkPlugin extends ProfilePlugin {
             jsonEncode(json),
             DateTime.now().add(const Duration(days: 1)).millisecondsSinceEpoch,
           );
-          CardStatusCache().invalidate(cacheKey);
+          CardStatusCache().updateCache(cacheKey, json);
         }
       }
     } catch (e) {
       _log.warning('Failed to fetch 3HK status for $iccid: $e');
     }
-  }
-
-  @override
-  Widget? buildProfileCardExtra(BuildContext context, EuiccProfile profile) {
-    return null;
   }
 
   @override

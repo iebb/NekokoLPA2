@@ -38,7 +38,9 @@ class UpdateService {
         return null;
       }
 
-      final response = await http.get(Uri.parse(_configUrl));
+      final response = await http
+          .get(Uri.parse(_configUrl))
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) {
         _log.warning('Failed to fetch update config: ${response.statusCode}');
         return null;

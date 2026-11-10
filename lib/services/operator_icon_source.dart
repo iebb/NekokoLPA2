@@ -58,10 +58,12 @@ class OperatorIconSource {
 
   Future<_OperatorIconCatalog?> _fetchCatalog(String mcc) async {
     try {
-      final response = await http.get(
-        Uri.parse('$catalogBaseUrl/$mcc.toml'),
-        headers: {'User-Agent': AppSettings().userAgent},
-      );
+      final response = await http
+          .get(
+            Uri.parse('$catalogBaseUrl/$mcc.toml'),
+            headers: {'User-Agent': AppSettings().userAgent},
+          )
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode == 404) {
         _catalogCache[mcc] = null;
         return null;
