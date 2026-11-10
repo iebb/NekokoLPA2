@@ -6,6 +6,7 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ### Changed
 - Sentry, and with it the "Send report" button, is part of the 9eSIM build only. Every other build ignores a Sentry DSN and sends nothing.
+- The BeeSIM "Update BeeSIM firmware" reader action is turned off while the BeeSIM firmware server presents an expired TLS certificate.
 - Startup no longer asks the OTBridge helper for its slot list once the OMAPI and TMAPI reader choices are stored, and waits at most 5 seconds for it otherwise.
 
 ### Security

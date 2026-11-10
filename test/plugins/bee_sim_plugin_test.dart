@@ -12,65 +12,105 @@ import 'package:nlpa2/l10n/app_localizations.dart';
 import 'package:nlpa2/plugins/bee_sim_plugin.dart';
 import 'package:nlpa2/plugins/plugin_base.dart';
 
+// BeeSimPlugin.buildReaderActions is commented out, so there is no action to
+// tap. Set this to false when it is restored.
+const bool _firmwareActionOff = true;
+
 void main() {
-  testWidgets('requires explicit confirmation before any firmware write', (
+  testWidgets('offers no firmware action while the check is off', (
     tester,
   ) async {
+    late List<Widget> actions;
     final adapter = _FakeBeeSimAdapter();
-    await _pumpAction(tester, adapter);
+    await tester.pumpWidget(
+      Builder(
+        builder: (context) {
+          actions =
+              BeeSimPlugin(
+                httpClient: MockClient((_) => fail('no request')),
+              ).buildReaderActions(
+                context,
+                ReaderActionContext(
+                  adapter: adapter,
+                  reader: Reader(
+                    id: 'BeeSIM|test',
+                    name: 'BeeSIM',
+                    source: adapter,
+                  ),
+                  profiles: null,
+                ),
+              );
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+    expect(actions, isEmpty);
+  }, skip: !_firmwareActionOff);
 
-    await tester.tap(find.byTooltip('Update BeeSIM firmware'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'requires explicit confirmation before any firmware write',
+    (tester) async {
+      final adapter = _FakeBeeSimAdapter();
+      await _pumpAction(tester, adapter);
 
-    expect(find.textContaining('Keep the card powered'), findsOneWidget);
-    expect(find.text('Update firmware'), findsOneWidget);
-    expect(adapter.writtenRows, isEmpty);
-    expect(adapter.resetCount, 0);
+      await tester.tap(find.byTooltip('Update BeeSIM firmware'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
+      expect(find.textContaining('Keep the card powered'), findsOneWidget);
+      expect(find.text('Update firmware'), findsOneWidget);
+      expect(adapter.writtenRows, isEmpty);
+      expect(adapter.resetCount, 0);
 
-    expect(find.byType(AlertDialog), findsNothing);
-    expect(adapter.writtenRows, isEmpty);
-    expect(adapter.resetCount, 0);
-  });
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
 
-  testWidgets('system back cannot hide the confirmation or active flow', (
-    tester,
-  ) async {
-    final adapter = _FakeBeeSimAdapter();
-    await _pumpAction(tester, adapter);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(adapter.writtenRows, isEmpty);
+      expect(adapter.resetCount, 0);
+    },
+    skip: _firmwareActionOff,
+  );
 
-    await tester.tap(find.byTooltip('Update BeeSIM firmware'));
-    await tester.pumpAndSettle();
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
+  testWidgets(
+    'system back cannot hide the confirmation or active flow',
+    (tester) async {
+      final adapter = _FakeBeeSimAdapter();
+      await _pumpAction(tester, adapter);
 
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(find.text('Update firmware'), findsOneWidget);
-    expect(adapter.writtenRows, isEmpty);
+      await tester.tap(find.byTooltip('Update BeeSIM firmware'));
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-  });
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('Update firmware'), findsOneWidget);
+      expect(adapter.writtenRows, isEmpty);
 
-  testWidgets('no-update preflight never requests confirmation or writes', (
-    tester,
-  ) async {
-    final adapter = _FakeBeeSimAdapter();
-    await _pumpAction(tester, adapter, rows: const <String>[]);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    },
+    skip: _firmwareActionOff,
+  );
 
-    await tester.tap(find.byTooltip('Update BeeSIM firmware'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'no-update preflight never requests confirmation or writes',
+    (tester) async {
+      final adapter = _FakeBeeSimAdapter();
+      await _pumpAction(tester, adapter, rows: const <String>[]);
 
-    expect(find.textContaining('already up to date'), findsOneWidget);
-    expect(find.text('Update firmware'), findsNothing);
-    expect(adapter.writtenRows, isEmpty);
-    expect(adapter.resetCount, 0);
+      await tester.tap(find.byTooltip('Update BeeSIM firmware'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
-  });
+      expect(find.textContaining('already up to date'), findsOneWidget);
+      expect(find.text('Update firmware'), findsNothing);
+      expect(adapter.writtenRows, isEmpty);
+      expect(adapter.resetCount, 0);
+
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+    },
+    skip: _firmwareActionOff,
+  );
 
   testWidgets('writes rows in order only after confirmation', (tester) async {
     final adapter = _FakeBeeSimAdapter();
@@ -89,7 +129,7 @@ void main() {
 
     await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
-  });
+  }, skip: _firmwareActionOff);
 
   testWidgets('stops after a rejected row and does not reset', (tester) async {
     final adapter = _FakeBeeSimAdapter(rejectRow: 3);
@@ -106,29 +146,31 @@ void main() {
 
     await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
-  });
+  }, skip: _firmwareActionOff);
 
-  testWidgets('unexpected reset failure is not reported as success', (
-    tester,
-  ) async {
-    final adapter = _FakeBeeSimAdapter(
-      resetError: StateError('reset rejected'),
-    );
-    await _pumpAction(tester, adapter);
+  testWidgets(
+    'unexpected reset failure is not reported as success',
+    (tester) async {
+      final adapter = _FakeBeeSimAdapter(
+        resetError: StateError('reset rejected'),
+      );
+      await _pumpAction(tester, adapter);
 
-    await tester.tap(find.byTooltip('Update BeeSIM firmware'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Update firmware'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Update BeeSIM firmware'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Update firmware'));
+      await tester.pumpAndSettle();
 
-    expect(adapter.writtenRows, <int>[2, 3, 4]);
-    expect(adapter.resetCount, 1);
-    expect(find.textContaining('Firmware update failed:'), findsOneWidget);
-    expect(find.textContaining('Firmware update complete.'), findsNothing);
+      expect(adapter.writtenRows, <int>[2, 3, 4]);
+      expect(adapter.resetCount, 1);
+      expect(find.textContaining('Firmware update failed:'), findsOneWidget);
+      expect(find.textContaining('Firmware update complete.'), findsNothing);
 
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
-  });
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+    },
+    skip: _firmwareActionOff,
+  );
 }
 
 Future<void> _pumpAction(

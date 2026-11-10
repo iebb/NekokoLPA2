@@ -12,10 +12,11 @@ import '../adapter/euicc_adapter.dart';
 import '../l10n/app_localizations.dart';
 import '../models/euicc_profile.dart';
 import '../utils/hex_utils.dart';
-import '../widgets/profiles_screen/action_button.dart';
+// import '../widgets/profiles_screen/action_button.dart';
 import 'plugin_base.dart';
 
-/// Surfaces the BeeSIM firmware-update flow as a reader action.
+/// The BeeSIM firmware-update flow, as a reader action. The action is
+/// commented out, so nothing starts the flow.
 ///
 /// The action is only shown when the connected reader is a [BeeSimAdapter].
 /// On tap the plugin opens a modal log dialog, asks the adapter for its
@@ -47,31 +48,40 @@ class BeeSimPlugin extends ProfilePlugin {
   @override
   bool isMatch(EuiccProfile profile) => false;
 
-  @override
-  List<Widget> buildReaderActions(
-    BuildContext context,
-    ReaderActionContext actionContext,
-  ) {
-    final adapter = actionContext.adapter;
-    final source = actionContext.reader?.source;
-    final beeAdapter = _resolveBeeAdapter(adapter, source);
-    if (beeAdapter == null) return const <Widget>[];
-    final l10n = AppLocalizations.of(context)!;
-    return <Widget>[
-      ActionButton(
-        icon: Icons.memory,
-        label: l10n.beeSimFirmwareAction,
-        onPressed: () => _runFirmwareUpgrade(context, beeAdapter),
-      ),
-    ];
-  }
+  // The firmware check is off, so no reader action is offered.
+  // api.beeesim.com serves an expired certificate, and the rows it returns are
+  // written to the reader with no signature check, so the request must not be
+  // made over an unverified connection. To restore it, uncomment this override
+  // and the action_button import, and drop the skips in
+  // test/plugins/bee_sim_plugin_test.dart.
+  //
+  // @override
+  // List<Widget> buildReaderActions(
+  //   BuildContext context,
+  //   ReaderActionContext actionContext,
+  // ) {
+  //   final adapter = actionContext.adapter;
+  //   final source = actionContext.reader?.source;
+  //   final beeAdapter = _resolveBeeAdapter(adapter, source);
+  //   if (beeAdapter == null) return const <Widget>[];
+  //   final l10n = AppLocalizations.of(context)!;
+  //   return <Widget>[
+  //     ActionButton(
+  //       icon: Icons.memory,
+  //       label: l10n.beeSimFirmwareAction,
+  //       onPressed: () => _runFirmwareUpgrade(context, beeAdapter),
+  //     ),
+  //   ];
+  // }
 
+  // ignore: unused_element -- used by the commented-out reader action above
   BeeSimAdapter? _resolveBeeAdapter(Adapter adapter, Object? source) {
     if (adapter is BeeSimAdapter) return adapter;
     if (source is BeeSimAdapter) return source;
     return null;
   }
 
+  // ignore: unused_element -- used by the commented-out reader action above
   Future<void> _runFirmwareUpgrade(
     BuildContext context,
     BeeSimAdapter adapter,
