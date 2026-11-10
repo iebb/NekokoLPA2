@@ -4,6 +4,9 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- A "Send report" button on the "SIM/eSIM channel became invalid" error screen. After confirming, it sends the error, device model and recent app log to Sentry for review. Nothing is sent unless the button is pressed.
+
 ### Fixed
 - Clear the OMAPI "SIM/eSIM channel became invalid" lock after a device restart even when the saved failure has no message or no boot identity. Such a lock previously survived every restart, so OMAPI stayed unusable until the app's data was cleared.
 

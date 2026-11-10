@@ -31,9 +31,12 @@ APKSIGNER = os.path.abspath(os.path.join(SCRIPT_DIR, "../../signer/apksigner.jar
 
 # Helper to run shell commands
 def run_cmd(cmd, cwd=None):
-    # The GM card PSK service is configured per build, not kept in the source.
+    # The GM card PSK service and the Sentry DSN are configured per build, not kept in the source.
     if cmd[:2] == ["flutter", "build"]:
-        cmd = cmd + [f"--dart-define=GM_PSK_URL={os.environ.get('GM_PSK_URL', '')}"]
+        cmd = cmd + [
+            f"--dart-define=GM_PSK_URL={os.environ.get('GM_PSK_URL', '')}",
+            f"--dart-define=SENTRY_DSN={os.environ.get('SENTRY_DSN', '')}",
+        ]
     safe_cmd = list(cmd)
     for index, value in enumerate(cmd[:-1]):
         if value in ("--ks-pass", "--key-pass"):

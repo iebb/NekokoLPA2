@@ -23,7 +23,7 @@ Push-Location $nlpa2Dir
 try {
     # Build Flutter Windows release
     Write-Host "`n[1/3] Building Flutter Windows release..." -ForegroundColor Yellow
-    flutter build windows --release "--dart-define=GM_PSK_URL=$env:GM_PSK_URL"
+    flutter build windows --release "--dart-define=GM_PSK_URL=$env:GM_PSK_URL" "--dart-define=SENTRY_DSN=$env:SENTRY_DSN"
     
     if ($LASTEXITCODE -ne 0) {
         throw "Flutter build failed"

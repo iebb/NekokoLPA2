@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../adapter/omapi/omapi_safety.dart';
 import '../../l10n/app_localizations.dart';
+import '../../services/error_report_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/apdu_exception.dart';
 import '../../utils/error_codes.dart';
@@ -194,7 +196,78 @@ class ErrorState extends StatelessWidget {
             foregroundColor: Colors.white,
           ),
         ),
+        if (ErrorReportService.isAvailable &&
+            isOmapiSessionCorruptedError(error))
+          _SendReportButton(error: error, kind: 'omapi_session_corrupted'),
       ],
+    );
+  }
+}
+
+/// Sends [error] to Sentry for manual review, after the user confirms.
+class _SendReportButton extends StatefulWidget {
+  final Object error;
+  final String kind;
+
+  const _SendReportButton({required this.error, required this.kind});
+
+  @override
+  State<_SendReportButton> createState() => _SendReportButtonState();
+}
+
+class _SendReportButtonState extends State<_SendReportButton> {
+  bool _sending = false;
+
+  Future<void> _send() async {
+    final l10n = AppLocalizations.of(context)!;
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.sendErrorReportTitle),
+        content: Text(l10n.sendErrorReportMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.sendErrorReport),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _sending = true);
+    final id = await ErrorReportService.report(widget.error, kind: widget.kind);
+    if (!mounted) return;
+    setState(() => _sending = false);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          id == null
+              ? l10n.errorReportFailed
+              : l10n.errorReportSent(id.toString().substring(0, 8)),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return OutlinedButton.icon(
+      onPressed: _sending ? null : _send,
+      icon: _sending
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.bug_report_outlined),
+      label: Text(l10n.sendErrorReport),
     );
   }
 }

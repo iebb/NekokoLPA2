@@ -3034,4 +3034,23 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get deleteNotificationHistoryEntry => 'Delete local history entry';
+
+  @override
+  String get sendErrorReport => 'Send report';
+
+  @override
+  String get sendErrorReportTitle => 'Send error report?';
+
+  @override
+  String get sendErrorReportMessage =>
+      'This sends the error, your device model and the app\'s recent log to the developers for review. The log can include your eSIM\'s EID and profile ICCIDs.';
+
+  @override
+  String errorReportSent(String reference) {
+    return 'Report sent. Reference: $reference';
+  }
+
+  @override
+  String get errorReportFailed =>
+      'Couldn\'t send the report. Check your connection and try again.';
 }

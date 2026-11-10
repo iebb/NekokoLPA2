@@ -5716,6 +5716,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete local history entry'**
   String get deleteNotificationHistoryEntry;
+
+  /// Button on an error screen that sends the error to the developers for review.
+  ///
+  /// In en, this message translates to:
+  /// **'Send report'**
+  String get sendErrorReport;
+
+  /// No description provided for @sendErrorReportTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send error report?'**
+  String get sendErrorReportTitle;
+
+  /// No description provided for @sendErrorReportMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This sends the error, your device model and the app\'s recent log to the developers for review. The log can include your eSIM\'s EID and profile ICCIDs.'**
+  String get sendErrorReportMessage;
+
+  /// No description provided for @errorReportSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Report sent. Reference: {reference}'**
+  String errorReportSent(String reference);
+
+  /// No description provided for @errorReportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send the report. Check your connection and try again.'**
+  String get errorReportFailed;
 }
 
 class _AppLocalizationsDelegate

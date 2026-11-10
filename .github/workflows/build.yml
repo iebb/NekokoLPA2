@@ -25,6 +25,8 @@ env:
   # Where GmPlugin fetches a GM card's PSK. Builds without it still compile
   # and run; they just use only PSKs already cached on the device.
   GM_PSK_URL: https://key.9esim.com/psk
+  # Sentry client key for the app; public by design, like any shipped DSN.
+  SENTRY_DSN: https://7e09471da611983f516ee20eae1543d7@sentry.nekoko.it/7
 
 jobs:
   meta:
@@ -145,7 +147,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
-      - run: flutter build web --release --dart-define=APP_VARIANT=std --dart-define=GM_PSK_URL=${{ env.GM_PSK_URL }}
+      - run: flutter build web --release --dart-define=APP_VARIANT=std --dart-define=GM_PSK_URL=${{ env.GM_PSK_URL }} --dart-define=SENTRY_DSN=${{ env.SENTRY_DSN }}
       - name: Package web build
         env:
           VERSION_CLEAN: ${{ needs.meta.outputs.version_clean }}
@@ -177,7 +179,7 @@ jobs:
           sudo wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool
           sudo chmod +x /usr/local/bin/appimagetool
       - run: flutter pub get
-      - run: flutter build linux --release --dart-define=APP_VARIANT=std --dart-define=GM_PSK_URL=${{ env.GM_PSK_URL }}
+      - run: flutter build linux --release --dart-define=APP_VARIANT=std --dart-define=GM_PSK_URL=${{ env.GM_PSK_URL }} --dart-define=SENTRY_DSN=${{ env.SENTRY_DSN }}
       - name: Package tar.gz + AppImage
         env:
           VERSION_CLEAN: ${{ needs.meta.outputs.version_clean }}
@@ -235,7 +237,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
-      - run: flutter build windows --release --dart-define=APP_VARIANT=std --dart-define=GM_PSK_URL=${{ env.GM_PSK_URL }}
+      - run: flutter build windows --release --dart-define=APP_VARIANT=std --dart-define=GM_PSK_URL=${{ env.GM_PSK_URL }} --dart-define=SENTRY_DSN=${{ env.SENTRY_DSN }}
       - name: Stage release tree
         shell: pwsh
         run: |

@@ -14,7 +14,7 @@ export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:?Missing source epoch}"
 export GRADLE_OPTS='-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Dfile.encoding=UTF-8 -Duser.timezone=UTC'
 flutter pub get --enforce-lockfile
 cargo fetch --locked --manifest-path rust/Cargo.toml
-args=(--release --flavor "$1" --target lib/main.dart --no-pub --dart-define=GM_PSK_URL=https://key.9esim.com/psk)
+args=(--release --flavor "$1" --target lib/main.dart --no-pub --dart-define=GM_PSK_URL=https://key.9esim.com/psk --dart-define=SENTRY_DSN=https://7e09471da611983f516ee20eae1543d7@sentry.nekoko.it/7)
 if [ "$1" = privileged ]; then
     args+=(--target-platform android-arm64 --dart-define=PRIVILEGED_BUILD=true --dart-define=APP_VARIANT=community-rooted)
 else
