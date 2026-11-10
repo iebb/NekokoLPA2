@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import '../../utils/error_codes.dart';
 
 const String omapiSessionCorruptedCode = 'OMAPI_SESSION_CORRUPTED';
+const String omapiProfileSwitchResponseLostCode =
+    'OMAPI_PROFILE_SWITCH_RESPONSE_LOST';
 const String omapiProcessHandoffPendingReason =
     'OMAPI same-process engine handoff is still cleaning up';
 const String omapiRebootRequiredMessage =
@@ -29,6 +31,33 @@ bool isOmapiSessionCorruptedError(Object error) {
   }
   return false;
 }
+
+bool isOmapiProfileSwitchResponseLost(Object error) => switch (error) {
+  PlatformException(:final code) => code == omapiProfileSwitchResponseLostCode,
+  AppException(:final Object originalError) => isOmapiProfileSwitchResponseLost(
+    originalError,
+  ),
+  _ => false,
+};
+
+const String omapiSwitchOutcomeUnknownMessage =
+    'The SIM reloaded during the profile switch and the result could not be read back. The switch may already have taken effect; refresh the profile list before trying again.';
+
+const Set<String> _omapiReaderReloadingCodes = {
+  'NOT_CONNECTED',
+  'CONNECTION_FAILED',
+  'CHANNEL_NOT_FOUND',
+  'TRANSMIT_FAILED',
+};
+
+/// Errors a fresh OMAPI session can raise while the SIM is still coming back
+/// from the reset a profile switch triggered.
+bool isOmapiReaderReloadingError(Object error) => switch (error) {
+  PlatformException(:final code) => _omapiReaderReloadingCodes.contains(code),
+  AppException(:final code) =>
+    code == AppErrorCode.ERROR_OMAPI_CHANNEL_OPEN_FAILED,
+  _ => false,
+};
 
 bool canAutomaticallyRetryProfileSwitch(
   Object error, {

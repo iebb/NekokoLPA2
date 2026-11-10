@@ -597,7 +597,7 @@ class CompositeAdapter extends BaseAdapter {
   }
 
   @override
-  Future<void> reconnect() async {
+  Future<void> reconnect({bool resetService = true}) async {
     return await runExclusive(() async {
       final adapter = _connectedAdapter;
       if (adapter == null) return;
@@ -613,6 +613,8 @@ class CompositeAdapter extends BaseAdapter {
           if (reader != null && adapter.connectedReader?.id != reader.id) {
             await disconnect();
             await connect(reader);
+          } else if (adapter is OmapiAdapter) {
+            await adapter.reconnect(resetService: resetService);
           } else {
             await adapter.reconnect();
           }
@@ -774,7 +776,7 @@ class CompositeAdapter extends BaseAdapter {
       _log.info('SIM change while connected, requesting reconnect...');
       // Small delay to let system stabilize
       Future.delayed(const Duration(milliseconds: 1500), () {
-        reconnect().catchError(
+        reconnect(resetService: false).catchError(
           (e) => _log.warning('Auto-reconnect after SIM change failed: $e'),
         );
       });

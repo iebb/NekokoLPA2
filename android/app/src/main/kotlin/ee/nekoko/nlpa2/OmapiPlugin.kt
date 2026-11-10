@@ -9,6 +9,7 @@ import android.se.omapi.Channel
 import android.se.omapi.Reader
 import android.se.omapi.SEService
 import android.se.omapi.Session
+import android.telephony.SubscriptionManager
 import android.util.Log
 import androidx.annotation.RequiresApi
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -19,6 +20,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
+import java.io.IOException
 
 private fun ByteArray.toHex(): String =
         joinToString(separator = "") { eachByte -> "%02x".format(eachByte) }
@@ -56,6 +58,8 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     @Volatile private var profileSwitchInProgress = false
+    @Volatile private var profileSwitchReload: OmapiProfileSwitchReload? = null
+    private var retiredSessionService: SEService? = null
 
     private lateinit var cleanupCoordinator: OmapiCleanupCoordinator<Channel>
     private var lifecycleCoordinator: OmapiLifecycleCoordinator? = null
@@ -117,6 +121,15 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     val action = intent?.action ?: return
                     if (action == "android.intent.action.SIM_STATE_CHANGED") {
                         val state = intent.getStringExtra("ss") ?: ""
+                        if (!isInitialStickyBroadcast) {
+                            profileSwitchReload?.observe(
+                                    intent.getIntExtra(
+                                            SubscriptionManager.EXTRA_SLOT_INDEX,
+                                            intent.getIntExtra("phone", -1),
+                                    ),
+                                    state,
+                            )
+                        }
                         Log.d(TAG, "SIM state changed: $state")
                         lifecycleCoordinator?.enqueueHardware(
                                 onRejected = {},
@@ -154,6 +167,10 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         private const val CORRUPTED_MESSAGE =
                 "SIM/eSIM channel became invalid. The profile operation may already have taken effect. " +
                         "Restart the device, reopen the app, and refresh profile status before retrying."
+        private const val PROFILE_SWITCH_RESPONSE_LOST_MESSAGE =
+                "SIM reloaded before the profile switch response arrived. The switch may already have " +
+                        "taken effect; refresh the profile list before trying again."
+        private const val PROFILE_SWITCH_RELOAD_TIMEOUT_MS = 10_000L
 
         // Default eUICC AID
         private const val DEFAULT_EUICC_AID = "A0000005591010FFFFFFFF8900000100"
@@ -317,8 +334,7 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         }
 
         try {
-            seService?.shutdown()
-            seService = null
+            shutdownSeService()
         } catch (e: Exception) {
             cleanupCoordinator.markPoisoned(
                     readerName = null,
@@ -555,6 +571,63 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         runOnUiThread { result.error("TRANSMIT_FAILED", error.message, null) }
     }
 
+    /** Returns null when the SIM reloaded under an enable/disable whose response was lost. */
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun transmitWatchingReload(
+            readerName: String,
+            channel: Channel,
+            apdu: ByteArray,
+    ): ByteArray? {
+        val reload =
+                if (profileSwitchInProgress) OmapiProfileSwitchReload.forCommand(readerName, apdu)
+                else null
+        if (reload == null) return channel.transmit(apdu)
+        profileSwitchReload = reload
+        return try {
+            channel.transmit(apdu)
+        } catch (error: IOException) {
+            if (!recoverAfterProfileSwitchReload(readerName, reload)) throw error
+            null
+        } finally {
+            profileSwitchReload = null
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun recoverAfterProfileSwitchReload(
+            readerName: String,
+            reload: OmapiProfileSwitchReload,
+    ): Boolean {
+        val recovered =
+                reload.awaitReload(PROFILE_SWITCH_RELOAD_TIMEOUT_MS) &&
+                        channelsClosedByService(
+                                readerChannels[readerName]?.values?.toList().orEmpty(),
+                                Channel::isOpen,
+                                Channel::isBasicChannel,
+                        )
+        if (!recovered) {
+            Log.w(TAG, "No same-slot SIM reload with closed channels on $readerName; keeping the guard")
+            return false
+        }
+        // The service closed these channels. Closing them again, or bulk-closing their
+        // sessions later, can spin on Samsung builds (#46), so only local references go.
+        cleanupCoordinator.discardInvalidatedReader(readerName)
+        retiredSessionService = seService
+        return true
+    }
+
+    /** SEService.shutdown() bulk-closes every session, so skip it while retired sessions remain. */
+    private fun shutdownSeService() {
+        val service = seService ?: return
+        if (service === retiredSessionService) {
+            Log.w(TAG, "Leaving SEService bound: it still holds sessions retired after a SIM reload")
+            retiredSessionService = null
+        } else {
+            service.shutdown()
+        }
+        seService = null
+    }
+
     @RequiresApi(Build.VERSION_CODES.P)
     private fun handleListReaders(result: Result) {
         if (rejectIfPoisoned(result)) return
@@ -732,8 +805,7 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         val cleanup = cleanupAllSessions()
         if (reportCleanupFailure(result, cleanup)) return
         try {
-            seService?.shutdown()
-            seService = null
+            shutdownSeService()
         } catch (e: Exception) {
             val info =
                     cleanupCoordinator.markPoisoned(
@@ -1054,7 +1126,15 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 try {
                     val apduBytes = hexStringToByteArray(apduHex)
                     Log.i(TAG, "[$readerName] >> $apduHex")
-                    val response = channel.transmit(apduBytes)
+                    val response =
+                            transmitWatchingReload(readerName, channel, apduBytes)
+                                    ?: return runOnUiThread {
+                                        result.error(
+                                                OMAPI_PROFILE_SWITCH_RESPONSE_LOST,
+                                                PROFILE_SWITCH_RESPONSE_LOST_MESSAGE,
+                                                null,
+                                        )
+                                    }
                     val responseHex = response.toHex()
                     Log.i(TAG, "[$readerName] << $responseHex")
 

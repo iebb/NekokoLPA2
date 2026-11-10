@@ -2666,6 +2666,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
     List<EuiccProfile>? verifiedProfiles;
     var retryAfterPassword = false;
+    var omapiSwitchResponseLost = false;
     void ensureCurrentSwitch() {
       if (switchGeneration != _profileSwitchGeneration) {
         throw AppException(
@@ -2724,6 +2725,10 @@ class _ProfilesScreenState extends State<ProfilesScreen>
                         'until the host has reset the card.',
                       );
                     }
+                  } catch (error) {
+                    if (!isOmapiProfileSwitchResponseLost(error)) rethrow;
+                    omapiSwitchResponseLost = true;
+                    throw ProfileStateCommandOutcomeUnknown(error);
                   } finally {
                     if (commandCompleted &&
                         switchGeneration == _profileSwitchGeneration) {
@@ -2824,7 +2829,9 @@ class _ProfilesScreenState extends State<ProfilesScreen>
             isTransient: (error) =>
                 switchGeneration == _profileSwitchGeneration &&
                 !isOmapiSessionCorruptedError(error) &&
-                _isProfileSwitchTransientError(error),
+                (_isProfileSwitchTransientError(error) ||
+                    (omapiSwitchResponseLost &&
+                        isOmapiReaderReloadingError(error))),
           );
       ensureCurrentSwitch();
 
@@ -2872,6 +2879,12 @@ class _ProfilesScreenState extends State<ProfilesScreen>
             errorStr.contains('DISABLE_FAILED:') ||
             e is ProfileStateVerificationException) {
           _showFailureModal(enable ? 'enable' : 'disable', errorStr);
+        } else if (omapiSwitchResponseLost) {
+          _updateReaderState(
+            reader,
+            profiles: [],
+            error: '$omapiSwitchOutcomeUnknownMessage\n$errorStr',
+          );
         } else {
           _handleOperationError(
             reader,
