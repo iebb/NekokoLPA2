@@ -7,16 +7,6 @@ import 'package:http/io_client.dart';
 import 'package:logging/logging.dart';
 import '../settings/app_settings.dart';
 
-class CustomHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) {
-        return true;
-      };
-  }
-}
-
 class SmdpException implements Exception {
   final String subjectCode;
   final String reasonCode;
@@ -65,18 +55,12 @@ class SmdpClient {
 
   static const Duration _connectionTimeout = Duration(seconds: 30);
 
-  static void init() {
-    HttpOverrides.global = CustomHttpOverrides();
-  }
-
   static Future<Map<String, dynamic>> post({
     required String smdpAddress,
     required String endpoint,
     required Map<String, dynamic> bodyData,
     bool checkStatus = true,
   }) async {
-    init();
-
     final smdpAddress0 = smdpAddress.trim();
     final proxyConfig = AppSettings().rspProxyConfig;
     final url = proxyConfig.buildRspUri(
@@ -163,6 +147,11 @@ class SmdpClient {
           .timeout(requestTimeout);
     }
 
+    // SM-DP+ and SM-DS servers present certificates from GSMA CIs and private
+    // roots that no platform trust store carries, and the eUICC, not this
+    // connection, authenticates the server. So any certificate is accepted
+    // here, on a client used for this request alone: nothing else in the
+    // process may inherit that.
     final httpClient = HttpClient()
       ..connectionTimeout = _connectionTimeout
       ..badCertificateCallback = (X509Certificate cert, String host, int port) {

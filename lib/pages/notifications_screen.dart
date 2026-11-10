@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,17 +22,6 @@ import 'notification_history_page.dart';
 import 'settings/notifications_settings_page.dart';
 import 'package:logging/logging.dart';
 import '../l10n/app_localizations.dart';
-
-// Custom HttpClient to disable SSL validation
-class CustomHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) {
-        return true;
-      };
-  }
-}
 
 class NotificationsScreen extends StatefulWidget {
   final Reader reader;

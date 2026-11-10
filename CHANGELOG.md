@@ -8,6 +8,9 @@ All notable changes to NekokoLPA2 will be documented in this file.
 - Sentry, and with it the "Send report" button, is part of the 9eSIM build only. Every other build ignores a Sentry DSN and sends nothing.
 - Startup no longer asks the OTBridge helper for its slot list once the OMAPI and TMAPI reader choices are stored, and waits at most 5 seconds for it otherwise.
 
+### Security
+- Accept unverified TLS certificates only on SM-DP+ and SM-DS requests, where the eUICC authenticates the server. Making one such request previously turned certificate checks off for the rest of the app until it was closed, including the update check and reader firmware downloads.
+
 ### Fixed
 - Show a 3HK number as soon as it has been looked up, instead of only after the next profile reload.
 - Run each provider plugin's profile lookup independently, so a slow or failing one no longer delays or cancels the others.
