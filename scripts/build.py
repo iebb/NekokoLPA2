@@ -29,14 +29,14 @@ ROOT_DIR = Path(SCRIPT_DIR).parent
 # If running from NekokoLPA2/scripts, signer is in ../../signer
 APKSIGNER = os.path.abspath(os.path.join(SCRIPT_DIR, "../../signer/apksigner.jar"))
 
+# Sentry is part of the 9eSIM build only; the app ignores the DSN in any other.
+SENTRY_DEFINE = f"--dart-define=SENTRY_DSN={os.environ.get('SENTRY_DSN', '')}"
+
 # Helper to run shell commands
 def run_cmd(cmd, cwd=None):
-    # The GM card PSK service and the Sentry DSN are configured per build, not kept in the source.
+    # The GM card PSK service is configured per build, not kept in the source.
     if cmd[:2] == ["flutter", "build"]:
-        cmd = cmd + [
-            f"--dart-define=GM_PSK_URL={os.environ.get('GM_PSK_URL', '')}",
-            f"--dart-define=SENTRY_DSN={os.environ.get('SENTRY_DSN', '')}",
-        ]
+        cmd = cmd + [f"--dart-define=GM_PSK_URL={os.environ.get('GM_PSK_URL', '')}"]
     safe_cmd = list(cmd)
     for index, value in enumerate(cmd[:-1]):
         if value in ("--ks-pass", "--key-pass"):
@@ -254,6 +254,7 @@ def main():
             run_cmd([
                 "flutter", "build", "apk", "--release", "--split-per-abi", "--flavor", "esim9", 
                 "--target-platform", "android-arm64", "--dart-define=ESIM9_BUILD=true", "--dart-define=APP_VARIANT=esim9", "--dart-define=ENABLE_ZXING=false",
+                SENTRY_DEFINE,
                 "--obfuscate", "--split-debug-info=release/symbols"
             ])
             apk_src = "build/app/outputs/flutter-apk/app-arm64-v8a-esim9-release.apk"
@@ -266,6 +267,7 @@ def main():
             run_cmd([
                 "flutter", "build", "appbundle", "--release", "--flavor", "esim9", 
                 "--dart-define=ESIM9_BUILD=true", "--dart-define=APP_VARIANT=esim9", "--dart-define=ENABLE_ZXING=false",
+                SENTRY_DEFINE,
                 "--obfuscate", "--split-debug-info=release/symbols"
             ])
             aab_src = "build/app/outputs/bundle/esim9Release/app-esim9-release.aab"

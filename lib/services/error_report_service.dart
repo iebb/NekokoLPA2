@@ -4,21 +4,22 @@ import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+import '../config.dart';
 import '../utils/error_codes.dart';
 import 'log_buffer.dart';
 
 /// Sends an error the user chose to report to Sentry, for manual review.
 ///
-/// Candidate builds already run Sentry. Releases (x.y.0) start without it, so
-/// the first report starts it with crash and ANR capture off, and every event
-/// that is not a manual report is dropped: pressing the button sends that
-/// report and nothing else.
+/// Only the 9eSIM build has Sentry; see [kSentryEnabled]. Its candidate builds
+/// already run it. Its releases (x.y.0) start without it, so the first report
+/// starts it with crash and ANR capture off, and every event that is not a
+/// manual report is dropped: pressing the button sends that report and nothing
+/// else.
 class ErrorReportService {
-  static const String _dsn = String.fromEnvironment('SENTRY_DSN');
   static const String _manualReportTag = 'manual_report';
   static final Logger _log = Logger('ErrorReportService');
 
-  static bool get isAvailable => _dsn.isNotEmpty;
+  static bool get isAvailable => kSentryEnabled;
 
   /// Returns the Sentry event id, or null when nothing was sent.
   static Future<SentryId?> report(Object error, {required String kind}) async {
@@ -60,7 +61,7 @@ class ErrorReportService {
   }
 
   static Future<void> _startForManualReports() => SentryFlutter.init((options) {
-    options.dsn = _dsn;
+    options.dsn = kSentryDsn;
     options.enableNativeCrashHandling = false;
     options.anrEnabled = false;
     options.enableAutoSessionTracking = false;

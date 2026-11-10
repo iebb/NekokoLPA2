@@ -22,7 +22,8 @@ void main() {
     message: 'SIM/eSIM channel became invalid.',
     details: {'reason': 'Persisted OMAPI poison state is incomplete'},
   );
-  // Builds without a DSN cannot send, so they never show the button.
+  // Only the 9eSIM build, given a DSN, can send; no other build shows the
+  // button. Run with --dart-define=ESIM9_BUILD=true and SENTRY_DSN to see it.
   final reportable = ErrorReportService.isAvailable
       ? findsOneWidget
       : findsNothing;

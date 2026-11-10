@@ -33,7 +33,6 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
 
-const String _sentryDsn = String.fromEnvironment('SENTRY_DSN');
 const String _sentryTracesSampleRateValue = String.fromEnvironment(
   'SENTRY_TRACES_SAMPLE_RATE',
   defaultValue: '0.0',
@@ -50,9 +49,9 @@ void main() async {
   final versionParts = version.split('.');
   final isCandidate = versionParts.length >= 3 && versionParts[2] != '0';
 
-  if (isCandidate && _sentryDsn.isNotEmpty) {
+  if (kSentryEnabled && isCandidate) {
     await SentryFlutter.init((options) {
-      options.dsn = _sentryDsn;
+      options.dsn = kSentryDsn;
       options.tracesSampleRate = _sentryTracesSampleRate;
     }, appRunner: () => _runMain());
   } else {

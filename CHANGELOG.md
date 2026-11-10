@@ -4,6 +4,9 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Sentry, and with it the "Send report" button, is part of the 9eSIM build only. Every other build ignores a Sentry DSN and sends nothing.
+
 ## [2.5.0+606] - 2026-11-10
 
 ### Added
