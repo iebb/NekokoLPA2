@@ -11,6 +11,12 @@ internal data class OmapiBootIdentity(
     val isUsable: Boolean
         get() = bootCount != null || kernelBootId != null
 
+    /** Returns true when at least one reboot-scoped identifier can be compared. */
+    fun isComparableWith(previous: OmapiBootIdentity?): Boolean =
+            previous != null &&
+                    ((bootCount != null && previous.bootCount != null) ||
+                            (kernelBootId != null && previous.kernelBootId != null))
+
     /** Returns true only when every comparable, reboot-scoped identifier changed. */
     fun definitelyChangedSince(previous: OmapiBootIdentity?): Boolean {
         if (previous == null) return false
@@ -106,8 +112,9 @@ internal class SharedPreferencesOmapiSafetyStore(context: Context) : OmapiSafety
 
     override fun load(): PersistedOmapiSafetyState? {
         if (!preferences.getBoolean(KEY_PRESENT, false)) return null
+        val identity = loadBootIdentity()
         val schemaVersion = preferences.getInt(KEY_SCHEMA_VERSION, 0)
-        if (schemaVersion == LEGACY_POISON_SCHEMA_VERSION) return loadLegacyPoison()
+        if (schemaVersion == LEGACY_POISON_SCHEMA_VERSION) return loadLegacyPoison(identity)
         if (schemaVersion != SCHEMA_VERSION) {
             return unreadablePersistedState("Unsupported persisted OMAPI safety schema")
         }
@@ -123,18 +130,7 @@ internal class SharedPreferencesOmapiSafetyStore(context: Context) : OmapiSafety
                 } catch (_: IllegalArgumentException) {
                     return unreadablePersistedState("Unknown persisted OMAPI safety state")
                 }
-        val bootCount =
-                if (preferences.contains(KEY_BOOT_COUNT)) {
-                    preferences.getLong(KEY_BOOT_COUNT, 0L)
-                } else {
-                    null
-                }
-        val kernelBootId = preferences.getString(KEY_KERNEL_BOOT_ID, null)
-        val identity = OmapiBootIdentity(bootCount, kernelBootId).takeIf { it.isUsable }
         val info = if (kind == PersistedOmapiSafetyKind.POISONED) loadPoisonInfo() else null
-        if (kind == PersistedOmapiSafetyKind.POISONED && info == null) {
-            return unreadablePersistedState("Persisted OMAPI poison state is incomplete")
-        }
 
         return PersistedOmapiSafetyState(
                 kind = kind,
@@ -193,8 +189,11 @@ internal class SharedPreferencesOmapiSafetyStore(context: Context) : OmapiSafety
                         }
                     }
 
-    private fun loadPoisonInfo(): OmapiPoisonInfo? {
-        val reason = preferences.getString(KEY_REASON, null)?.takeIf { it.isNotBlank() } ?: return null
+    /** An empty exception message must not turn a reboot-scoped poison into a permanent one. */
+    private fun loadPoisonInfo(): OmapiPoisonInfo {
+        val reason =
+                preferences.getString(KEY_REASON, null)?.takeIf { it.isNotBlank() }
+                        ?: OMAPI_UNKNOWN_POISON_REASON
         return OmapiPoisonInfo(
                 readerName = preferences.getString(KEY_READER_NAME, null),
                 reason = reason,
@@ -204,7 +203,7 @@ internal class SharedPreferencesOmapiSafetyStore(context: Context) : OmapiSafety
         )
     }
 
-    private fun loadLegacyPoison(): PersistedOmapiSafetyState {
+    private fun loadBootIdentity(): OmapiBootIdentity? {
         val bootCount =
                 if (preferences.contains(KEY_BOOT_COUNT)) {
                     preferences.getLong(KEY_BOOT_COUNT, 0L)
@@ -212,20 +211,18 @@ internal class SharedPreferencesOmapiSafetyStore(context: Context) : OmapiSafety
                     null
                 }
         val kernelBootId = preferences.getString(KEY_KERNEL_BOOT_ID, null)
-        val identity = OmapiBootIdentity(bootCount, kernelBootId).takeIf { it.isUsable }
-        val info =
-                loadPoisonInfo()
-                        ?: return unreadablePersistedState(
-                                "Legacy persisted OMAPI poison state is incomplete"
-                        )
-        return PersistedOmapiSafetyState(
-                kind = PersistedOmapiSafetyKind.POISONED,
-                info = info,
-                bootIdentity = identity,
-                recordedAtEpochMillis = preferences.getLong(KEY_RECORDED_AT, 0L),
-        )
+        return OmapiBootIdentity(bootCount, kernelBootId).takeIf { it.isUsable }
     }
 
+    private fun loadLegacyPoison(identity: OmapiBootIdentity?): PersistedOmapiSafetyState =
+            PersistedOmapiSafetyState(
+                    kind = PersistedOmapiSafetyKind.POISONED,
+                    info = loadPoisonInfo(),
+                    bootIdentity = identity,
+                    recordedAtEpochMillis = preferences.getLong(KEY_RECORDED_AT, 0L),
+            )
+
+    /** Unreadable state stays scoped to the boot it was written on, so a reboot can clear it. */
     private fun unreadablePersistedState(reason: String): PersistedOmapiSafetyState =
             PersistedOmapiSafetyState(
                     kind = PersistedOmapiSafetyKind.POISONED,
@@ -236,7 +233,7 @@ internal class SharedPreferencesOmapiSafetyStore(context: Context) : OmapiSafety
                                     operationMayHaveSucceeded = true,
                                     persistenceConfirmed = true,
                             ),
-                    bootIdentity = null,
+                    bootIdentity = loadBootIdentity(),
                     recordedAtEpochMillis = preferences.getLong(KEY_RECORDED_AT, 0L),
             )
 

@@ -4,6 +4,9 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Clear the OMAPI "SIM/eSIM channel became invalid" lock after a device restart even when the saved failure has no message or no boot identity. Such a lock previously survived every restart, so OMAPI stayed unusable until the app's data was cleared.
+
 ## [2.4.5+605] - 2026-11-08
 
 ### Fixed

@@ -8,6 +8,11 @@ import kotlin.concurrent.withLock
 internal const val OMAPI_SESSION_CORRUPTED = "OMAPI_SESSION_CORRUPTED"
 internal const val OMAPI_PROCESS_HANDOFF_PENDING_REASON =
         "OMAPI same-process engine handoff is still cleaning up"
+internal const val OMAPI_UNKNOWN_POISON_REASON = "OMAPI failed without an error message"
+
+/** Some OEM SE services throw with an empty message; the class name is still worth recording. */
+internal fun Throwable.omapiReason(): String =
+        message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName
 
 internal data class OmapiPoisonInfo(
         val readerName: String?,
@@ -120,6 +125,8 @@ internal class OmapiCleanupCoordinator<C>(
         private val safetyStore: OmapiSafetyStore,
         private val bootIdentityProvider: OmapiBootIdentityProvider,
         private val nowEpochMillis: () -> Long = System::currentTimeMillis,
+        // Wall-clock boot time; dates a persisted state when boot identities cannot be compared.
+        private val bootedAtEpochMillis: () -> Long? = { null },
         // Callers without channel-level tracking retain the conservative session-level check.
         private val hasOpenChannels: () -> Boolean = { readerKeys().isNotEmpty() },
 ) {
@@ -299,7 +306,7 @@ internal class OmapiCleanupCoordinator<C>(
                     val info =
                             markPoisonedLocked(
                                     readerName,
-                                    e.message ?: e.javaClass.simpleName,
+                                    e.omapiReason(),
                                     operationMayHaveSucceeded,
                             )
                     clearAllLocalState()
@@ -345,7 +352,7 @@ internal class OmapiCleanupCoordinator<C>(
                 val info =
                         markPoisonedLocked(
                                 readerName,
-                                e.message ?: e.javaClass.simpleName,
+                                e.omapiReason(),
                                 operationMayHaveSucceeded = false,
                         )
                 clearAllLocalState()
@@ -368,7 +375,7 @@ internal class OmapiCleanupCoordinator<C>(
         val candidate =
                 OmapiPoisonInfo(
                         readerName = readerName,
-                        reason = reason,
+                        reason = reason.ifBlank { OMAPI_UNKNOWN_POISON_REASON },
                         operationMayHaveSucceeded = operationMayHaveSucceeded,
                         persistenceConfirmed = false,
                 )
@@ -459,16 +466,7 @@ internal class OmapiCleanupCoordinator<C>(
         poison.get()?.let { return it }
         if (persisted == null) return null
 
-        val currentIdentity = currentBootIdentityOrNull()
-        if (currentIdentity?.definitelyChangedSince(persisted.bootIdentity) == true) {
-            val cleared =
-                    try {
-                        safetyStore.clear()
-                    } catch (_: Exception) {
-                        false
-                    }
-            if (cleared) return null
-        }
+        if (clearIfFromEarlierBoot(persisted)) return null
 
         val restored = persistedStateToPoison(persisted)
         poison.set(restored)
@@ -480,16 +478,7 @@ internal class OmapiCleanupCoordinator<C>(
         poison.get()?.let { return it }
         if (persisted == null) return null
 
-        val currentIdentity = currentBootIdentityOrNull()
-        if (currentIdentity?.definitelyChangedSince(persisted.bootIdentity) == true) {
-            val cleared =
-                    try {
-                        safetyStore.clear()
-                    } catch (_: Exception) {
-                        false
-                    }
-            if (cleared) return null
-        }
+        if (clearIfFromEarlierBoot(persisted)) return null
 
         if (persisted.kind == PersistedOmapiSafetyKind.ARMED) {
             val scope = safetyStore.processScopeKey
@@ -510,6 +499,32 @@ internal class OmapiCleanupCoordinator<C>(
         return persistedStateToPoison(persisted)
     }
 
+    private fun clearIfFromEarlierBoot(persisted: PersistedOmapiSafetyState): Boolean {
+        if (!wasRecordedBeforeThisBoot(persisted)) return false
+        return try {
+            safetyStore.clear()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun wasRecordedBeforeThisBoot(persisted: PersistedOmapiSafetyState): Boolean {
+        val currentIdentity = currentBootIdentityOrNull()
+        if (currentIdentity?.isComparableWith(persisted.bootIdentity) == true) {
+            return currentIdentity.definitelyChangedSince(persisted.bootIdentity)
+        }
+        // Without comparable identifiers a missing guard would never clear. The boot time is
+        // weaker evidence, so only a record well before this boot started counts.
+        val bootedAt =
+                try {
+                    bootedAtEpochMillis()
+                } catch (_: Exception) {
+                    null
+                }
+                        ?: return false
+        return persisted.recordedAtEpochMillis < bootedAt - BOOT_TIME_TOLERANCE_MILLIS
+    }
+
     private fun loadPersistedState(): PersistedOmapiSafetyState? =
             try {
                 safetyStore.load()
@@ -519,7 +534,7 @@ internal class OmapiCleanupCoordinator<C>(
                                 readerName = null,
                                 reason =
                                         "Unable to verify persisted OMAPI safety state: " +
-                                                (e.message ?: e.javaClass.simpleName),
+                                                e.omapiReason(),
                                 operationMayHaveSucceeded = true,
                                 persistenceConfirmed = false,
                         )
@@ -560,5 +575,9 @@ internal class OmapiCleanupCoordinator<C>(
         val scope = safetyStore.processScopeKey ?: return
         val identity = armedBootIdentity ?: return
         OmapiProcessArmRegistry.release(scope, identity, processOwnerToken)
+    }
+
+    private companion object {
+        private const val BOOT_TIME_TOLERANCE_MILLIS = 60_000L
     }
 }

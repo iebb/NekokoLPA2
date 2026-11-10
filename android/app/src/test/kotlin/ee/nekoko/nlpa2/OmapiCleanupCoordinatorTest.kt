@@ -93,6 +93,7 @@ class OmapiCleanupCoordinatorTest {
             val successfulReaders: MutableSet<String> = mutableSetOf(),
             val safetyStore: FakePoisonStore = FakePoisonStore(),
             val bootIdentity: OmapiBootIdentity? = BOOT_ONE,
+            val bootedAt: Long? = null,
     ) {
         val coordinator =
                 OmapiCleanupCoordinator(
@@ -116,6 +117,7 @@ class OmapiCleanupCoordinatorTest {
                         safetyStore = safetyStore,
                         bootIdentityProvider = OmapiBootIdentityProvider { bootIdentity },
                         nowEpochMillis = { 1234L },
+                        bootedAtEpochMillis = { bootedAt },
                         hasOpenChannels = { channels.values.any { it.isNotEmpty() } },
                 )
     }
@@ -349,6 +351,46 @@ class OmapiCleanupCoordinatorTest {
 
         assertTrue(restarted.coordinator.poisonInfo != null)
         assertEquals(1, store.clearCalls.get())
+    }
+
+    @Test
+    fun blankFailureMessageIsPersistedAsReadableReason() {
+        val fixture = Fixture()
+
+        fixture.coordinator.markPoisoned("SIM1", "", true)
+
+        assertEquals(OMAPI_UNKNOWN_POISON_REASON, fixture.safetyStore.persisted?.info?.reason)
+        assertEquals(BOOT_ONE, fixture.safetyStore.persisted?.bootIdentity)
+    }
+
+    @Test
+    fun poisonWithoutBootIdentityClearsWhenRecordedBeforeThisBoot() {
+        val store = poisonedStore(identity = null)
+
+        val restarted = Fixture(safetyStore = store, bootIdentity = BOOT_ONE, bootedAt = 1_000_000L)
+
+        assertTrue(restarted.coordinator.poisonInfo == null)
+        assertEquals(1, store.clearCalls.get())
+    }
+
+    @Test
+    fun poisonWithoutBootIdentityRemainsWhenRecordedDuringThisBoot() {
+        val store = poisonedStore(identity = null)
+
+        val restarted = Fixture(safetyStore = store, bootIdentity = BOOT_ONE, bootedAt = 1_500L)
+
+        assertTrue(restarted.coordinator.poisonInfo != null)
+        assertEquals(0, store.clearCalls.get())
+    }
+
+    @Test
+    fun comparableSameBootIdentityIgnoresBootTime() {
+        val store = poisonedStore(BOOT_ONE)
+
+        val restarted = Fixture(safetyStore = store, bootIdentity = BOOT_ONE, bootedAt = 1_000_000L)
+
+        assertTrue(restarted.coordinator.poisonInfo != null)
+        assertEquals(0, store.clearCalls.get())
     }
 
     @Test
