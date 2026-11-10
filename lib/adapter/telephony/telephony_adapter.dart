@@ -176,18 +176,6 @@ class TelephonyAdapter extends BaseAdapter {
     return HexUtils.hexToBytes(responseHex);
   }
 
-  Future<void> sendTerminalCapabilities() async {
-    if (_slotIndex == null) return;
-    try {
-      await _channel.invokeMethod('sendTerminalCapabilities', {
-        'slotIndex': _slotIndex,
-        'portIndex': _portIndex,
-      });
-    } catch (e) {
-      log.warning('Failed to send terminal capabilities: $e');
-    }
-  }
-
   @override
   Future<void> cleanupChannels() async {
     if (_slotIndex == null) return;

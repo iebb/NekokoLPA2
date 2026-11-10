@@ -662,19 +662,6 @@ class OmapiAdapter extends BaseAdapter {
     });
   }
 
-  /// Initialize OMAPI event stream
-  static void initializeEventStream() {
-    _eventChannel.receiveBroadcastStream().listen(
-      (event) {
-        final Map<String, dynamic> eventData = Map<String, dynamic>.from(event);
-        _log.info('OMAPI Event: $eventData');
-      },
-      onError: (error) {
-        _log.warning('OMAPI Event error: $error');
-      },
-    );
-  }
-
   @override
   Future<void> setProfileSwitchInProgress(bool value) async {
     // This marker is local metadata, not an OMAPI operation, so it remains callable after poison.

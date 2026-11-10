@@ -47,9 +47,6 @@ class TYBLEAdapter extends BaseAdapter implements BleAdapter {
   String? get lastAtr => null;
 
   @override
-  ReaderStrategy get readerStrategy => ReaderStrategy.slow;
-
-  @override
   Future<List<Reader>> listReaders({bool force = false}) async =>
       connectedReader == null ? [] : [connectedReader!];
 

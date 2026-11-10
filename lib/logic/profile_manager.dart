@@ -60,6 +60,8 @@ class NxpMemoryInfo {
 }
 
 class ProfileManager {
+  static final RegExp _nonHex = RegExp(r'[^0-9a-fA-F]');
+
   static final Logger _log = Logger('ProfileManager');
   final Adapter adapter;
   final List<SessionPlugin> _sessionPlugins = [];
@@ -81,10 +83,6 @@ class ProfileManager {
     if (!_sessionPlugins.any((p) => p.id == plugin.id)) {
       _sessionPlugins.add(plugin);
     }
-  }
-
-  void removeSessionPlugin(String id) {
-    _sessionPlugins.removeWhere((p) => p.id == id);
   }
 
   // Cache working AID per reader ID: ReaderID -> {aid, atr}
@@ -130,14 +128,11 @@ class ProfileManager {
 
     for (final s in allAidStrings) {
       try {
-        final clean = s.replaceAll(RegExp(r'[^0-9a-fA-F]'), '').toUpperCase();
+        final clean = s.replaceAll(_nonHex, '').toUpperCase();
         if (clean.length % 2 == 0 && clean.isNotEmpty) {
           // eSTKme-specific AID check: skip if ATR doesn't match
           final isEstkAid = clean.startsWith("A06573746B");
-          final isEstkAtr = RegExp(
-            r'6573746B',
-            caseSensitive: false,
-          ).hasMatch(currentAtr);
+          final isEstkAtr = currentAtr.contains('6573746B');
           if (isEstkAid && !isEstkAtr) {
             continue;
           }
@@ -1510,124 +1505,6 @@ class ProfileManager {
     });
   }
 
-  /// Reads MSISDN from the active profile on the basic channel.
-  /// Tricky function: selects MF, USIM ADF, and reads EF_MSISDN.
-  Future<String?> readActiveMsisdn() async {
-    // try {
-    //   _log.info("Attempting to read active MSISDN from basic channel...");
-
-    //   // 1. Select MF (3F00)
-    //   await adapter.sendApdu(Uint8List.fromList([0x00, 0xA4, 0x00, 0x04, 0x02, 0x3F, 0x00]));
-
-    //   // 2. Select DF_TELECOM (7F10)
-    //   // Check if successful, if not try USIM ADF
-    //   bool parentSelected = false;
-    //   Uint8List resp = await adapter.sendApdu(Uint8List.fromList([0x00, 0xA4, 0x00, 0x04, 0x02, 0x7F, 0x10]));
-    //   if (_isSuccessSw(resp)) {
-    //      parentSelected = true;
-    //   } else {
-    //      _log.info("DF_TELECOM select failed (${HexUtils.bytesToHex(resp)}), trying USIM ADF...");
-    //      // Fallback to USIM ADF
-    //      final selectUsim = Uint8List.fromList([0x00, 0xA4, 0x04, 0x00, 0x07, 0xA0, 0x00, 0x00, 0x00, 0x87, 0x10, 0x02]);
-    //      resp = await adapter.sendApdu(selectUsim);
-    //      if (_isSuccessSw(resp)) {
-    //        parentSelected = true;
-    //      } else {
-    //        _log.warning("USIM ADF select also failed: ${HexUtils.bytesToHex(resp)}");
-    //      }
-    //   }
-
-    //   if (!parentSelected) {
-    //      _log.warning("Could not select DF_TELECOM or USIM ADF. Aborting MSISDN read.");
-    //      return null;
-    //   }
-
-    //   // 3. Select EF_MSISDN (6F40)
-    //   final selectResp = await adapter.sendApdu(Uint8List.fromList([0x00, 0xA4, 0x00, 0x04, 0x02, 0x6F, 0x40]));
-    //   if (!_isSuccessSw(selectResp)) {
-    //      _log.info("EF.MSISDN not found or select failed: ${HexUtils.bytesToHex(selectResp)}");
-    //      return null;
-    //   }
-
-    //   int recordLength = 0;
-    //   // Parse FCP/Header for record length
-    //   // ... same parsing logic ...
-    //   final fcp = selectResp.sublist(0, selectResp.length - 2);
-
-    //   // Try to find record length in FCP (Tag 82)
-    //   for (int i = 0; i < fcp.length - 2; i++) {
-    //     if (fcp[i] == 0x82) {
-    //       int len = fcp[i+1];
-    //       // 82 02 41 21 (Transparent) or 82 05 42 21 00 1C 01 (Linear Fixed)
-    //       // Byte 1: File descriptor byte (42 = Linear Fixed, 41 = Transparent)
-    //       // Byte 2: Data coding byte (21 generally)
-    //       // Byte 3,4: Record length (2 bytes for Linear Fixed)
-    //       // Byte 5: Number of records
-
-    //       // Looking at provided hex: 82 05 42 21 00 1C 01
-    //       // i+0: 82 (Tag)
-    //       // i+1: 05 (Length)
-    //       // i+2: 42 (File Type: Linear Fixed)
-    //       // i+3: 21 (Data coding)
-    //       // i+4: 00 (Rec Len High)
-    //       // i+5: 1C (Rec Len Low) -> This is what we want!
-    //       // i+6: 01 (Num Recs)
-
-    //       if (len >= 5 && i + 1 + len <= fcp.length) {
-    //           // Check if Linear Fixed (0x42) or Cyclic (0x46)
-    //           // Actually ISO/IEC 7816-4 says:
-    //           // Tag 82 (File Descriptor)
-    //           // 1st byte: File descriptor byte.
-    //           //    - Bit 7=0: Working EF
-    //           //         Bits 3-1: Structure (001=Transp, 010=Linear Fixed, 110=Cyclic)
-    //           //         0x42 (0100 0010) => Linear Fixed.
-    //           //         0x46 (0100 0110) => Cyclic.
-    //           // 2nd byte: Data coding byte.
-    //           // 3rd & 4th byte: Record length (16 bit big endian)
-    //           // 5th byte: Number of records
-
-    //          if (len >= 5) {
-    //              int rLenHigh = fcp[i+4];
-    //              int rLenLow = fcp[i+5];
-    //              recordLength = (rLenHigh << 8) | rLenLow;
-    //          }
-    //          break;
-    //       }
-    //     }
-    //   }
-    //   // Old SIM fallback
-    //   if (recordLength == 0 && fcp.length >= 14) {
-    //     // In old GSM response, byte 13 (index 13?) is file length?
-    //     // byte 14 is record length in some specs?
-    //     // Let's stick to Safe default if FCP parse fails, effectively 0x1C or user standard.
-    //   }
-
-    //   if (recordLength == 0) {
-    //     _log.warning("Could not determine record length, falling back to 0x1C");
-    //     recordLength = 0x1C;
-    //   } else {
-    //     _log.info("Detected record length: $recordLength");
-    //   }
-
-    //   // 4. Read Record 1
-    //   final readResp = await adapter.sendApdu(Uint8List.fromList([0x00, 0xB2, 0x01, 0x04, recordLength]));
-
-    //   if (readResp.length < 2) return null;
-    //   final sw1 = readResp[readResp.length - 2];
-    //   final sw2 = readResp[readResp.length - 1];
-
-    //   if (sw1 == 0x90 && sw2 == 0x00) {
-    //     final data = readResp.sublist(0, readResp.length - 2);
-    //     return _decodeMsisdn(data);
-    //   } else {
-    //     _log.info("Read EF.MSISDN failed: ${HexUtils.bytesToHex(readResp)}");
-    //   }
-    // } catch (e) {
-    //   _log.warning("Failed to read MSISDN: $e");
-    // }
-    return null;
-  }
-
   Future<Uint8List> authenticateServerRaw({
     required Uint8List serverSigned1,
     required Uint8List serverSignature1,
@@ -1930,7 +1807,7 @@ class ProfileManager {
       } catch (e) {
         if (e is ApduException) {
           _log.warning(
-            "BPP Load failed with APDU error: ${e.message} (SW=${e.sw1.toRadixString(16)}${e.sw2.toRadixString(16)}). searching for detailed error...",
+            "BPP Load failed with APDU error: ${e.message} (SW=${e.sw1.toRadixString(16).padLeft(2, '0')}${e.sw2.toRadixString(16).padLeft(2, '0')}). searching for detailed error...",
           );
           _log.warning(
             "BPP progress at failure: sentBytes=$totalSentBytes, "
@@ -2333,15 +2210,8 @@ class ProfileManager {
       throw ProactiveRefreshException(sw1, sw2);
     }
 
-    // Use centralized validator
-    try {
-      ApduValidator.validate(sw1, sw2);
-    } catch (e) {
-      if (sw1 == 0x61 || sw1 == 0x6C) {
-        // Should be handled by adapter, if we see it here, it's an error in adapter logic or unhandled residue
-      }
-      rethrow;
-    }
+    // 61xx and 6Cxx are resolved by the adapter; one seen here is an error.
+    ApduValidator.validate(sw1, sw2);
 
     return response.sublist(0, response.length - 2);
   }
@@ -2500,7 +2370,7 @@ List<EuiccProfile> _mapProfiles(List<ProfileInfo> profilesRaw) {
     final decodedNickname = _decodeUtf8Safe(p.profileNickname);
     final decodedServiceProviderName = _decodeUtf8Safe(p.serviceProviderName);
 
-    final parsedNickname = ProfileTagUtils.parse(decodedNickname);
+    final tags = ProfileTagUtils.parseTags(decodedNickname);
 
     String? smdpAddress;
     if (p.notificationConfigurationInfo != null &&
@@ -2523,7 +2393,7 @@ List<EuiccProfile> _mapProfiles(List<ProfileInfo> profilesRaw) {
       gid1: gid1,
       gid2: gid2,
       smdpAddress: smdpAddress,
-      tags: parsedNickname.tags.map((t) => t.raw).toList(),
+      tags: tags.map((t) => t.raw).toList(),
     );
   }).toList();
 }

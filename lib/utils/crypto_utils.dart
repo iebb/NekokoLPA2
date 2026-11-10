@@ -50,11 +50,6 @@ class CryptoUtils {
 
   /// Encrypt JSON data using AES-256-CBC
   /// Returns base64(iv + ciphertext)
-  static String encryptAES(String plaintext, String password) {
-    final key = keyFromPassword(password);
-    return encryptAESWithKey(plaintext, key);
-  }
-
   static String encryptAESWithKey(String plaintext, Uint8List key) {
     try {
       final iv = Uint8List(16);

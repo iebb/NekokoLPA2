@@ -66,9 +66,6 @@ class QrtrReaderAdapter extends BaseAdapter {
   @override
   String? get lastAtr => _atr;
 
-  @override
-  String? get simIccid => null;
-
   /// The card is reached only through a logical channel.
   @override
   bool get supportsRawApdu => false;
@@ -377,20 +374,6 @@ class QrtrReaderAdapter extends BaseAdapter {
     } catch (e) {
       _log.warning('Failed to close logical channel $channelNumber: $e');
     }
-  }
-
-  @override
-  Future<T> runTransaction<T>(
-    Future<T> Function(Channel channel) action,
-  ) async {
-    return runExclusive(() async {
-      final channel = await openChannel();
-      try {
-        return await action(channel);
-      } finally {
-        await channel.close();
-      }
-    });
   }
 
   /// Slots with a card first, so the common case does not probe empty ones.

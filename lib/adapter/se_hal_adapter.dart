@@ -236,10 +236,7 @@ class HalDownloadChannel extends BaseChannel {
       }
       return ApduChainer.transceive(
         transmitter: (apdu) => adapter.sendRawApdu(
-          Uint8List.fromList([
-            (apdu[0] & 0xFC) | channelNumber,
-            ...apdu.skip(1),
-          ]),
+          Uint8List.fromList(apdu)..[0] = (apdu[0] & 0xFC) | channelNumber,
         ),
         cla: cla,
         ins: ins,

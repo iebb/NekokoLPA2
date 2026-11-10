@@ -131,8 +131,6 @@ class NBLESimAdapter extends BaseAdapter implements BleAdapter {
   int _testBppBlockCount = 0;
   bool _testBppTransferArmed = false;
 
-  String? _lastAtr;
-  String? _simIccid;
   bool _initialized = false;
   Uint8List? _authKey;
   int _nextCounter = 0;
@@ -150,9 +148,6 @@ class NBLESimAdapter extends BaseAdapter implements BleAdapter {
   bool get usingDefaultPassword => _usingDefaultPassword;
 
   @override
-  String? get simIccid => _simIccid;
-
-  @override
   Stream<EuiccPortState> get stateStream => _stateController.stream;
 
   @override
@@ -167,10 +162,7 @@ class NBLESimAdapter extends BaseAdapter implements BleAdapter {
   bool get requiresRefresh => true;
 
   @override
-  String? get lastAtr => _lastAtr;
-
-  @override
-  ReaderStrategy get readerStrategy => ReaderStrategy.slow;
+  String? get lastAtr => null;
 
   @override
   NotificationStrategy get notificationStrategy => NotificationStrategy.twoStep;
@@ -497,7 +489,6 @@ class NBLESimAdapter extends BaseAdapter implements BleAdapter {
 
   @override
   List<AdapterAction> get extraActions {
-    _log.info("Requesting extraActions from NBLESimAdapter");
     return [
       AdapterAction(
         icon: Icons.edit_note_rounded,
@@ -899,27 +890,6 @@ class NBLESimAdapter extends BaseAdapter implements BleAdapter {
   static String _swText(int sw) => sw < 0
       ? "a truncated response"
       : "SW=${sw.toRadixString(16).padLeft(4, '0').toUpperCase()}";
-
-  Future<void> setDeviceMode(int mode) async {
-    int currentMode = await getDeviceMode();
-    int n = 0;
-    while (currentMode != mode && n < 3) {
-      final cmd = mode == 1 ? "FE0C010001" : "FE0C020001";
-      _log.info("Sending set_mode command: $cmd");
-      try {
-        final resp = await _transmitCommand(
-          HexUtils.hexToBytes(cmd),
-          "set_mode",
-        );
-        _log.info("Set_mode response: ${HexUtils.bytesToHex(resp)}");
-      } catch (e) {
-        _log.warning("Failed to send set_mode command: $e");
-      }
-      await Future.delayed(Duration(seconds: 2 + n));
-      currentMode = await getDeviceMode();
-      n++;
-    }
-  }
 
   Future<void> _performHandshake(int generation) async {
     if (_authKey == null) {

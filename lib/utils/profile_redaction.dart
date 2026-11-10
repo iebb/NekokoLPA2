@@ -5,6 +5,8 @@ import 'mcc_mapper.dart';
 
 class ProfileRedaction {
   static const String _mask = '*';
+  static final RegExp _phoneNumber = RegExp(r'(\+?\d[\d\s().-]{5,}\d)');
+  static final RegExp _longMaskRun = RegExp(r'\*{9,}');
   static const List<String> _shuffledCountryCodes = <String>[
     'US',
     'JP',
@@ -99,7 +101,7 @@ class ProfileRedaction {
     if (settings.nicknameRedactionMode ==
         NicknameRedactionMode.redactPhoneNumbers) {
       return base.replaceAllMapped(
-        RegExp(r'(\+?\d[\d\s().-]{5,}\d)'),
+        _phoneNumber,
         (match) => _mask * match.group(0)!.length,
       );
     }
@@ -293,7 +295,7 @@ class ProfileRedaction {
     for (var i = 0; i < source.length; i++) {
       buffer.write(keep[i] ? source[i] : _mask);
     }
-    return buffer.toString().replaceAll(RegExp(r'\*{9,}'), '********');
+    return buffer.toString().replaceAll(_longMaskRun, '********');
   }
 
   static String _shuffledCountryCode(String seed) {

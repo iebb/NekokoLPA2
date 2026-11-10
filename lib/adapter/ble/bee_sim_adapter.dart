@@ -99,9 +99,6 @@ class BeeSimAdapter extends BaseAdapter implements BleAdapter {
   String? get lastAtr => _lastAtr;
 
   @override
-  ReaderStrategy get readerStrategy => ReaderStrategy.slow;
-
-  @override
   NotificationStrategy get notificationStrategy => NotificationStrategy.twoStep;
 
   @override

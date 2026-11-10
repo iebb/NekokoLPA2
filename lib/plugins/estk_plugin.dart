@@ -861,13 +861,11 @@ class EstkPlugin extends ProfilePlugin implements SessionPlugin {
           id: 'estk_${aid.toUpperCase()}',
           label: 'Slot ${aid.toUpperCase().endsWith("30") ? "1" : "2"}',
           value: aid, // Current
-          isSelected: true,
         ),
         AdapterMode(
           id: 'estk_$otherAid',
           label: 'Switch to Slot ${otherAid!.endsWith("30") ? "1" : "2"}',
           value: otherAid,
-          isSelected: false,
         ),
       ];
     }

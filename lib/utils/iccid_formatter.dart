@@ -1,4 +1,6 @@
 class IccidFormatter {
+  static final RegExp _trailingFiller = RegExp(r'[Ff]+$');
+
   /// Strips the BCD filler from the end of an ICCID for display.
   ///
   /// Only trailing filler is removed. An 'F' in the middle of an ICCID is real
@@ -11,6 +13,6 @@ class IccidFormatter {
   /// and there is no trailing F to match, so the filler survives into the
   /// output.
   static String forDisplay(String iccid) {
-    return iccid.replaceAll(RegExp(r'[Ff]+$'), '');
+    return iccid.replaceAll(_trailingFiller, '');
   }
 }

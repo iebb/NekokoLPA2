@@ -2327,21 +2327,6 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       );
     }
 
-    if (!reader.id.startsWith('omapi:')) {
-      final enabledProfile = profiles.where((p) => p.enabled).firstOrNull;
-      if (enabledProfile != null) {
-        try {
-          final msisdn = await _manager.readActiveMsisdn();
-          if (msisdn != null) {
-            unawaited(
-              DatabaseService().saveMsisdn(enabledProfile.iccid, msisdn),
-            );
-          }
-        } catch (e) {
-          _log.warning("Tricky MSISDN query failed: $e");
-        }
-      }
-    }
     return profiles;
   }
 

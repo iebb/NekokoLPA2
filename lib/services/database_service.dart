@@ -604,15 +604,6 @@ class DatabaseService {
         0;
   }
 
-  Future<void> saveMsisdn(String iccid, String msisdn) async {
-    final db = await database;
-    await db.insert('profile_msisdn', {
-      'iccid': iccid,
-      'msisdn': msisdn,
-      'lastUpdated': DateTime.now().millisecondsSinceEpoch,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-  }
-
   Future<void> saveProfileSize(
     String eid,
     String iccid,

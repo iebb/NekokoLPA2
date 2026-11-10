@@ -15,33 +15,39 @@ class ProfileTagUtils {
     return s.replaceAll(internalSpace, ' ').replaceAll(internalColon, ':');
   }
 
+  // Word boundary \b so a tag is not matched inside a word: " d:..." or a
+  // leading "d:...". [td] is the tag kind, [\S\x11]+ its content.
+  static final RegExp _tagPattern = RegExp(
+    r'\b([td]:[\S\x11]+)',
+    caseSensitive: false,
+  );
+  static final RegExp _whitespace = RegExp(r'\s+');
+  static final RegExp _nonPhoneChars = RegExp(r'[^\d\+\s\.\-\(\)]');
+
+  /// The tags in a nickname, without the name clean-up and phone-number
+  /// formatting [parse] also does.
+  static List<ProfileTag> parseTags(String? fullNickname) {
+    if (fullNickname == null || fullNickname.isEmpty) return [];
+    return [
+      for (final m in _tagPattern.allMatches(fullNickname))
+        ProfileTag.parse(m.group(1)!),
+    ];
+  }
+
   // Parses nickname string, handling standard and legacy (space-separated) formats.
   static ParsedNickname parse(String? fullNickname, {String? regionCode}) {
     if (fullNickname == null || fullNickname.isEmpty) {
       return ParsedNickname('', []);
     }
 
-    // Try regex parsing
-    // Use word boundary \b to ensure we don't match inside words.
-    // Matches " d:..." or start of string "d:...".
-    // [td] matches t or d.
-    // [\S\x11]+ matches content.
-    final regex = RegExp(r'\b([td]:[\S\x11]+)', caseSensitive: false);
-    final tags = <ProfileTag>[];
-
-    final matches = regex.allMatches(fullNickname);
-    for (final m in matches) {
-      if (m.group(1) != null) {
-        tags.add(ProfileTag.parse(m.group(1)!));
-      }
-    }
+    final tags = parseTags(fullNickname);
 
     String name = fullNickname
-        .replaceAll(regex, '')
+        .replaceAll(_tagPattern, '')
         .replaceAll(tagSeparator, '')
         .trim();
     // Collapse multiple spaces if any were left by removing tags
-    name = name.replaceAll(RegExp(r'\s+'), ' ');
+    name = name.replaceAll(_whitespace, ' ');
 
     String displayName = name;
     final String region = (regionCode == null || regionCode == "UN")
@@ -51,8 +57,7 @@ class ProfileTagUtils {
     try {
       final phoneNumberUtil = PhoneNumberUtil.instance;
       // Clean string for findNumbers (replace non-phone chars with spaces to allow detection near words)
-      final phoneCharsFilter = RegExp(r'[^\d\+\s\.\-\(\)]');
-      final cleanedText = name.replaceAll(phoneCharsFilter, ' ');
+      final cleanedText = name.replaceAll(_nonPhoneChars, ' ');
 
       final strategy = AppSettings().phoneFormatStrategy;
 

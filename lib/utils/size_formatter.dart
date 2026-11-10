@@ -35,13 +35,12 @@ class SizeFormatter {
     }
   }
 
+  static final RegExp _thousands = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+
   static String _withCommas(dynamic number) {
     String str = number.toString();
     List<String> parts = str.split('.');
-    parts[0] = parts[0].replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    );
+    parts[0] = parts[0].replaceAllMapped(_thousands, (Match m) => '${m[1]},');
     return parts.join('.');
   }
 }

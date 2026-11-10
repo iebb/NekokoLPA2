@@ -37,13 +37,7 @@ class AdapterMode {
   final String id;
   final String label;
   final dynamic value;
-  final bool isSelected;
-  AdapterMode({
-    required this.id,
-    required this.label,
-    required this.value,
-    this.isSelected = false,
-  });
+  AdapterMode({required this.id, required this.label, required this.value});
 }
 
 class AdapterAction {
@@ -59,8 +53,6 @@ class AdapterAction {
     required this.key,
   });
 }
-
-enum ReaderStrategy { slow, fast }
 
 enum NotificationStrategy { twoStep, combined }
 
@@ -115,7 +107,6 @@ class Reader {
   String? eid;
   String? aid;
   bool isEstkMax;
-  bool isEstk;
 
   Reader({
     required this.id,
@@ -125,7 +116,6 @@ class Reader {
     this.eid,
     this.aid,
     this.isEstkMax = false,
-    this.isEstk = false,
   });
 
   @override
@@ -149,18 +139,6 @@ abstract class Adapter {
 
   // Updated signature: accepts optional list of AIDs to test natively
   Future<Channel> openChannel({List<String>? aids});
-  Future<void> closeChannel(Channel channel);
-  Future<Uint8List> transmit(
-    Channel channel,
-    int cla,
-    int ins,
-    int p1,
-    int p2, [
-    Uint8List? data,
-    int? le,
-  ]);
-
-  Future<T> runTransaction<T>(Future<T> Function(Channel channel) action);
   Future<Uint8List> sendRawApdu(Uint8List apdu);
   Future<Uint8List> sendApdu(Uint8List apdu);
 
@@ -185,13 +163,11 @@ abstract class Adapter {
   String? get lastAtr;
   Reader? get connectedReader;
   void updateConnectedReader(Reader? reader);
-  String? get simIccid;
   String? get currentEid;
   set currentEid(String? value);
   DateTime? get refreshingUntil;
   set refreshingUntil(DateTime? value);
 
-  ReaderStrategy get readerStrategy;
   NotificationStrategy get notificationStrategy;
   List<AdapterAction> get extraActions;
 
@@ -305,16 +281,13 @@ class BaseChannel implements Channel {
   Future<Uint8List> sendRawApdu(Uint8List apdu) => adapter.sendRawApdu(apdu);
 }
 
-/// Base implementation of Adapter with synchronized execution and centralized runTransaction
+/// Base implementation of Adapter with synchronized execution.
 abstract class BaseAdapter implements Adapter {
   final Logger log;
   BaseAdapter(this.log);
 
   @override
   DateTime? refreshingUntil;
-
-  @override
-  String? get simIccid => null;
 
   @override
   String? currentEid;
@@ -385,9 +358,6 @@ abstract class BaseAdapter implements Adapter {
 
   @override
   Future<void> setProfileSwitchInProgress(bool value) async {}
-
-  @override
-  ReaderStrategy get readerStrategy => ReaderStrategy.fast;
 
   @override
   NotificationStrategy get notificationStrategy =>
@@ -509,24 +479,6 @@ abstract class BaseAdapter implements Adapter {
   }
 
   @override
-  Future<void> closeChannel(Channel channel) async {
-    await channel.close();
-  }
-
-  @override
-  Future<Uint8List> transmit(
-    Channel channel,
-    int cla,
-    int ins,
-    int p1,
-    int p2, [
-    Uint8List? data,
-    int? le,
-  ]) async {
-    return await channel.transmit(cla, ins, p1, p2, data, le);
-  }
-
-  @override
   Future<void> cleanupChannels() async {
     log.info("Cleaning up logical channels (1-3)...");
     for (var i = 1; i <= 3; i++) {
@@ -534,26 +486,6 @@ abstract class BaseAdapter implements Adapter {
         await sendRawApdu(Uint8List.fromList([0x00, 0x70, 0x80, i, 0x00]));
       } catch (_) {}
     }
-  }
-
-  @override
-  Future<T> runTransaction<T>(
-    Future<T> Function(Channel channel) action,
-  ) async {
-    return await runExclusive(() async {
-      log.info("Starting transaction...");
-      final channel = await openChannel();
-      try {
-        final result = await action(channel);
-        log.info("Transaction finished successfully.");
-        return result;
-      } catch (e) {
-        log.warning("Transaction failed: $e");
-        rethrow;
-      } finally {
-        await closeChannel(channel);
-      }
-    });
   }
 
   /// Helper to iterate a list of AIDs and SELECT the first one that works.
