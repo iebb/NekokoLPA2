@@ -199,6 +199,7 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         }
         methodChannel?.setMethodCallHandler(null)
         methodChannel = null
+        eventChannel?.setStreamHandler(null)
         eventChannel = null
         eventSink = null
 

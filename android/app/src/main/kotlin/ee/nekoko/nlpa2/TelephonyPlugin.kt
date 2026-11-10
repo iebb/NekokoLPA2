@@ -421,7 +421,7 @@ class TelephonyPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         val filter = IntentFilter("android.intent.action.SIM_STATE_CHANGED")
         filter.addAction("android.telephony.action.SIM_CARD_STATE_CHANGED")
         filter.addAction("android.telephony.action.SIM_APPLICATION_STATE_CHANGED")
-        context?.registerReceiver(simStateReceiver, filter)
+        binding.applicationContext.registerReceiver(simStateReceiver, filter)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -431,8 +431,9 @@ class TelephonyPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
         eventChannel = null
         eventSink = null
 
+        // The activity detaches first and clears `context`, so unregister through the binding.
         try {
-            context?.unregisterReceiver(simStateReceiver)
+            binding.applicationContext.unregisterReceiver(simStateReceiver)
         } catch (e: Exception) {
             // Likely not registered
         }
