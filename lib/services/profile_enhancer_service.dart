@@ -89,7 +89,6 @@ class ProfileEnhancerService {
           // 2. Fetch and Normalize Data Usage
           List<Map<String, dynamic>> packages = [];
 
-
           if (packages.isNotEmpty) {
             json['packages'] = packages;
           }
@@ -105,7 +104,6 @@ class ProfileEnhancerService {
     }
     return null;
   }
-
 
   Future<void> _saveToCache(String iccid, Map<String, dynamic> json) async {
     try {

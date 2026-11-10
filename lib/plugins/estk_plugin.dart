@@ -167,7 +167,10 @@ class EstkPlugin extends ProfilePlugin implements SessionPlugin {
   }
 
   @override
-  Future<Map<String, dynamic>?> probeReaderCapabilities(String? eid, String? aid) async {
+  Future<Map<String, dynamic>?> probeReaderCapabilities(
+    String? eid,
+    String? aid,
+  ) async {
     if (eid != null && await isEstkMaxDevice(eid, aid)) {
       return {'isEstkMax': true};
     }
@@ -287,158 +290,165 @@ class EstkPlugin extends ProfilePlugin implements SessionPlugin {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Title
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
+              children: [
+                // Title
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.developer_board,
+                        color: theme.colorScheme.primary,
+                        size: 24,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.developer_board,
-                      color: theme.colorScheme.primary,
-                      size: 24,
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        "ESTK Device Info",
+                        style: AppTheme.defaultFont(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // EID Section(s)
+                if (otherEid != null) ...[
+                  // Dual-slot device
+                  _buildEidCard(
+                    context,
+                    label: "SE0 (Slot 1)",
+                    eid: currentAid == aidChan1 ? eid : otherEid,
+                    isActive: currentAid == aidChan1,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildEidCard(
+                    context,
+                    label: "SE1 (Slot 2)",
+                    eid: currentAid == aidChan2 ? eid : otherEid,
+                    isActive: currentAid == aidChan2,
+                  ),
+                ] else ...[
+                  // Single slot device
+                  _buildEidCard(
+                    context,
+                    label: "EID",
+                    eid: eid,
+                    isActive: true,
+                  ),
+                ],
+
+                if (displayData.isNotEmpty) ...[
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceSubtle(context),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: theme.dividerColor.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: displayData.entries.map(
+                        (e) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "${e.key}:",
+                                  style: AppTheme.defaultFont(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.onSurfaceSubtle(context),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  e.value,
+                                  style: AppTheme.defaultFont(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ).toList()..removeLast(), // Remove padding from last item
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      "ESTK Device Info",
-                      style: AppTheme.defaultFont(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: theme.colorScheme.onSurface,
-                      ),
+                ] else ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceSubtle(context),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 20,
+                          color: AppTheme.onSurfaceSubtle(context),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            "No ESTK metadata available for this card.",
+                            style: AppTheme.defaultFont(
+                              fontSize: 13,
+                              color: AppTheme.onSurfaceSubtle(context),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 24),
 
-              // EID Section(s)
-              if (otherEid != null) ...[
-                // Dual-slot device
-                _buildEidCard(
-                  context,
-                  label: "SE0 (Slot 1)",
-                  eid: currentAid == aidChan1 ? eid : otherEid,
-                  isActive: currentAid == aidChan1,
-                ),
-                const SizedBox(height: 12),
-                _buildEidCard(
-                  context,
-                  label: "SE1 (Slot 2)",
-                  eid: currentAid == aidChan2 ? eid : otherEid,
-                  isActive: currentAid == aidChan2,
-                ),
-              ] else ...[
-                // Single slot device
-                _buildEidCard(context, label: "EID", eid: eid, isActive: true),
-              ],
-
-              if (displayData.isNotEmpty) ...[
                 const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceSubtle(context),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: theme.dividerColor.withValues(alpha: 0.3),
+
+                // Close button
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: displayData.entries.map((e) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "${e.key}:",
-                              style: AppTheme.defaultFont(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.onSurfaceSubtle(context),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              e.value,
-                              style: AppTheme.defaultFont(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: theme.colorScheme.onSurface,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList()..removeLast(), // Remove padding from last item
-                  ),
-                ),
-              ] else ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceSubtle(context),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        size: 20,
-                        color: AppTheme.onSurfaceSubtle(context),
+                    child: Text(
+                      "Close",
+                      style: AppTheme.defaultFont(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          "No ESTK metadata available for this card.",
-                          style: AppTheme.defaultFont(
-                            fontSize: 13,
-                            color: AppTheme.onSurfaceSubtle(context),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ],
-
-              const SizedBox(height: 24),
-
-              // Close button
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                  ),
-                  child: Text(
-                    "Close",
-                    style: AppTheme.defaultFont(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
   }
 
   Widget _buildEidCard(
@@ -831,8 +841,11 @@ class EstkPlugin extends ProfilePlugin implements SessionPlugin {
         await otherChannel.close();
       }
     } catch (e) {
-      if (e is PlatformException && (e.code == 'CHANNEL_NOT_FOUND' || e.code == 'CHANNEL_FAILED')) {
-        _log.info("Secondary ESTK channel not available (likely single-slot device): $e");
+      if (e is PlatformException &&
+          (e.code == 'CHANNEL_NOT_FOUND' || e.code == 'CHANNEL_FAILED')) {
+        _log.info(
+          "Secondary ESTK channel not available (likely single-slot device): $e",
+        );
       } else {
         _log.warning("Second ESTK channel detection failed: $e");
       }
