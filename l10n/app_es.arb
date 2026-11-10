@@ -1192,5 +1192,20 @@
   "deleteNotificationHistoryEntry": "Delete local history entry",
   "@deleteNotificationHistoryEntry": {
     "description": "Deletes the local notification history payload, without removing the notification from the eUICC or sending it again."
-  }
+  },
+  "sendErrorReport": "Send report",
+  "@sendErrorReport": {
+    "description": "Button on an error screen that sends the error to the developers for review."
+  },
+  "sendErrorReportTitle": "Send error report?",
+  "sendErrorReportMessage": "This sends the error, your device model and the app's recent log to the developers for review. The log can include your eSIM's EID and profile ICCIDs.",
+  "errorReportSent": "Report sent. Reference: {reference}",
+  "@errorReportSent": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "errorReportFailed": "Couldn't send the report. Check your connection and try again."
 }
