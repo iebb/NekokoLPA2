@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:convert';
 import '../plugins/session_plugin.dart';
 
+import 'package:asn1_codegen/runtime.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../utils/profile_tag_utils.dart';
@@ -11,7 +12,6 @@ import '../adapter/se_hal_host.dart';
 import '../adapter/omapi/omapi_safety.dart';
 import '../models/euicc_profile.dart';
 import '../models/asn1/rsp_definitions.g.dart';
-import '../models/asn1/simple_reader.dart';
 import '../utils/hex_utils.dart';
 import '../utils/iccid_formatter.dart';
 import '../utils/imei_codec.dart';
@@ -338,7 +338,7 @@ class ProfileManager {
 
   void _checkHalResult(Uint8List response, int tag) {
     final data = _checkSwAndGetData(response);
-    final node = SimpleAsn1Reader(data).readNext();
+    final node = Asn1Reader(data).readNext();
     if (node?.tag != tag ||
         node!.encodedBytes.length != data.length ||
         node.children.length != 1 ||
@@ -402,7 +402,7 @@ class ProfileManager {
     );
     final data = _checkSwAndGetData(response);
     // Unlike the generated decoder, reject missing/unknown result tags.
-    final node = SimpleAsn1Reader(data).readNext();
+    final node = Asn1Reader(data).readNext();
     if (node?.tag != (enable ? 0xBF31 : 0xBF32) ||
         node!.encodedBytes.length != data.length ||
         node.children.isEmpty ||
@@ -749,7 +749,7 @@ class ProfileManager {
 
       if (AppSettings().decodeAsn1) {
         try {
-          final node = SimpleAsn1Reader(requestData).readNext();
+          final node = Asn1Reader(requestData).readNext();
           if (node != null) _logAsn1Request(node);
         } catch (_) {}
       }
@@ -807,17 +807,11 @@ class ProfileManager {
     });
   }
 
-  /// The `resetOptions` BIT STRING in the form [EuiccMemoryResetRequest] wants.
-  ///
-  /// The generated model types `resetOptions` as an int and encodes it with
-  /// `_asn1EncodeInt`, so the value has to be the BIT STRING *contents* --
-  /// leading unused-bit octet included -- rather than a named-bit mask. The
-  /// constants on [EuiccMemoryResetRequest_resetOptions] count from the least
-  /// significant bit, and passing those would encode `82 01 07`: an unused-bit
-  /// count of 7 and no data octet at all.
+  /// The `resetOptions` BIT STRING of [EuiccMemoryResetRequest], as a mask of
+  /// the [EuiccMemoryResetRequest_resetOptions] named bits.
   ///
   /// DER puts bit 0 in the most significant bit of the first data octet and
-  /// drops trailing zero bits, so bits 0..2 are `E0` with five unused.
+  /// drops trailing zero bits, so bits 0..2 encode as `05 E0`.
   static int _resetOptionsValue({
     required bool deleteOperationalProfiles,
     required bool deleteFieldLoadedTestProfiles,
@@ -826,17 +820,23 @@ class ProfileManager {
     bool deleteProvisioningProfiles = false,
   }) {
     var bits = 0;
-    if (deleteOperationalProfiles) bits |= 0x80;
-    if (deleteFieldLoadedTestProfiles) bits |= 0x40;
-    if (resetDefaultSmdpAddress) bits |= 0x20;
-    if (deletePreLoadedTestProfiles) bits |= 0x10;
-    if (deleteProvisioningProfiles) bits |= 0x08;
-    if (bits == 0) return 0;
-    var unusedBits = 0;
-    while (unusedBits < 8 && (bits & (1 << unusedBits)) == 0) {
-      unusedBits++;
+    if (deleteOperationalProfiles) {
+      bits |= EuiccMemoryResetRequest_resetOptions.deleteOperationalProfiles;
     }
-    return (unusedBits << 8) | bits;
+    if (deleteFieldLoadedTestProfiles) {
+      bits |=
+          EuiccMemoryResetRequest_resetOptions.deleteFieldLoadedTestProfiles;
+    }
+    if (resetDefaultSmdpAddress) {
+      bits |= EuiccMemoryResetRequest_resetOptions.resetDefaultSmdpAddress;
+    }
+    if (deletePreLoadedTestProfiles) {
+      bits |= EuiccMemoryResetRequest_resetOptions.deletePreLoadedTestProfiles;
+    }
+    if (deleteProvisioningProfiles) {
+      bits |= EuiccMemoryResetRequest_resetOptions.deleteProvisioningProfiles;
+    }
+    return bits;
   }
 
   /// ES10c EuiccMemoryReset -- erases the card's profiles.
@@ -1538,11 +1538,9 @@ class ProfileManager {
       final request = AuthenticateServerRequest(
         serverSigned1: ServerSigned1.decode(serverSigned1),
         // Strip tag from serverSignature1 as generated code adds it
-        serverSignature1: SimpleAsn1Reader(serverSignature1).readNext()?.value,
+        serverSignature1: Asn1Reader(serverSignature1).readNext()?.value,
         // euiccCiPKIdToBeUsed and serverCertificate are now properly typed
-        euiccCiPKIdToBeUsed: SimpleAsn1Reader(
-          euiccCiPKIdToBeUsed,
-        ).readNext()?.value,
+        euiccCiPKIdToBeUsed: Asn1Reader(euiccCiPKIdToBeUsed).readNext()?.value,
         serverCertificate: Certificate.decode(serverCertificate),
         ctxParams1: CtxParams1(
           ctxParamsForCommonAuthentication: CtxParamsForCommonAuthentication(
@@ -1661,7 +1659,7 @@ class ProfileManager {
     return _runOnChannel(useChannel, (channel) async {
       final request = PrepareDownloadRequest(
         smdpSigned2: SmdpSigned2.decode(smdpSigned2),
-        smdpSignature2: SimpleAsn1Reader(smdpSignature2).readNext()?.value,
+        smdpSignature2: Asn1Reader(smdpSignature2).readNext()?.value,
         smdpCertificate: Certificate.decode(smdpCertificate),
         hashCc: hashCc,
       );
@@ -1890,7 +1888,7 @@ class ProfileManager {
   }
 
   List<Uint8List> _decomposeBpp(Uint8List bpp) {
-    final reader = SimpleAsn1Reader(bpp);
+    final reader = Asn1Reader(bpp);
     final root = reader.readNext();
     if (root == null || root.tag != 0xBF36) {
       _log.warning("BPP does not start with BF36, sending as single segment");

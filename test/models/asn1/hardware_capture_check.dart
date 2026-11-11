@@ -15,7 +15,7 @@ import 'dart:io' show exit, stderr, stdout;
 import 'dart:typed_data';
 
 import 'package:nlpa2/models/asn1/rsp_definitions.g.dart';
-import 'package:nlpa2/models/asn1/simple_reader.dart';
+import 'package:asn1_codegen/runtime.dart';
 
 Uint8List fromHex(String hex) {
   final clean = hex.replaceAll(RegExp(r'\s'), '');
@@ -209,7 +209,7 @@ void main(List<String> args) {
   // The nested SEQUENCE OF reading that used to be mistyped.
   final node = infoHex == null
       ? null
-      : SimpleAsn1Reader(fromHex(infoHex)).readNext();
+      : Asn1Reader(fromHex(infoHex)).readNext();
   if (node != null) {
     stdout.writeln('\nstructure');
     check(

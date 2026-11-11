@@ -12,7 +12,7 @@ import 'dart:io' show stdout;
 import 'dart:typed_data';
 
 import 'package:nlpa2/models/asn1/rsp_definitions.g.dart';
-import 'package:nlpa2/models/asn1/simple_reader.dart';
+import 'package:asn1_codegen/runtime.dart';
 import 'package:nlpa2/utils/hex_utils.dart';
 
 Uint8List fromHex(String hex) {
@@ -71,18 +71,18 @@ void main(List<String> args) {
 
   stdout.writeln('reader');
   bench(
-    'SimpleAsn1Reader.readNext EUICCInfo2 ${info2.length}B',
+    'Asn1Reader.readNext EUICCInfo2 ${info2.length}B',
     20000,
-    () => SimpleAsn1Reader(info2).readNext(),
+    () => Asn1Reader(info2).readNext(),
   );
   bench(
-    'SimpleAsn1Reader.readNext BPP ${bpp.length}B',
+    'Asn1Reader.readNext BPP ${bpp.length}B',
     2000,
-    () => SimpleAsn1Reader(bpp).readNext(),
+    () => Asn1Reader(bpp).readNext(),
   );
 
-  final info2Node = SimpleAsn1Reader(info2).readNext()!;
-  final bppNode = SimpleAsn1Reader(bpp).readNext()!;
+  final info2Node = Asn1Reader(info2).readNext()!;
+  final bppNode = Asn1Reader(bpp).readNext()!;
   bench(
     'Asn1Node.children EUICCInfo2 (13 children)',
     20000,

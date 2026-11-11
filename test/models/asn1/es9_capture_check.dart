@@ -13,7 +13,7 @@ import 'dart:io' show exit, stderr, stdout;
 import 'dart:typed_data';
 
 import 'package:nlpa2/models/asn1/rsp_definitions.g.dart';
-import 'package:nlpa2/models/asn1/simple_reader.dart';
+import 'package:asn1_codegen/runtime.dart';
 
 String toHex(List<int> bytes) =>
     bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join().toUpperCase();
@@ -107,7 +107,7 @@ void main(List<String> args) {
         as String,
   );
   check('outer tag is BF38', toHex(authResp.sublist(0, 2)) == 'BF38');
-  final node = SimpleAsn1Reader(authResp).readNext();
+  final node = Asn1Reader(authResp).readNext();
   check('parses as a TLV', node != null, '${node?.children.length} children');
 
   stdout.writeln('\nES9+.AuthenticateClient response');

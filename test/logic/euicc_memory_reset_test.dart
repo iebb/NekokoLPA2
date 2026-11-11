@@ -10,15 +10,16 @@ int resetOptionsValue({
   required bool resetDefaultSmdpAddress,
 }) {
   var bits = 0;
-  if (deleteOperationalProfiles) bits |= 0x80;
-  if (deleteFieldLoadedTestProfiles) bits |= 0x40;
-  if (resetDefaultSmdpAddress) bits |= 0x20;
-  if (bits == 0) return 0;
-  var unusedBits = 0;
-  while (unusedBits < 8 && (bits & (1 << unusedBits)) == 0) {
-    unusedBits++;
+  if (deleteOperationalProfiles) {
+    bits |= EuiccMemoryResetRequest_resetOptions.deleteOperationalProfiles;
   }
-  return (unusedBits << 8) | bits;
+  if (deleteFieldLoadedTestProfiles) {
+    bits |= EuiccMemoryResetRequest_resetOptions.deleteFieldLoadedTestProfiles;
+  }
+  if (resetDefaultSmdpAddress) {
+    bits |= EuiccMemoryResetRequest_resetOptions.resetDefaultSmdpAddress;
+  }
+  return bits;
 }
 
 void main() {
@@ -34,19 +35,7 @@ void main() {
       expect(HexUtils.bytesToHex(encoded).toUpperCase(), 'BF3404820205E0');
     });
 
-    test('the named-bit constants would encode a BIT STRING with no data', () {
-      // Why the mask is not passed straight through: bit 0 as 1<<0 collapses
-      // to a single octet that the card reads as an unused-bit count.
-      final wrong = EuiccMemoryResetRequest(
-        resetOptions:
-            EuiccMemoryResetRequest_resetOptions.deleteOperationalProfiles |
-            EuiccMemoryResetRequest_resetOptions.deleteFieldLoadedTestProfiles |
-            EuiccMemoryResetRequest_resetOptions.resetDefaultSmdpAddress,
-      ).encode();
-      expect(HexUtils.bytesToHex(wrong).toUpperCase(), 'BF3403820107');
-    });
-
-    test('a single option still carries its unused-bit count', () {
+    test('a single option carries its unused-bit count', () {
       final options = resetOptionsValue(
         deleteOperationalProfiles: true,
         deleteFieldLoadedTestProfiles: false,

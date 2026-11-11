@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nlpa2/models/asn1/rsp_definitions.g.dart';
-import 'package:nlpa2/models/asn1/simple_reader.dart';
+import 'package:asn1_codegen/runtime.dart';
 
 import 'asn1_hex.dart';
 
@@ -163,7 +163,7 @@ void main() {
       '      81 02 0780'
       '      0C 10 736D64702E6578616D706C652E636F6D'
       '      5A 0A 98071992123456789001'
-      '    04 09 2B0601040182E43801' //       smdpOid
+      '    06 09 2B0601040182E43801' //       smdpOid
       '    A2 18' //                      [2] finalResult CHOICE
       '      A0 16' //                        successResult
       '        4F 10 A0000005591010FFFFFFFF8900001100' // aid
@@ -266,7 +266,7 @@ void main() {
     });
 
     test('accepts a pre-parsed Asn1Node as well as raw bytes', () {
-      final node = SimpleAsn1Reader(fromHex(challengeHex)).readNext()!;
+      final node = Asn1Reader(fromHex(challengeHex)).readNext()!;
       final fromNode = GetEuiccChallengeResponse.decode(node);
       final fromBytes = GetEuiccChallengeResponse.decode(fromHex(challengeHex));
 
@@ -410,18 +410,14 @@ void main() {
       expect(toHex(info.encode()), normHex(euiccInfo2V3Hex));
     });
 
-    test('BUG: treProperties BIT STRING is decoded as an INTEGER', () {
+    test('decodes the treProperties BIT STRING as bits', () {
       // RSPDefinitions.asn1 declares treProperties [13] as a BIT STRING with
-      // named bits isDiscrete(0)/isIntegrated(1)/usesRemoteMemory(2), and the
-      // generator even emits an `EUICCInfo2_treProperties` bit-flag class for
-      // it - but the field is typed `int?` and decoded with the INTEGER
-      // decoder, so '8D 02 0640' (isIntegrated) yields the raw 0x0640 rather
-      // than bit 1. Pinning the current behaviour.
+      // named bits isDiscrete(0)/isIntegrated(1)/usesRemoteMemory(2), so
+      // '8D 02 0640' is isIntegrated alone.
       final info = EUICCInfo2.decode(fromHex(euiccInfo2V3Hex));
 
-      expect(info.treProperties, 0x0640);
-      expect(info.treProperties, isNot(EUICCInfo2_treProperties.isIntegrated));
-      // Re-encoding still reproduces the source bytes because the node is kept.
+      expect(info.treProperties, EUICCInfo2_treProperties.isIntegrated);
+      // Re-encoding reproduces the source bytes because the node is kept.
       expect(toHex(info.encode()), normHex(euiccInfo2V3Hex));
     });
 
@@ -476,7 +472,7 @@ void main() {
         baseProfilePackageVersion: fromHex('020200'),
         extCardResource: ExtendedCardResource(installedApplication: 8),
       );
-      final children = SimpleAsn1Reader(info.encode()).readNext()!.children;
+      final children = Asn1Reader(info.encode()).readNext()!.children;
 
       expect(children[0].tag, 0x81);
       expect(children[1].tag, 0xA4);
@@ -622,9 +618,8 @@ void main() {
     });
 
     test('encodes the two-byte tags 9F70 / 9F24 / 9F25 byte-wise', () {
-      // The generated `_tagBytes` splits a folded tag into 8-bit octets, unlike
-      // `Asn1Node._encodeTag` in simple_reader.dart. 0x9F70 must come out as
-      // '9F 70' (SGP.22 tag for profileState), not as base-128 octets.
+      // A folded tag is written as its identifier octets: 0x9F70 must come
+      // out as '9F 70' (SGP.22 tag for profileState), not as base-128 octets.
       final profile = ProfileInfo(
         profileState: ProfileState.enabled,
         enabledOnEsimPort: 1,
@@ -731,7 +726,7 @@ void main() {
       // profileInfoListOk is 'A0', profileInfoListError is '81'; the generated
       // CHOICE decoder switches on the child tag rather than on position.
       final resp = ProfileInfoListResponse.decode(
-        fromHex('BF2D 08  81 01 01  A0 03 E3 01 00'),
+        fromHex('BF2D 07  81 01 01  A0 02 E3 00'),
       );
 
       expect(
@@ -797,7 +792,7 @@ void main() {
         final encoded = NotificationMetadata(
           profileManagementOperation: NotificationEvent(bit),
         ).encode();
-        return SimpleAsn1Reader(encoded).readNext()!.children.single.value;
+        return Asn1Reader(encoded).readNext()!.children.single.value;
       }
 
       // BIT STRING named bit N is the (7-N mod 8)'th bit of octet N/8, with a
@@ -1420,7 +1415,7 @@ void main() {
       ).encode();
 
       // Named bits 0 and 16 => 3 data octets and 7 unused bits: '07 80 00 80'.
-      final child = SimpleAsn1Reader(
+      final child = Asn1Reader(
         encoded,
       ).readNext()!.children.firstWhere((c) => c.tag == 0x88);
       expect(toHex(child.value), '07800080');
@@ -1523,7 +1518,7 @@ void main() {
   group('INTEGER encoding helpers (via generated types)', () {
     Uint8List intBytes(int value) {
       final encoded = ProfileInfo(profileSize: value).encode();
-      return SimpleAsn1Reader(encoded).readNext()!.children.single.value;
+      return Asn1Reader(encoded).readNext()!.children.single.value;
     }
 
     test('encodes small positive integers minimally', () {
