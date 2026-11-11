@@ -44,7 +44,6 @@ class ProfileCard extends StatelessWidget {
   final bool isLocked;
   final bool isCompact;
   final Function(bool) onToggle;
-  final VoidCallback? onDelete;
   final VoidCallback? onMenu;
   final VoidCallback? onTagTap;
   final String? eid; // Add EID to look up storage
@@ -54,7 +53,6 @@ class ProfileCard extends StatelessWidget {
     super.key,
     required this.profile,
     required this.onToggle,
-    this.onDelete,
     this.onMenu,
     this.onTagTap,
     this.eid,

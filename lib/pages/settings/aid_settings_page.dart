@@ -15,6 +15,12 @@ class AidSettingsPage extends StatefulWidget {
 class _AidSettingsPageState extends State<AidSettingsPage> {
   final _addController = TextEditingController();
 
+  @override
+  void dispose() {
+    _addController.dispose();
+    super.dispose();
+  }
+
   Future<void> _addAid() async {
     final text = _addController.text.trim();
     if (text.isEmpty) return;

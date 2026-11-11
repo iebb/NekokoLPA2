@@ -18,6 +18,8 @@ All notable changes to NekokoLPA2 will be documented in this file.
 - Desktop VoWiFi: release the socket of every ePDG address that fails to attach, close the tunnel when registration fails, and ignore malformed IKE and UDP packets that could previously hang or stop the tunnel.
 - Desktop VoWiFi: show an error when sending an SMS, refreshing or disconnecting fails, instead of failing silently.
 - eSIM transfer: stop waiting when a carrier entitlement server accepts a request and never answers.
+- Batch download: run over the list just entered. The first row's status and ICCID could previously be written to a list that had already been replaced.
+- Tag reminders: a failed load no longer leaves the loading spinner up for good.
 - Show a 3HK number as soon as it has been looked up, instead of only after the next profile reload.
 - Run each provider plugin's profile lookup independently, so a slow or failing one no longer delays or cancels the others.
 - Give the update check, operator icon downloads and installation statistics a timeout, so an unresponsive server cannot leave them waiting forever.

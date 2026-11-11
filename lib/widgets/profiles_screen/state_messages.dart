@@ -209,8 +209,7 @@ class NoReadersState extends StatelessWidget {
 
   final VoidCallback onConnectRemote;
   final Function(String) onReaderSelected;
-  final Future<void> Function() onReadersLoaded; // Changed to Future
-  final VoidCallback onScanStarted;
+  final Future<void> Function() onReadersLoaded;
 
   const NoReadersState({
     super.key,
@@ -219,7 +218,6 @@ class NoReadersState extends StatelessWidget {
     required this.onConnectRemote,
     required this.onReaderSelected,
     required this.onReadersLoaded,
-    required this.onScanStarted,
   });
 
   @override
@@ -527,7 +525,6 @@ class _ConnectOptionCardState extends State<_ConnectOptionCard> {
 
 class UnsupportedCardState extends StatelessWidget {
   final bool isTelephony;
-  final bool isOmapi;
   final VoidCallback onRetry;
   final VoidCallback onAboutAram;
   final String? operatorIconBase64;
@@ -536,7 +533,6 @@ class UnsupportedCardState extends StatelessWidget {
   const UnsupportedCardState({
     super.key,
     required this.isTelephony,
-    required this.isOmapi,
     required this.onRetry,
     required this.onAboutAram,
     this.operatorIconBase64,
@@ -709,23 +705,6 @@ class NoCardDetectedState extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class ConnectingToReaderState extends StatelessWidget {
-  final String? message;
-
-  const ConnectingToReaderState({super.key, this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final l10n = AppLocalizations.of(context)!;
-
-    return ColumnStateMessage(
-      icon: LoadingSpinner(size: 48, color: theme.colorScheme.primary),
-      title: message ?? l10n.connectingToReader,
     );
   }
 }

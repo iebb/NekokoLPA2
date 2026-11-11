@@ -121,7 +121,7 @@ class _BatchDownloadPageState extends State<BatchDownloadPage> {
     }
   }
 
-  void _parseInput() async {
+  Future<void> _parseInput() async {
     final text = _inputController.text;
     final lines = text.split('\n');
     final List<BatchDownloadItem> newItems = [];
@@ -161,8 +161,10 @@ class _BatchDownloadPageState extends State<BatchDownloadPage> {
   }
 
   Future<void> _startBatch() async {
-    _parseInput();
-    if (_items.isEmpty) return;
+    // Awaited: the parse replaces _items after an async gap, and the batch
+    // must run over that list, not the one it replaces.
+    await _parseInput();
+    if (!mounted || _items.isEmpty) return;
 
     setState(() {
       _isProcessing = true;

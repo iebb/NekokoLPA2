@@ -1,4 +1,12 @@
 class ActivationCode {
+  /// What each part of an activation code may contain. Shared by the download
+  /// form and the activation-code text field, which check on every build.
+  static final RegExp smdpFqdnPattern = RegExp(
+    r'^(?=^.{4,253}\.?$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)$',
+  );
+  static final RegExp matchingIdPattern = RegExp(r'^[0-9A-Z\-]*$');
+  static final RegExp oidPattern = RegExp(r'^\d+(\.\d+)+$');
+
   final String format;
   final String smdpAddress;
   final String matchingId;

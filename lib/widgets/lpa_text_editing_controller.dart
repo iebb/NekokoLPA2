@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/activation_code.dart';
 import '../theme/app_theme.dart';
 
 class LpaTextEditingController extends TextEditingController {
@@ -42,10 +43,7 @@ class LpaTextEditingController extends TextEditingController {
             ),
           );
           final val = parts[1];
-          final fqdnRegex = RegExp(
-            r'^(?=^.{4,253}\.?$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)$',
-          );
-          final color = fqdnRegex.hasMatch(val)
+          final color = ActivationCode.smdpFqdnPattern.hasMatch(val)
               ? AppTheme.smdpAddress(context)
               : theme.colorScheme.error;
           children.add(
@@ -67,8 +65,7 @@ class LpaTextEditingController extends TextEditingController {
             ),
           );
           final val = parts[2];
-          final matchingIdRegex = RegExp(r'^[0-9A-Z\-]*$');
-          final color = matchingIdRegex.hasMatch(val)
+          final color = ActivationCode.matchingIdPattern.hasMatch(val)
               ? AppTheme.matchingId(context)
               : theme.colorScheme.error;
           children.add(
@@ -90,8 +87,7 @@ class LpaTextEditingController extends TextEditingController {
             ),
           );
           final val = parts[3];
-          final oidRegex = RegExp(r'^\d+(\.\d+)+$');
-          final color = (val.isEmpty || oidRegex.hasMatch(val))
+          final color = (val.isEmpty || ActivationCode.oidPattern.hasMatch(val))
               ? AppTheme.smdpOid(context)
               : theme.colorScheme.error;
           children.add(

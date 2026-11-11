@@ -27,11 +27,18 @@ class _ScheduledNotificationsPageState
 
   Future<void> _loadNotifications() async {
     setState(() => _isLoading = true);
-    final list = await TagNotificationService().getAllNotifications();
-    setState(() {
-      _notifications = list;
-      _isLoading = false;
-    });
+    // A failed load must not leave the spinner up for good.
+    var list = _notifications;
+    try {
+      list = await TagNotificationService().getAllNotifications();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _notifications = list;
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override

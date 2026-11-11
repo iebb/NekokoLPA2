@@ -232,16 +232,13 @@ class _DownloadProfilePageState extends State<DownloadProfilePage> {
     final oid = _smdpOidController.text.trim();
     
     // Strict FQDN check
-    final fqdnRegex = RegExp(r'^(?=^.{4,253}\.?$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)$');
-    final isValidSmdp = fqdnRegex.hasMatch(smdp);
+    final isValidSmdp = ActivationCode.smdpFqdnPattern.hasMatch(smdp);
 
     // OID check (optional but must be valid if present)
-    final oidRegex = RegExp(r'^\d+(\.\d+)+$');
-    final isValidOid = oid.isEmpty || oidRegex.hasMatch(oid);
+    final isValidOid = oid.isEmpty || ActivationCode.oidPattern.hasMatch(oid);
 
     // Matching ID check
-    final matchingIdRegex = RegExp(r'^[0-9A-Z\-]*$');
-    final isValidMatchingId = matchingIdRegex.hasMatch(matchingId);
+    final isValidMatchingId = ActivationCode.matchingIdPattern.hasMatch(matchingId);
 
     if (isValidSmdp && isValidOid && isValidMatchingId) {
       // Parse current state to know what the '1' bit currently is
@@ -279,16 +276,14 @@ class _DownloadProfilePageState extends State<DownloadProfilePage> {
     final l10n = AppLocalizations.of(context)!;
     final val = _smdpController.text.trim();
     if (val.isEmpty) return l10n.smdpAddressRequired;
-    final fqdnRegex = RegExp(r'^(?=^.{4,253}\.?$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)$');
-    if (!fqdnRegex.hasMatch(val)) return l10n.invalidFqdnFormat;
+    if (!ActivationCode.smdpFqdnPattern.hasMatch(val)) return l10n.invalidFqdnFormat;
     return null;
   }
 
   String? get _matchingIdErrorText {
     if (!_showValidationErrors && !_touchedFields.contains('matchingId')) return null;
     final val = _matchingIdController.text.trim();
-    final matchingIdRegex = RegExp(r'^[0-9A-Z\-]*$');
-    if (!matchingIdRegex.hasMatch(val)) return AppLocalizations.of(context)!.invalidMatchingIdChars;
+    if (!ActivationCode.matchingIdPattern.hasMatch(val)) return AppLocalizations.of(context)!.invalidMatchingIdChars;
     return null;
   }
 
@@ -296,8 +291,7 @@ class _DownloadProfilePageState extends State<DownloadProfilePage> {
     if (!_showValidationErrors && !_touchedFields.contains('oid')) return null;
     final val = _smdpOidController.text.trim();
     if (val.isEmpty) return null; // OID is optional
-    final oidRegex = RegExp(r'^\d+(\.\d+)+$');
-    if (!oidRegex.hasMatch(val)) return AppLocalizations.of(context)!.invalidOidFormat;
+    if (!ActivationCode.oidPattern.hasMatch(val)) return AppLocalizations.of(context)!.invalidOidFormat;
     return null;
   }
 
@@ -645,8 +639,10 @@ class _DownloadProfilePageState extends State<DownloadProfilePage> {
                 if (!mounted) {
                   throw StateError('Download page disposed during authentication');
                 }
+                final metadata = session.getProfileMetadata();
+                _log.info("Profile metadata: $metadata");
                 setState(() {
-                  _metadata = session.getProfileMetadata();
+                  _metadata = metadata;
                   if (_metadata?.estimatedProfileSize != null && _metadata!.estimatedProfileSize! > 0) {
                     _predictedSize = _metadata!.estimatedProfileSize;
                   } else {
@@ -1264,7 +1260,6 @@ class _DownloadProfilePageState extends State<DownloadProfilePage> {
                   const SizedBox(height: 12),
                   Text(l10n.activationCodeSubtitle, style: TextStyle(fontSize: 15, color: theme.colorScheme.onSurface.withValues(alpha: 0.6), height: 1.4)),
                   const SizedBox(height: 32),
-                  _buildErrorDisplay(context),
                     TextField(
                      controller: _controller,
                      focusNode: _fullFocusNode,
@@ -1504,19 +1499,6 @@ class _DownloadProfilePageState extends State<DownloadProfilePage> {
   }
 
   Widget _buildPreview(BuildContext context) {
-    // Debug logging
-    _log.info("=== METADATA PREVIEW DEBUG ===");
-    _log.info("ICCID (raw bytes): ${_metadata?.iccid != null ? HexUtils.bytesToHex(_metadata!.iccid!) : 'null'}");
-    _log.info("Profile Name: ${_metadata?.profileName}");
-    _log.info("Service Provider Name: ${_metadata?.serviceProviderName}");
-    _log.info("Profile Class: ${_metadata?.profileClass}");
-    _log.info("Icon Type: ${_metadata?.iconType}");
-    _log.info("Icon (bytes): ${_metadata?.icon != null ? '${_metadata!.icon!.length} bytes' : 'null'}");
-    _log.info("Profile Policy Rules: ${_metadata?.profilePolicyRules}");
-    _log.info("Profile Owner: ${_metadata?.profileOwner}");
-    _log.info("Profile Metadata: $_metadata");
-    _log.info("==============================");
-    
     // Show metadata
     final l10n = AppLocalizations.of(context)!;
     final iccidHex = _metadata?.iccid != null ? HexUtils.swapNibbles(HexUtils.bytesToHex(_metadata!.iccid!)) : l10n.unavailable;
@@ -1547,7 +1529,6 @@ class _DownloadProfilePageState extends State<DownloadProfilePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildErrorDisplay(context),
               const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -2246,77 +2227,6 @@ class _DownloadProfilePageState extends State<DownloadProfilePage> {
       },
     );
   }
-
-
-  Widget _buildErrorDisplay(BuildContext context) {
-    if (_error == null) return const SizedBox.shrink();
-    final theme = Theme.of(context);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.error.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.2)),
-        gradient: LinearGradient(
-          colors: [
-            theme.colorScheme.error.withValues(alpha: 0.15),
-            theme.colorScheme.error.withValues(alpha: 0.05),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(Icons.error_outline_rounded, color: theme.colorScheme.error, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    AppLocalizations.of(context)!.downloadFailed,
-                    style: TextStyle(
-                      color: theme.colorScheme.error,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _error!,
-                    style: TextStyle(
-                      color: theme.colorScheme.error.withValues(alpha: 0.8),
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              onPressed: () => setState(() => _error = null),
-              icon: Icon(Icons.close_rounded, color: theme.colorScheme.error, size: 20),
-              hoverColor: theme.colorScheme.error.withValues(alpha: 0.1),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
 
 
   Future<void> _exportCert(Certificate cert, String prefix) async {

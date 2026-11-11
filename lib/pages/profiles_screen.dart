@@ -68,7 +68,7 @@ import '../services/update_service.dart';
 import '../utils/update_utils.dart';
 import '../widgets/profiles_screen/profile_list_section.dart';
 import '../widgets/profiles_screen/reader_helper.dart';
-import '../widgets/profiles_screen/state_messages.dart' hide ColumnStateMessage;
+import '../widgets/profiles_screen/state_messages.dart';
 import '../widgets/profiles_screen/error_state.dart';
 import '../widgets/profiles_screen/profiles_header.dart';
 import '../services/deep_link_service.dart';
@@ -403,26 +403,6 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
       // Pass the error object directly to be handled by ErrorState widget
       _setErrorState(reader, e, isBle, isRemote);
-      return;
-    }
-
-    if (e is AppException &&
-        (e.code == AppErrorCode.ERROR_TRANSACTION_FAILED ||
-            e.message != null)) {
-      final reason = e.message ?? "Unknown";
-      _showPremiumConfirmDialog(
-        title: AppLocalizations.of(context)!.failed,
-        message: "Operation failed: $reason",
-        details: e.toString(),
-        confirmLabel: AppLocalizations.of(context)!.ok,
-        showCancel: false,
-      );
-      if (reader != null) {
-        _updateReaderSession(reader.id, (s) {
-          s.loading = false;
-          s.error = null; // Handled by dialog
-        });
-      }
       return;
     }
 
@@ -1688,6 +1668,8 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     int retryCount = 0,
     bool disableRetry = false,
   }) async {
+    // Reached after awaits from several callers; context is read just below.
+    if (!mounted) return;
     if (_rejectVoWifiConflict()) return;
     final reader = _selectedReader;
     if (reader == null) return;
@@ -5194,7 +5176,6 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       case ReaderStatus.unsupported:
         return UnsupportedCardState(
           isTelephony: reader != null && _isTelephony(reader),
-          isOmapi: reader != null && _isOmapi(reader),
           operatorIconBase64: _unsupportedOperatorIcon,
           fallbackDetails: _unsupportedFallbackDetails,
           onRetry: _listProfiles,
@@ -5563,15 +5544,6 @@ class _ProfilesScreenState extends State<ProfilesScreen>
                               },
                               onReadersLoaded: () =>
                                   _loadReaders(skipLoading: true, force: true),
-                              onScanStarted: () {
-                                setState(() {
-                                  _loading = true;
-                                  _operationLoadingMessage =
-                                      AppLocalizations.of(
-                                        context,
-                                      )!.initializing;
-                                });
-                              },
                             ),
                     )
                   else

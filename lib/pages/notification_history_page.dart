@@ -34,15 +34,27 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
 
   Future<void> _loadData() async {
     final data = await DatabaseService().getAllNotifications();
+    if (!mounted) return;
     setState(() {
       _records = data;
     });
   }
 
+  List<NotificationRecord>? _filteredFrom;
+  String? _filteredQuery;
+  List<NotificationRecord> _filtered = const [];
+
+  /// Kept until the records or the query change: the list builder reads this
+  /// once per row, and filtering there made each frame quadratic.
   List<NotificationRecord> get _filteredRecords {
-    if (_searchQuery.isEmpty) return _records;
+    if (identical(_filteredFrom, _records) && _filteredQuery == _searchQuery) {
+      return _filtered;
+    }
+    _filteredFrom = _records;
+    _filteredQuery = _searchQuery;
+    if (_searchQuery.isEmpty) return _filtered = _records;
     final query = _searchQuery.toLowerCase();
-    return _records.where((r) {
+    return _filtered = _records.where((r) {
       final cleanedIccid = IccidFormatter.forDisplay(r.iccid);
       return r.iccid.toLowerCase().contains(query) ||
           cleanedIccid.toLowerCase().contains(query) ||

@@ -1,13 +1,10 @@
-// ignore_for_file: unused_field
 import 'package:flutter/material.dart';
-import 'package:logging/logging.dart';
 import '../../theme/app_theme.dart';
 import '../../models/asn1/rsp_definitions.g.dart';
 import '../../utils/size_formatter.dart';
 import '../../utils/profile_redaction.dart';
 
-class EidContainer extends StatelessWidget {
-  static final Logger _log = Logger('EidContainer');
+class EidContainer extends StatefulWidget {
   final String? eid;
   final String? status;
   final ExtendedCardResource? extCardResource;
@@ -15,7 +12,7 @@ class EidContainer extends StatelessWidget {
   final VoidCallback onToggleEidVisibility;
   final Function(GlobalKey anchorKey) onContextMenu;
 
-  EidContainer({
+  const EidContainer({
     super.key,
     this.eid,
     this.status,
@@ -25,7 +22,21 @@ class EidContainer extends StatelessWidget {
     required this.onContextMenu,
   });
 
+  @override
+  State<EidContainer> createState() => _EidContainerState();
+}
+
+class _EidContainerState extends State<EidContainer> {
+  // Held in the State: as a field of the widget it was a new key on every
+  // parent rebuild, which tore down and rebuilt the whole subtree each time.
   final GlobalKey _eidKey = GlobalKey();
+
+  String? get eid => widget.eid;
+  String? get status => widget.status;
+  ExtendedCardResource? get extCardResource => widget.extCardResource;
+  bool get showFullEid => widget.showFullEid;
+  VoidCallback get onToggleEidVisibility => widget.onToggleEidVisibility;
+  Function(GlobalKey anchorKey) get onContextMenu => widget.onContextMenu;
 
   String _maskEid(String? eid) {
     return ProfileRedaction.redactEid(eid, revealFull: showFullEid);

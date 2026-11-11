@@ -37,6 +37,12 @@ class _ProfileTagManagerPageState extends State<ProfileTagManagerPage> {
     _tags = List.from(parsed.tags);
   }
 
+  @override
+  void dispose() {
+    _textTagController.dispose();
+    super.dispose();
+  }
+
   Future<void> _saveTags() async {
     setState(() => _isLoading = true);
     try {
