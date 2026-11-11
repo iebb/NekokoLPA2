@@ -587,27 +587,28 @@ class VowifiSimService {
 
   Future<Uint8List> _transmit(Adapter adapter, Uint8List request) async {
     var apdu = Uint8List.fromList(request);
-    _emitApduLog('APDU >> ${_hex(apdu)}');
+    final secret = _carriesAkaVectors(request);
+    _logApduRequest(apdu, secret);
     var response = await adapter.sendRawApdu(apdu);
-    _emitApduLog(_formatApduResponse(response));
+    _emitApduLog(_formatApduResponse(response, secret));
     for (var tries = 0; tries < 6; tries++) {
       final sw = _sw(response);
       if (sw == 0x6700 && apdu.length >= 5) {
         apdu = Uint8List.fromList(
           List<int>.from(apdu)..[apdu.length - 1] = 0x00,
         );
-        _emitApduLog('APDU >> ${_hex(apdu)}');
+        _logApduRequest(apdu, secret);
         response = await adapter.sendRawApdu(apdu);
-        _emitApduLog(_formatApduResponse(response));
+        _emitApduLog(_formatApduResponse(response, secret));
         continue;
       }
       if ((sw >> 8) == 0x6C) {
         apdu = Uint8List.fromList(
           List<int>.from(apdu)..[apdu.length - 1] = sw & 0xFF,
         );
-        _emitApduLog('APDU >> ${_hex(apdu)}');
+        _logApduRequest(apdu, secret);
         response = await adapter.sendRawApdu(apdu);
-        _emitApduLog(_formatApduResponse(response));
+        _emitApduLog(_formatApduResponse(response, secret));
         continue;
       }
       break;
@@ -622,9 +623,9 @@ class VowifiSimService {
         0x00,
         _sw(response) & 0xFF,
       ]);
-      _emitApduLog('APDU >> ${_hex(getResponse)}');
+      _logApduRequest(getResponse, secret);
       response = await adapter.sendRawApdu(getResponse);
-      _emitApduLog(_formatApduResponse(response));
+      _emitApduLog(_formatApduResponse(response, secret));
     }
     final sw = _sw(response);
     if (sw != 0x9000) {
@@ -636,27 +637,28 @@ class VowifiSimService {
 
   Future<_ApduResult> _transmitEuicc(Adapter adapter, Uint8List request) async {
     var apdu = Uint8List.fromList(request);
-    _emitApduLog('APDU >> ${_hex(apdu)}');
+    final secret = _carriesAkaVectors(request);
+    _logApduRequest(apdu, secret);
     var response = await adapter.sendRawApdu(apdu);
-    _emitApduLog(_formatApduResponse(response));
+    _emitApduLog(_formatApduResponse(response, secret));
     for (var tries = 0; tries < 6; tries++) {
       final sw = _sw(response);
       if (sw == 0x6700 && apdu.length >= 5) {
         apdu = Uint8List.fromList(
           List<int>.from(apdu)..[apdu.length - 1] = 0x00,
         );
-        _emitApduLog('APDU >> ${_hex(apdu)}');
+        _logApduRequest(apdu, secret);
         response = await adapter.sendRawApdu(apdu);
-        _emitApduLog(_formatApduResponse(response));
+        _emitApduLog(_formatApduResponse(response, secret));
         continue;
       }
       if ((sw >> 8) == 0x6C) {
         apdu = Uint8List.fromList(
           List<int>.from(apdu)..[apdu.length - 1] = sw & 0xFF,
         );
-        _emitApduLog('APDU >> ${_hex(apdu)}');
+        _logApduRequest(apdu, secret);
         response = await adapter.sendRawApdu(apdu);
-        _emitApduLog(_formatApduResponse(response));
+        _emitApduLog(_formatApduResponse(response, secret));
         continue;
       }
       break;
@@ -671,9 +673,9 @@ class VowifiSimService {
         0x00,
         _sw(response) & 0xFF,
       ]);
-      _emitApduLog('APDU >> ${_hex(getResponse)}');
+      _logApduRequest(getResponse, secret);
       response = await adapter.sendRawApdu(getResponse);
-      _emitApduLog(_formatApduResponse(response));
+      _emitApduLog(_formatApduResponse(response, secret));
     }
     final sw = _sw(response);
     if (sw != 0x9000 && (sw >> 8) != 0x91) {
@@ -690,10 +692,29 @@ class VowifiSimService {
     return (response[response.length - 2] << 8) | response.last;
   }
 
-  String _formatApduResponse(Uint8List response) {
+  /// AUTHENTICATE sends RAND and AUTN and returns RES, CK and IK. The log shows
+  /// that it happened and how much moved, never the vectors themselves.
+  bool _carriesAkaVectors(Uint8List request) =>
+      request.length > 1 && request[1] == 0x88;
+
+  void _logApduRequest(Uint8List apdu, bool secret) {
+    if (secret && apdu.length > 5) {
+      _emitApduLog(
+        'APDU >> ${_hex(apdu.sublist(0, 5))} [${apdu.length - 5} bytes hidden]',
+      );
+    } else {
+      _emitApduLog('APDU >> ${_hex(apdu)}');
+    }
+  }
+
+  String _formatApduResponse(Uint8List response, [bool secret = false]) {
     final sw = _sw(response).toRadixString(16).padLeft(4, '0').toUpperCase();
     final data = response.sublist(0, response.length - 2);
-    final prefix = data.isEmpty ? 'APDU << ' : 'APDU << ${_hex(data)} ';
+    final prefix = data.isEmpty
+        ? 'APDU << '
+        : secret
+        ? 'APDU << [${data.length} bytes hidden] '
+        : 'APDU << ${_hex(data)} ';
     return '${prefix}SW=$sw';
   }
 

@@ -86,7 +86,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
               tooltip: 'Disconnect all',
               onPressed: _service.busy || sessions.isEmpty
                   ? null
-                  : _service.disconnectAll,
+                  : () => _guard(_service.disconnectAll),
               icon: const Icon(Icons.link_off),
             ),
           ],
@@ -562,14 +562,18 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                     OutlinedButton.icon(
                       onPressed: _service.busy
                           ? null
-                          : () => _service.refreshSession(session.id),
+                          : () => _guard(
+                              () => _service.refreshSession(session.id),
+                            ),
                       icon: const Icon(Icons.refresh_rounded),
                       label: const Text('Refresh'),
                     ),
                     OutlinedButton.icon(
                       onPressed: _service.busy
                           ? null
-                          : () => _service.disconnectSession(session.id),
+                          : () => _guard(
+                              () => _service.disconnectSession(session.id),
+                            ),
                       icon: const Icon(Icons.link_off_rounded),
                       label: const Text('Disconnect'),
                     ),
@@ -577,14 +581,18 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                     IconButton.outlined(
                       onPressed: _service.busy
                           ? null
-                          : () => _service.refreshSession(session.id),
+                          : () => _guard(
+                              () => _service.refreshSession(session.id),
+                            ),
                       icon: const Icon(Icons.refresh_rounded),
                       tooltip: 'Refresh',
                     ),
                     IconButton.outlined(
                       onPressed: _service.busy
                           ? null
-                          : () => _service.disconnectSession(session.id),
+                          : () => _guard(
+                              () => _service.disconnectSession(session.id),
+                            ),
                       icon: const Icon(Icons.link_off_rounded),
                       tooltip: 'Disconnect',
                     ),
@@ -1131,12 +1139,27 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
       );
       return;
     }
-    await _service.sendTextSms(
-      sessionId,
-      to: recipient,
-      text: _messageController.text.trim(),
-    );
-    _messageController.clear();
+    await _guard(() async {
+      await _service.sendTextSms(
+        sessionId,
+        to: recipient,
+        text: _messageController.text.trim(),
+      );
+      _messageController.clear();
+    });
+  }
+
+  /// Runs a service action from a button. The service rethrows its failures,
+  /// which would otherwise be unhandled and show the user nothing.
+  Future<void> _guard(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   String _stateLabel(VowifiSmsConnectionState state) {

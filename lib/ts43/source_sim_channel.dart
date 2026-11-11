@@ -208,8 +208,7 @@ class SourceSimChannel implements SourceChannel {
       rethrow;
     } catch (e) {
       throw SourceSimUnavailable(e.toString());
-    } finally {
-      // Keep the channel open for the subsequent transfer flow.
     }
+    // The channel stays open for the subsequent transfer flow.
   }
 }

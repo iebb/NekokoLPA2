@@ -9,7 +9,12 @@ import 'ts43_entitlement_http.dart';
 class _IoTransport implements Ts43Transport {
   final HttpClient _client;
 
-  _IoTransport(Duration? timeout) : _client = HttpClient() {
+  /// Bounds the wait for the response and for its body, not just the connect:
+  /// a server that accepts the request and then stalls would otherwise hold
+  /// the transfer flow forever.
+  final Duration? _timeout;
+
+  _IoTransport(Duration? timeout) : _client = HttpClient(), _timeout = timeout {
     // Carrier entitlement endpoints frequently use private/legacy certs.
     _client.badCertificateCallback = (cert, host, port) => true;
     if (timeout != null) _client.connectionTimeout = timeout;
@@ -30,16 +35,18 @@ class _IoTransport implements Ts43Transport {
       httpReq.add(request.body!);
     }
 
-    final resp = await httpReq.close();
+    final timeout = _timeout;
+    final resp = timeout == null
+        ? await httpReq.close()
+        : await httpReq.close().timeout(timeout);
     final cookies = <String>[];
     for (final c in resp.cookies) {
       cookies.add('${c.name}=${c.value}');
     }
 
-    final builder = BytesBuilder();
-    await for (final chunk in resp) {
-      builder.add(chunk);
-    }
+    final builder = BytesBuilder(copy: false);
+    final body = resp.forEach(builder.add);
+    await (timeout == null ? body : body.timeout(timeout));
     final bytes = builder.toBytes();
 
     if (resp.statusCode < 200 || resp.statusCode > 299) {

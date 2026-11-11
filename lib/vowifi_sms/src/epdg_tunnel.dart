@@ -52,6 +52,12 @@ class VowifiEpdgTunnel {
     _onInfo = onInfo;
     _inbox = inbox;
     _inbox.packetHandler = _handleOuterDatagram;
+    _inbox.errorHandler = (error, stackTrace) {
+      if (!_packets.isClosed) _packets.addError(error, stackTrace);
+    };
+    _inbox.doneHandler = () {
+      if (!_packets.isClosed) _packets.close();
+    };
     if (_natt) {
       _nattKeepalive = Timer.periodic(
         const Duration(seconds: 20),
@@ -211,94 +217,102 @@ class VowifiEpdgTunnel {
     outer.readEventsEnabled = true;
     outer.writeEventsEnabled = false;
     final inbox = _DatagramInbox(outer);
-    final local = outer.address;
-    final state = _buildSaInit(config, local, target.address, target.port);
-    onInfo?.call(
-      'IKE_SA_INIT send spi_i=${_hex(state.spiI)} local=${local.address}:0 remote=${target.address.address}:${target.port}',
-    );
-    await _sendDatagram(
-      outer,
-      state.message,
-      target.address,
-      target.port,
-      natt: target.port == 4500,
-      ike: true,
-    );
-    final rawSa = await inbox.readIkeMessage(const Duration(seconds: 10));
-    final sa = _parseSaInitResponse(rawSa, state);
-    final natt = sa.natDetected || target.port == 4500;
-    final remotePort = natt ? 4500 : target.port;
-    onInfo?.call(
-      'sa_init selected=${_transformSummary(sa.selected)} natt=$natt responder=${target.address.address}:$remotePort',
-    );
+    // Every failed target would otherwise leave its socket and listener open,
+    // and attach tries each resolved address on two ports.
+    try {
+      final local = outer.address;
+      final state = _buildSaInit(config, local, target.address, target.port);
+      onInfo?.call(
+        'IKE_SA_INIT send spi_i=${_hex(state.spiI)} local=${local.address}:0 remote=${target.address.address}:${target.port}',
+      );
+      await _sendDatagram(
+        outer,
+        state.message,
+        target.address,
+        target.port,
+        natt: target.port == 4500,
+        ike: true,
+      );
+      final rawSa = await inbox.readIkeMessage(const Duration(seconds: 10));
+      final sa = _parseSaInitResponse(rawSa, state);
+      final natt = sa.natDetected || target.port == 4500;
+      final remotePort = natt ? 4500 : target.port;
+      onInfo?.call(
+        'sa_init selected=${_transformSummary(sa.selected)} natt=$natt responder=${target.address.address}:$remotePort',
+      );
 
-    final auth = await _continueIkeAuth(
-      outer: outer,
-      inbox: inbox,
-      remoteAddress: target.address,
-      remotePort: remotePort,
-      natt: natt,
-      bootstrap: sa,
-      config: config,
-      akaProvider: akaProvider,
-      onInfo: onInfo,
-    );
-    final pcscf = auth.pcscf4.isNotEmpty
-        ? auth.pcscf4.first
-        : auth.pcscf6.isNotEmpty
-        ? auth.pcscf6.first
-        : throw StateError('ePDG auth completed without P-CSCF');
-    final localIp = pcscf.type == InternetAddressType.IPv6
-        ? (auth.ip6 ??
-              InternetAddress.tryParse('::') ??
-              InternetAddress.anyIPv6)
-        : (auth.ip4 ??
-              InternetAddress.tryParse('0.0.0.0') ??
-              InternetAddress.anyIPv4);
-    final childKeys = _deriveChildKeys(sa, auth);
-    final localPort = 10000 + Random.secure().nextInt(50000);
-    onInfo?.call(
-      'ePDG bootstrap responder=${target.address.address}:$remotePort local=${localIp.address}:0 spi_i=${_hex(sa.localSpi)} spi_r=${_hex(sa.remoteSpi)} transforms=${_transformSummary(sa.selected)} natt=${sa.natDetected}',
-    );
-    onInfo?.call(
-      'ePDG child_sa spi_i=0x${auth.childSpiI.toRadixString(16).padLeft(8, '0')} spi_r=0x${auth.childSpiR.toRadixString(16).padLeft(8, '0')} transforms=${auth.childSa.length}',
-    );
-    if (auth.ip4 != null) {
-      onInfo?.call('ePDG assigned ip4=${auth.ip4!.address}');
-    }
-    if (auth.ip6 != null) {
-      onInfo?.call('ePDG assigned ip6=${auth.ip6!.address}');
-    }
-    if (auth.pcscf4.isNotEmpty) {
-      onInfo?.call(
-        'ePDG pcscf4=[${auth.pcscf4.map((value) => value.address).join(' ')}]',
+      final auth = await _continueIkeAuth(
+        outer: outer,
+        inbox: inbox,
+        remoteAddress: target.address,
+        remotePort: remotePort,
+        natt: natt,
+        bootstrap: sa,
+        config: config,
+        akaProvider: akaProvider,
+        onInfo: onInfo,
       );
-    }
-    if (auth.pcscf6.isNotEmpty) {
+      final pcscf = auth.pcscf4.isNotEmpty
+          ? auth.pcscf4.first
+          : auth.pcscf6.isNotEmpty
+          ? auth.pcscf6.first
+          : throw StateError('ePDG auth completed without P-CSCF');
+      final localIp = pcscf.type == InternetAddressType.IPv6
+          ? (auth.ip6 ??
+                InternetAddress.tryParse('::') ??
+                InternetAddress.anyIPv6)
+          : (auth.ip4 ??
+                InternetAddress.tryParse('0.0.0.0') ??
+                InternetAddress.anyIPv4);
+      final childKeys = _deriveChildKeys(sa, auth);
+      final localPort = 10000 + _secureRandom.nextInt(50000);
       onInfo?.call(
-        'ePDG pcscf6=[${auth.pcscf6.map((value) => value.address).join(' ')}]',
+        'ePDG bootstrap responder=${target.address.address}:$remotePort local=${localIp.address}:0 spi_i=${_hex(sa.localSpi)} spi_r=${_hex(sa.remoteSpi)} transforms=${_transformSummary(sa.selected)} natt=${sa.natDetected}',
       );
+      onInfo?.call(
+        'ePDG child_sa spi_i=0x${auth.childSpiI.toRadixString(16).padLeft(8, '0')} spi_r=0x${auth.childSpiR.toRadixString(16).padLeft(8, '0')} transforms=${auth.childSa.length}',
+      );
+      if (auth.ip4 != null) {
+        onInfo?.call('ePDG assigned ip4=${auth.ip4!.address}');
+      }
+      if (auth.ip6 != null) {
+        onInfo?.call('ePDG assigned ip6=${auth.ip6!.address}');
+      }
+      if (auth.pcscf4.isNotEmpty) {
+        onInfo?.call(
+          'ePDG pcscf4=[${auth.pcscf4.map((value) => value.address).join(' ')}]',
+        );
+      }
+      if (auth.pcscf6.isNotEmpty) {
+        onInfo?.call(
+          'ePDG pcscf6=[${auth.pcscf6.map((value) => value.address).join(' ')}]',
+        );
+      }
+      return VowifiEpdgTunnel._(
+        localAddress: localIp,
+        localPort: localPort,
+        remoteAddress: target.address,
+        remotePort: remotePort,
+        outer: outer,
+        inbox: inbox,
+        natt: natt,
+        spiIn: auth.childSpiI,
+        spiOut: auth.childSpiR,
+        encIn: childKeys.encIn,
+        encOut: childKeys.encOut,
+        integIn: childKeys.integIn,
+        integOut: childKeys.integOut,
+        integLength: childKeys.integLength,
+        integAlgorithm: childKeys.integAlgorithm,
+        pcscfAddress: pcscf,
+        pcscfPort: 5060,
+        onInfo: onInfo,
+      );
+    } catch (_) {
+      await inbox.close();
+      outer.close();
+      rethrow;
     }
-    return VowifiEpdgTunnel._(
-      localAddress: localIp,
-      localPort: localPort,
-      remoteAddress: target.address,
-      remotePort: remotePort,
-      outer: outer,
-      inbox: inbox,
-      natt: natt,
-      spiIn: auth.childSpiI,
-      spiOut: auth.childSpiR,
-      encIn: childKeys.encIn,
-      encOut: childKeys.encOut,
-      integIn: childKeys.integIn,
-      integOut: childKeys.integOut,
-      integLength: childKeys.integLength,
-      integAlgorithm: childKeys.integAlgorithm,
-      pcscfAddress: pcscf,
-      pcscfPort: 5060,
-      onInfo: onInfo,
-    );
   }
 
   Future<void> send(Uint8List payload) async {
@@ -347,6 +361,8 @@ class VowifiEpdgTunnel {
     _nattKeepalive?.cancel();
     _nattKeepalive = null;
     _inbox.packetHandler = null;
+    _inbox.errorHandler = null;
+    _inbox.doneHandler = null;
     await _inbox.close();
     _packets.close();
     _outer.close();
@@ -356,7 +372,11 @@ class VowifiEpdgTunnel {
     if (_closed || !_natt) {
       return;
     }
-    _outer.send(const <int>[0xff], _remoteAddress, _remotePort);
+    try {
+      _outer.send(const <int>[0xff], _remoteAddress, _remotePort);
+    } catch (_) {
+      // Runs from a timer; a dead socket is reported through the inbox.
+    }
   }
 
   void _handleOuterDatagram(Uint8List datagram) {
@@ -977,7 +997,7 @@ class _ChildKeys {
 
 class _DatagramInbox {
   _DatagramInbox(this.socket) {
-    _sub = socket.listen(_onEvent);
+    _sub = socket.listen(_onEvent, onError: _onError, onDone: _onDone);
   }
 
   final RawDatagramSocket socket;
@@ -985,6 +1005,17 @@ class _DatagramInbox {
   final List<Completer<Uint8List>> _waiters = <Completer<Uint8List>>[];
   late final StreamSubscription<RawSocketEvent> _sub;
   void Function(Uint8List datagram)? packetHandler;
+  void Function(Object error, StackTrace stackTrace)? errorHandler;
+  void Function()? doneHandler;
+
+  void _onError(Object error, StackTrace stackTrace) {
+    for (final waiter in _waiters.toList()) {
+      if (!waiter.isCompleted) waiter.completeError(error, stackTrace);
+    }
+    errorHandler?.call(error, stackTrace);
+  }
+
+  void _onDone() => doneHandler?.call();
 
   void _onEvent(RawSocketEvent event) {
     if (event != RawSocketEvent.read) {
@@ -1292,7 +1323,7 @@ Future<_AuthState> _continueIkeAuth({
     inner: initialInner,
   );
   onInfo?.call(
-    'go_ike_auth1 profile=imsclient-exact plain=${_hex(_buildInnerPayloads(initialInner))}',
+    'go_ike_auth1 profile=imsclient-exact plain_len=${_buildInnerPayloads(initialInner).length}',
   );
   await _sendDatagram(
     outer,
@@ -2184,6 +2215,8 @@ int _bcdNibble(String digit) {
   var offset = 12;
   while (offset + 8 <= body.length) {
     final length = _readU16(body, offset + 2);
+    // A transform shorter than its own header would never advance the offset.
+    if (length < 8) break;
     transforms.add(
       _Transform(
         body[offset + 4],
@@ -2447,6 +2480,9 @@ Uint8List? _extractUdpPayload(
     return null;
   }
   final udpLength = _readU16(parsed.l4, 4);
+  if (udpLength < 8 || udpLength > parsed.l4.length) {
+    return null;
+  }
   return parsed.l4.sublist(8, udpLength);
 }
 
@@ -2727,6 +2763,9 @@ Uint8List? _extractUdpPayloadAnySource(
     return null;
   }
   final udpLength = _readU16(parsed.l4, 4);
+  if (udpLength < 8 || udpLength > parsed.l4.length) {
+    return null;
+  }
   return parsed.l4.sublist(8, udpLength);
 }
 
@@ -3137,11 +3176,14 @@ Uint8List _stripNatt(Uint8List raw) {
   return VowifiIkeDatagramCodec.stripNattMarker(raw);
 }
 
+final Random _secureRandom = Random.secure();
+
 Uint8List _randomBytes(int length) {
-  final random = Random.secure();
-  return Uint8List.fromList(
-    List<int>.generate(length, (_) => random.nextInt(256), growable: false),
-  );
+  final bytes = Uint8List(length);
+  for (var i = 0; i < length; i++) {
+    bytes[i] = _secureRandom.nextInt(256);
+  }
+  return bytes;
 }
 
 int _readU16(List<int> data, int offset) =>
@@ -3163,7 +3205,7 @@ Uint8List _u32(int value) => Uint8List.fromList(<int>[
   value & 0xFF,
 ]);
 
-int _randomU32() => Random.secure().nextInt(0x7FFFFFFF);
+int _randomU32() => _secureRandom.nextInt(0x7FFFFFFF);
 
 bool _constantEquals(List<int> left, List<int> right) {
   if (left.length != right.length) {

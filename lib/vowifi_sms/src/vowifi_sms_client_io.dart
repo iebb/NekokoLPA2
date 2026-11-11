@@ -123,6 +123,14 @@ class VowifiSmsClient {
 
       await _performRegister();
     } catch (error) {
+      // Leave no tunnel socket or keepalive timer behind a failed attempt.
+      // Cancelled first, so closing does not report a second state change.
+      await _socketSubscription?.cancel();
+      _socketSubscription = null;
+      try {
+        await _connection?.close();
+      } catch (_) {}
+      _connection = null;
       _emitState(VowifiSmsConnectionState.error, error: error.toString());
       rethrow;
     }
@@ -1371,15 +1379,16 @@ class VowifiSmsClient {
 
   static String _randomToken(int length) {
     const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    final random = Random.secure();
     return List<String>.generate(
       length,
-      (_) => alphabet[random.nextInt(alphabet.length)],
+      (_) => alphabet[_secureRandom.nextInt(alphabet.length)],
       growable: false,
     ).join();
   }
 
-  static int _randomU32() => Random.secure().nextInt(0x7FFFFFFF);
+  static final Random _secureRandom = Random.secure();
+
+  static int _randomU32() => _secureRandom.nextInt(0x7FFFFFFF);
 }
 
 class _Endpoint {

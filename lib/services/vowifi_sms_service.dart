@@ -123,12 +123,14 @@ class VowifiSmsService extends ChangeNotifier {
   final Map<String, VowifiSessionInfo> _sessions =
       <String, VowifiSessionInfo>{};
   Timer? _autoRenewTimer;
-  bool _busy = false;
+  // A count, not a flag: a reader action and an auto-renew can overlap, and the
+  // first to finish must not report the service idle.
+  int _busyDepth = 0;
   int _operationEpoch = 0;
   String? _lastInfo;
   String? _lastError;
 
-  bool get busy => _busy;
+  bool get busy => _busyDepth > 0;
   String? get lastInfo => _lastInfo;
   String? get lastError => _lastError;
   List<VowifiSessionInfo> get sessions =>
@@ -151,9 +153,8 @@ class VowifiSmsService extends ChangeNotifier {
       _log.info('Loading current SIM to VoWiFi reader=${reader.name}');
       final info = await _simService.probe(adapter, reader, onLog: onLog);
       _ensureOperationActive(operationEpoch);
-      _log.info(
-        'VoWiFi SIM data reader=${reader.name} iccid=${info.iccid} imsi=${info.imsi} smsc=${info.smsc}',
-      );
+      // Identities go to the connect dialog below, not to the app log.
+      _log.info('VoWiFi SIM data loaded reader=${reader.name}');
       onLog?.call(
         'Derived SIM info: iccid=${info.iccid} imsi=${info.imsi} smsc=${info.smsc}',
       );
@@ -431,6 +432,10 @@ class VowifiSmsService extends ChangeNotifier {
     if (identical(_sessions[sessionId], session)) {
       _sessions.remove(sessionId);
     }
+    if (_sessions.isEmpty) {
+      _autoRenewTimer?.cancel();
+      _autoRenewTimer = null;
+    }
     try {
       await session.dispose();
     } catch (error, stackTrace) {
@@ -467,7 +472,7 @@ class VowifiSmsService extends ChangeNotifier {
     if (!AppSettings().vowifiEnabled || !AppSettings().vowifiAutoRenew) {
       return;
     }
-    if (_busy) {
+    if (busy) {
       return;
     }
     final now = DateTime.now();
@@ -577,7 +582,7 @@ class VowifiSmsService extends ChangeNotifier {
   }
 
   Future<T> _runBusy<T>(Future<T> Function() action) async {
-    _busy = true;
+    _busyDepth++;
     notifyListeners();
     try {
       return await action();
@@ -587,7 +592,7 @@ class VowifiSmsService extends ChangeNotifier {
       notifyListeners();
       rethrow;
     } finally {
-      _busy = false;
+      _busyDepth--;
       notifyListeners();
     }
   }
