@@ -127,8 +127,10 @@ class PreparedRequest {
     final parts = <String>[];
     params.forEach((key, values) {
       for (final v in values) {
-        parts.add('${Uri.encodeQueryComponent(key)}='
-            '${Uri.encodeQueryComponent(v)}');
+        parts.add(
+          '${Uri.encodeQueryComponent(key)}='
+          '${Uri.encodeQueryComponent(v)}',
+        );
       }
     });
     return parts.join('&');
@@ -186,7 +188,10 @@ PreparedRequest buildPreparedRequest({
   _addSamsungOperationFields(params, entitlement, identity, op, realm);
 
   final accept = _requestAccept(entitlement, req);
-  final ua = userAgent(req, req.clientTs43.isNotEmpty ? req.clientTs43 : clientTs43);
+  final ua = userAgent(
+    req,
+    req.clientTs43.isNotEmpty ? req.clientTs43 : clientTs43,
+  );
   return PreparedRequest(
     usePost: entitlement.usePost,
     params: params.data,
@@ -234,7 +239,9 @@ bool _acceptHasMediaType(String accept, String mediaType) {
 }
 
 ServiceEntitlementRequest _shapeSamsungRequest(
-    Entitlement e, ServiceEntitlementRequest req) {
+  Entitlement e,
+  ServiceEntitlementRequest req,
+) {
   if (e.channel != EntitlementChannel.samsung) return req;
   req.app = Ts43Constants.appOdsaPrimary;
   return req;
@@ -247,7 +254,8 @@ void _addSamsungOperationFields(
   OdsaOperation op,
   String realm,
 ) {
-  if (e.channel != EntitlementChannel.samsung || op.operation == Operation.none) {
+  if (e.channel != EntitlementChannel.samsung ||
+      op.operation == Operation.none) {
     return;
   }
   if (op.operation == Operation.manage && _samsungDigitalizedTempToken4ff(e)) {
@@ -314,7 +322,10 @@ void _addOperation(_Params params, OdsaOperation op) {
   if (op.operationType != OperationType.omit) {
     params.set('operation_type', op.operationType.text);
   }
-  params.setOptional('operation_targets', _operationTargets(op.operationTargets));
+  params.setOptional(
+    'operation_targets',
+    _operationTargets(op.operationTargets),
+  );
   params.setOptional('terminal_iccid', op.terminalIccid);
   params.setOptional('terminal_eid', op.terminalEid);
   params.setOptional('target_terminal_id', op.targetTerminalId);
@@ -323,21 +334,29 @@ void _addOperation(_Params params, OdsaOperation op) {
   params.setOptional('target_terminal_model', op.targetTerminalModel);
   params.setOptional('target_terminal_sn', op.targetTerminalSn);
   params.setOptional(
-      'target_terminal_entitlement_protocol', op.targetTerminalEntitlementProto);
+    'target_terminal_entitlement_protocol',
+    op.targetTerminalEntitlementProto,
+  );
   params.setOptional('companion_terminal_id', op.companionTerminalId);
   params.setOptional('companion_terminal_vendor', op.companionTerminalVendor);
   params.setOptional('companion_terminal_model', op.companionTerminalModel);
   params.setOptional(
-      'companion_terminal_sw_version', op.companionTerminalSoftware);
+    'companion_terminal_sw_version',
+    op.companionTerminalSoftware,
+  );
   params.setOptional(
-      'companion_terminal_friendly_name', op.companionTerminalFriendlyName);
+    'companion_terminal_friendly_name',
+    op.companionTerminalFriendlyName,
+  );
   params.setOptional('companion_terminal_service', op.companionTerminalService);
   params.setOptional('companion_terminal_iccid', op.companionTerminalIccid);
   params.setOptional('companion_terminal_eid', op.companionTerminalEid);
   params.setOptional('old_terminal_id', op.oldTerminalId);
   params.setOptional('old_terminal_iccid', op.oldTerminalIccid);
   params.setOptional(
-      'old_terminal_entitlement_protocol', op.oldTerminalEntitlementProto);
+    'old_terminal_entitlement_protocol',
+    op.oldTerminalEntitlementProto,
+  );
   params.setOptional('MSG_response', op.messageResponse);
   if (op.messageButtonSet) {
     params.set('MSG_btn', MessageButton.text(op.messageButton));

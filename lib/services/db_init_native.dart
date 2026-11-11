@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart' show DatabaseFactory;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'
-    deferred as sqflite_ffi show sqfliteFfiInit, databaseFactory, databaseFactoryFfi;
+    deferred as sqflite_ffi
+    show sqfliteFfiInit, databaseFactory, databaseFactoryFfi;
 import '../utils/platform_adapter.dart';
 
 Future<DatabaseFactory?> initDb() async {

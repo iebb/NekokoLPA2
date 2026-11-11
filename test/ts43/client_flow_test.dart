@@ -30,12 +30,12 @@ class _FakeTransport implements Ts43Transport {
 class _FakeSource implements SourceChannel {
   @override
   Future<Identity> identity() async => const Identity(
-        iccid: '8900000000000000001',
-        imsi: '234107813240779',
-        mcc: '234',
-        mnc: '10',
-        gid1: '5A',
-      );
+    iccid: '8900000000000000001',
+    imsi: '234107813240779',
+    mcc: '234',
+    mnc: '10',
+    gid1: '5A',
+  );
 
   @override
   Future<AkaResponse> authenticateAka(AkaRequest request) async =>
@@ -48,11 +48,11 @@ void main() {
     final transport = _FakeTransport([
       // Authenticate -> token
       jsonEncode({
-        'TOKEN': {'token': 'TOK', 'Validity': '3600'}
+        'TOKEN': {'token': 'TOK', 'Validity': '3600'},
       }),
       // CheckEligibility -> eligible
       jsonEncode({
-        'APPLICATION': {'OperationResult': '1', 'PrimaryAppEligibility': '1'}
+        'APPLICATION': {'OperationResult': '1', 'PrimaryAppEligibility': '1'},
       }),
       // ManageSubscription -> download profile
       jsonEncode({
@@ -63,24 +63,34 @@ void main() {
             'ProfileActivationCode': 'encodedValue=$ac',
             'ProfileIccid': '8900000000000000002',
           },
-        }
+        },
       }),
     ]);
 
     final events = <Ts43Event>[];
-    final client = Ts43Client(Ts43Config(
-      transport: transport,
-      entitlement: Entitlement(
-        server: 'https://entitlement.test/ts43',
-        channel: EntitlementChannel.google,
-        transferType: TransferType.reusableActivationCode, // source-credential (3)
+    final client = Ts43Client(
+      Ts43Config(
+        transport: transport,
+        entitlement: Entitlement(
+          server: 'https://entitlement.test/ts43',
+          channel: EntitlementChannel.google,
+          transferType:
+              TransferType.reusableActivationCode, // source-credential (3)
+        ),
+        source: Endpoint(
+          channel: _FakeSource(),
+          device: Device(imei: '350000000000006'),
+        ),
+        target: Endpoint(
+          device: Device(
+            imei: '350000000000006',
+            eid: '89000000000000000000000000000001',
+          ),
+        ),
+        appVersion: '1',
+        onEvent: events.add,
       ),
-      source: Endpoint(channel: _FakeSource(), device: Device(imei: '350000000000006')),
-      target: Endpoint(
-          device: Device(imei: '350000000000006', eid: '89000000000000000000000000000001')),
-      appVersion: '1',
-      onEvent: events.add,
-    ));
+    );
 
     final result = await client.transfer();
     expect(result.state, Ts43State.pendingDownload);
@@ -89,7 +99,9 @@ void main() {
 
     // Source-credential path completes immediately on activation.
     final done = await client.completeActivation(
-        result, const ActivationResult(iccid: '8900000000000000002'));
+      result,
+      const ActivationResult(iccid: '8900000000000000002'),
+    );
     expect(done.state, Ts43State.done);
     expect(events.whereType<DoneEvent>().length, 1);
 

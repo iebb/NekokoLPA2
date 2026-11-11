@@ -25,9 +25,15 @@ OdsaOperation samsungCheckEligibilityOperation(Device source, Device target) {
 }
 
 OdsaOperation samsungManageSubscriptionOperation(
-    Entitlement e, Device source, Device target, UserInputResult answer) {
+  Entitlement e,
+  Device source,
+  Device target,
+  UserInputResult answer,
+) {
   final op = baseManageSubscriptionOperation(
-      _samsungManageSubscriptionOperationType(e.transferType), answer);
+    _samsungManageSubscriptionOperationType(e.transferType),
+    answer,
+  );
   if (TransferType.isSourceCredential(e.transferType)) {
     op.targetTerminalId = target.imei;
     op.targetTerminalEid = target.eid;
@@ -47,7 +53,10 @@ OdsaOperation samsungManageSubscriptionOperation(
 }
 
 OdsaOperation samsungAcquireConfigurationOperation(
-    Entitlement e, Device source, Device target) {
+  Entitlement e,
+  Device source,
+  Device target,
+) {
   final op = OdsaOperation(
     operation: Operation.acquireConf,
     operationType: OperationType.omit,
@@ -108,7 +117,10 @@ bool _samsungDigitalizedTempToken4ff(Entitlement e) =>
     e.useTempTokenConversion;
 
 void _setSamsungAcquireConfigurationEid(
-    OdsaOperation op, Entitlement e, Device target) {
+  OdsaOperation op,
+  Entitlement e,
+  Device target,
+) {
   switch (e.transferType) {
     case TransferType.oldTerminalIds:
       op.terminalEid = '';

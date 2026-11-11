@@ -1,7 +1,8 @@
 import '../ts43/errors.dart';
 
 import 'ts43_transport_stub.dart'
-    if (dart.library.io) 'ts43_transport_io.dart' as impl;
+    if (dart.library.io) 'ts43_transport_io.dart'
+    as impl;
 
 /// HTTP method for a TS.43 request.
 enum Ts43Method { get, post }
@@ -56,8 +57,9 @@ List<String> mergeCookieHeaders(List<String> current, List<String> next) {
     var replaced = false;
     for (var i = 0; i < merged.length; i++) {
       final existing = merged[i];
-      final existingName =
-          existing.contains('=') ? existing.split('=').first : existing;
+      final existingName = existing.contains('=')
+          ? existing.split('=').first
+          : existing;
       if (existingName == name) {
         merged[i] = cookie;
         replaced = true;

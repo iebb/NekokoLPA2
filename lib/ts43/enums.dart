@@ -15,8 +15,7 @@ class Operation {
   String toString() => value;
 
   @override
-  bool operator ==(Object other) =>
-      other is Operation && other.value == value;
+  bool operator ==(Object other) => other is Operation && other.value == value;
 
   @override
   int get hashCode => value.hashCode;

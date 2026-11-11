@@ -114,8 +114,10 @@ class AkaChallenge {
     required this.autn,
   });
 
-  AkaRequest authenticationRequest() =>
-      AkaRequest(rand: Uint8List.fromList(rand), autn: Uint8List.fromList(autn));
+  AkaRequest authenticationRequest() => AkaRequest(
+    rand: Uint8List.fromList(rand),
+    autn: Uint8List.fromList(autn),
+  );
 
   factory AkaChallenge.fromBase64(String text) {
     return AkaChallenge.fromBytes(base64.decode(text.trim()));
@@ -126,7 +128,9 @@ class AkaChallenge {
       throw const FormatException('EAP-AKA challenge too short');
     }
     if (data[0] != _eapCodeRequest) {
-      throw FormatException('unexpected EAP code 0x${data[0].toRadixString(16)}');
+      throw FormatException(
+        'unexpected EAP code 0x${data[0].toRadixString(16)}',
+      );
     }
     final packetLen = (data[2] << 8) | data[3];
     if (packetLen != data.length) {
@@ -135,7 +139,9 @@ class AkaChallenge {
       );
     }
     if (data[4] != _eapTypeAka) {
-      throw FormatException('unexpected EAP type 0x${data[4].toRadixString(16)}');
+      throw FormatException(
+        'unexpected EAP type 0x${data[4].toRadixString(16)}',
+      );
     }
     if (data[5] != _akaSubtypeChallenge) {
       throw FormatException(
@@ -330,7 +336,8 @@ int _rotl32(int v, int n) => ((v << n) | (v >> (32 - n))) & 0xFFFFFFFF;
 List<int> _sha1Block(List<int> h, Uint8List block) {
   final w = List<int>.filled(80, 0);
   for (var i = 0; i < 16; i++) {
-    w[i] = ((block[i * 4] << 24) |
+    w[i] =
+        ((block[i * 4] << 24) |
             (block[i * 4 + 1] << 16) |
             (block[i * 4 + 2] << 8) |
             block[i * 4 + 3]) &

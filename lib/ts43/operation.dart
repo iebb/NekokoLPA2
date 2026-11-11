@@ -7,7 +7,10 @@ import 'types.dart';
 /// Channel-aware operation dispatch. Ported from `ts43-go/ts43/operation.go`.
 
 OdsaOperation temporaryTokenOperation(
-    Entitlement e, Device source, Device target) {
+  Entitlement e,
+  Device source,
+  Device target,
+) {
   if (e.channel == EntitlementChannel.samsung) {
     return samsungTemporaryTokenOperation(source);
   }
@@ -15,7 +18,10 @@ OdsaOperation temporaryTokenOperation(
 }
 
 OdsaOperation checkEligibilityOperation(
-    Entitlement e, Device source, Device target) {
+  Entitlement e,
+  Device source,
+  Device target,
+) {
   if (e.channel == EntitlementChannel.samsung) {
     return samsungCheckEligibilityOperation(source, target);
   }
@@ -23,7 +29,10 @@ OdsaOperation checkEligibilityOperation(
 }
 
 Device manageSubscriptionRequestDevice(
-    Entitlement e, Device source, Device target) {
+  Entitlement e,
+  Device source,
+  Device target,
+) {
   if (TransferType.isSourceCredential(e.transferType) ||
       e.transferType == TransferType.temporaryToken) {
     return source;
@@ -32,7 +41,11 @@ Device manageSubscriptionRequestDevice(
 }
 
 OdsaOperation manageSubscriptionOperation(
-    Entitlement e, Device source, Device target, UserInputResult answer) {
+  Entitlement e,
+  Device source,
+  Device target,
+  UserInputResult answer,
+) {
   if (e.channel == EntitlementChannel.samsung) {
     return samsungManageSubscriptionOperation(e, source, target, answer);
   }
@@ -40,7 +53,10 @@ OdsaOperation manageSubscriptionOperation(
 }
 
 Device acquireConfigurationRequestDevice(
-    Entitlement e, Device source, Device target) {
+  Entitlement e,
+  Device source,
+  Device target,
+) {
   if (TransferType.isSourceCredential(e.transferType)) {
     return source;
   }
@@ -48,7 +64,10 @@ Device acquireConfigurationRequestDevice(
 }
 
 OdsaOperation acquireConfigurationOperation(
-    Entitlement e, Device source, Device target) {
+  Entitlement e,
+  Device source,
+  Device target,
+) {
   if (e.channel == EntitlementChannel.samsung) {
     return samsungAcquireConfigurationOperation(e, source, target);
   }
@@ -56,7 +75,10 @@ OdsaOperation acquireConfigurationOperation(
 }
 
 OdsaOperation updateSubscriptionOperation(
-    Entitlement e, Device source, Device target) {
+  Entitlement e,
+  Device source,
+  Device target,
+) {
   if (e.channel == EntitlementChannel.samsung) {
     return samsungUpdateSubscriptionOperation(source, target);
   }

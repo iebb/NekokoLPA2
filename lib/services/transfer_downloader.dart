@@ -53,11 +53,12 @@ class TransferDownloader {
     if (ac == null) {
       throw Exception('Invalid TS.43 activation code: $activationCode');
     }
-    final effectiveCc = (confirmationCode != null && confirmationCode.isNotEmpty)
+    final effectiveCc =
+        (confirmationCode != null && confirmationCode.isNotEmpty)
         ? confirmationCode
         : (ac.confirmationCode != null && ac.confirmationCode != '1'
-            ? ac.confirmationCode
-            : null);
+              ? ac.confirmationCode
+              : null);
 
     await adapter.connect(reader);
     onStatus?.call('Connecting to eUICC');
@@ -65,7 +66,9 @@ class TransferDownloader {
     try {
       // --- Mutual authentication (ES9+ / ES10b) ---
       onStatus?.call('Getting challenge');
-      final challengeBytes = await manager.getEuiccChallenge(useChannel: channel);
+      final challengeBytes = await manager.getEuiccChallenge(
+        useChannel: channel,
+      );
       final info1Bytes = await manager.getEuiccInfo1(useChannel: channel);
 
       final session = ProfileDownloadSession(
@@ -123,14 +126,16 @@ class TransferDownloader {
       final clientResp = await Es9PlusService().authenticateClient(
         smdpAddress: ac.smdpAddress,
         transactionId: txnId,
-        authenticateServerResponse:
-            base64Encode(authClientReq.authenticateServerResponse!.encode()),
+        authenticateServerResponse: base64Encode(
+          authClientReq.authenticateServerResponse!.encode(),
+        ),
       );
       if (clientResp['profileMetadata'] == null) {
         throw Exception('No profile metadata returned.');
       }
-      final metadata =
-          StoreMetadataRequest.decode(base64Decode(clientResp['profileMetadata']));
+      final metadata = StoreMetadataRequest.decode(
+        base64Decode(clientResp['profileMetadata']),
+      );
       final authClientResponse = AuthenticateClientResponseEs9(
         authenticateClientOk: AuthenticateClientOk(
           transactionId: session.getTransactionId(),
@@ -147,7 +152,9 @@ class TransferDownloader {
         ),
       );
       session.processAuthenticateClientResponse(
-          'Executed-Success', authClientResponse);
+        'Executed-Success',
+        authClientResponse,
+      );
       if (!session.isClientAuthenticatedSuccessfully()) {
         throw Exception('Client authentication failed');
       }
@@ -157,7 +164,9 @@ class TransferDownloader {
       Uint8List? hashCc;
       if (session.confirmationCode != null) {
         hashCc = CryptoUtils.computeHashCc(
-            session.confirmationCode!, session.getTransactionId()!);
+          session.confirmationCode!,
+          session.getTransactionId()!,
+        );
       }
 
       if (settings.notifProcessBeforeDownload &&
@@ -196,7 +205,8 @@ class TransferDownloader {
 
       final installedIccid = metadata.iccid != null
           ? IccidFormatter.forDisplay(
-              HexUtils.swapNibbles(HexUtils.bytesToHex(metadata.iccid!)))
+              HexUtils.swapNibbles(HexUtils.bytesToHex(metadata.iccid!)),
+            )
           : null;
 
       if (settings.notifProcessAfterInstall &&
@@ -225,7 +235,10 @@ class TransferDownloader {
     }
   }
 
-  Future<void> _processNotifications(Channel channel, AppSettings settings) async {
+  Future<void> _processNotifications(
+    Channel channel,
+    AppSettings settings,
+  ) async {
     try {
       await NotificationService().processPendingNotifications(
         manager,

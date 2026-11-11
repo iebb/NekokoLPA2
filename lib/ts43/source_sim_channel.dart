@@ -137,29 +137,53 @@ class SourceSimChannel implements SourceChannel {
   Future<String> _readIccid() async {
     await _selectFid(UsimFiles.masterFile);
     await _selectFid(UsimFiles.efIccid);
-    final raw = await _apdu(UsimFiles.readBinaryCla, UsimFiles.readBinaryIns,
-        0x00, 0x00, null, UsimFiles.iccidLength);
+    final raw = await _apdu(
+      UsimFiles.readBinaryCla,
+      UsimFiles.readBinaryIns,
+      0x00,
+      0x00,
+      null,
+      UsimFiles.iccidLength,
+    );
     return decodeSwappedBcd(raw, stripLeadingNine: true);
   }
 
   Future<String> _readImsi() async {
     await _selectFid(UsimFiles.efImsi);
-    final raw = await _apdu(UsimFiles.readBinaryCla, UsimFiles.readBinaryIns,
-        0x00, 0x00, null, UsimFiles.imsiLength);
+    final raw = await _apdu(
+      UsimFiles.readBinaryCla,
+      UsimFiles.readBinaryIns,
+      0x00,
+      0x00,
+      null,
+      UsimFiles.imsiLength,
+    );
     return Imsi.fromBytes(raw).toString();
   }
 
   Future<Uint8List> _readAdministrativeData() async {
     await _selectFid(UsimFiles.efAd);
-    return _apdu(UsimFiles.readBinaryCla, UsimFiles.readBinaryIns, 0x00, 0x00,
-        null, UsimFiles.adLength);
+    return _apdu(
+      UsimFiles.readBinaryCla,
+      UsimFiles.readBinaryIns,
+      0x00,
+      0x00,
+      null,
+      UsimFiles.adLength,
+    );
   }
 
   Future<String> _readGid1() async {
     try {
       await _selectFid(UsimFiles.efGid1);
-      final raw = await _apdu(UsimFiles.readBinaryCla, UsimFiles.readBinaryIns,
-          0x00, 0x00, null, 0x00);
+      final raw = await _apdu(
+        UsimFiles.readBinaryCla,
+        UsimFiles.readBinaryIns,
+        0x00,
+        0x00,
+        null,
+        0x00,
+      );
       return groupIdentifierString(raw);
     } catch (e) {
       _log.fine('EF_GID1 unavailable: $e');

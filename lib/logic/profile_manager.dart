@@ -171,7 +171,9 @@ class ProfileManager {
     if (readerName != null) {
       final persistedAid = currentAtr.isEmpty
           ? null
-          : AppSettings().getPreferredEstkAid(readerName.id, currentAtr)?.toUpperCase();
+          : AppSettings()
+                .getPreferredEstkAid(readerName.id, currentAtr)
+                ?.toUpperCase();
       if (persistedAid != null) {
         final persistedBytes = HexUtils.hexToBytes(persistedAid);
         aids.removeWhere((aid) => listEquals(aid, persistedBytes));

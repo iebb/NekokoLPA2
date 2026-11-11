@@ -75,9 +75,11 @@ class EntitlementRecord {
       transferTypePsim: (j['transferTypePsim'] as num?)?.toInt() ?? 0,
       transferTypeEsim: (j['transferTypeEsim'] as num?)?.toInt() ?? 0,
       pollingIntervalMinutes:
-          (j['acquireConfigurationPollingIntervalMinutes'] as num?)?.toInt() ?? 0,
+          (j['acquireConfigurationPollingIntervalMinutes'] as num?)?.toInt() ??
+          0,
       pollingTimeoutMinutes:
-          (j['acquireConfigurationPollingTimeoutMinutes'] as num?)?.toInt() ?? 0,
+          (j['acquireConfigurationPollingTimeoutMinutes'] as num?)?.toInt() ??
+          0,
       useHttpPost: j['useHttpPost'] as bool? ?? false,
       supportPsimToEsim: j['supportPsimToEsimTransfer'] as bool? ?? false,
       supportEsimToEsim: j['supportEsimToEsimTransfer'] as bool? ?? false,
@@ -119,13 +121,15 @@ class EntitlementRecord {
       case SimType.esim:
         if (!supportEsimToEsim) {
           throw EntitlementException(
-              '$entitlementUnsupported for MCCMNC $mccMnc eSIM source');
+            '$entitlementUnsupported for MCCMNC $mccMnc eSIM source',
+          );
         }
         return toEntitlement(sourceSimType, transferTypeEsim);
       case SimType.psim:
         if (!supportPsimToEsim) {
           throw EntitlementException(
-              '$entitlementUnsupported for MCCMNC $mccMnc pSIM source');
+            '$entitlementUnsupported for MCCMNC $mccMnc pSIM source',
+          );
         }
         return toEntitlement(sourceSimType, transferTypePsim);
     }
@@ -159,7 +163,11 @@ Entitlement discoverEntitlementForChannel(
     return _discoverAuto(records, identity, sourceSimType);
   }
   final record = _selectRecord(
-      records, identity.mccMnc, identity.gid1, normalizeChannel(channel));
+    records,
+    identity.mccMnc,
+    identity.gid1,
+    normalizeChannel(channel),
+  );
   return record.entitlement(sourceSimType);
 }
 
@@ -169,7 +177,10 @@ Entitlement _discoverAuto(
   SimType sourceSimType,
 ) {
   EntitlementException? unsupported;
-  for (final channel in [EntitlementChannel.google, EntitlementChannel.samsung]) {
+  for (final channel in [
+    EntitlementChannel.google,
+    EntitlementChannel.samsung,
+  ]) {
     EntitlementRecord record;
     try {
       record = _selectRecord(records, identity.mccMnc, identity.gid1, channel);
@@ -188,7 +199,9 @@ Entitlement _discoverAuto(
     }
   }
   if (unsupported != null) throw unsupported;
-  throw EntitlementException('$entitlementNotFound for MCCMNC ${identity.mccMnc}');
+  throw EntitlementException(
+    '$entitlementNotFound for MCCMNC ${identity.mccMnc}',
+  );
 }
 
 EntitlementRecord _selectRecord(
@@ -208,15 +221,15 @@ EntitlementRecord _selectRecord(
       fallback.add(record);
       continue;
     }
-    if (gid1.isNotEmpty &&
-        record.gid1!.toLowerCase() == gid1.toLowerCase()) {
+    if (gid1.isNotEmpty && record.gid1!.toLowerCase() == gid1.toLowerCase()) {
       gidMatches.add(record);
     }
   }
   if (gidMatches.length == 1) return gidMatches.first;
   if (gidMatches.length > 1) {
     throw EntitlementException(
-        '$entitlementAmbiguous for MCCMNC $mccMnc GID1 $gid1');
+      '$entitlementAmbiguous for MCCMNC $mccMnc GID1 $gid1',
+    );
   }
   if (fallback.length == 1) return fallback.first;
   if (fallback.length > 1) {
@@ -249,6 +262,10 @@ class Ts43EntitlementDb {
   }) async {
     final records = await load();
     return discoverEntitlementForChannel(
-        records, identity, sourceSimType, channel);
+      records,
+      identity,
+      sourceSimType,
+      channel,
+    );
   }
 }

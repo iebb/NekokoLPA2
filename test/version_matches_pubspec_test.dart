@@ -25,7 +25,8 @@ void main() {
     expect(
       kAppVersion,
       declared!.group(1),
-      reason: 'lib/version.dart is stale; run ./bump.sh rather than editing '
+      reason:
+          'lib/version.dart is stale; run ./bump.sh rather than editing '
           'pubspec.yaml alone',
     );
     expect(

@@ -47,8 +47,10 @@ WebsheetResult _fromJson(String line, bool vowifiCallback) {
   }
   final query = <String, String>{
     'activationCode': s('activationCode'),
-    'defaultSmdpAddress':
-        firstNonEmpty([s('defaultSmdpAddress'), s('smdpFqdn')]),
+    'defaultSmdpAddress': firstNonEmpty([
+      s('defaultSmdpAddress'),
+      s('smdpFqdn'),
+    ]),
     'iccid': s('iccid'),
     'imei': s('imei'),
     'nextAction': s('nextAction'),
@@ -92,10 +94,12 @@ WebsheetResult _fromVoWiFiName(String name) {
   switch (_normalizeCallbackName(name)) {
     case 'entitlementchanged':
       return const WebsheetResult(
-          event: WebsheetCallbackEvent.voWiFiEntitlementChanged);
+        event: WebsheetCallbackEvent.voWiFiEntitlementChanged,
+      );
     case 'dismissflow':
       return const WebsheetResult(
-          event: WebsheetCallbackEvent.voWiFiDismissFlow);
+        event: WebsheetCallbackEvent.voWiFiDismissFlow,
+      );
     default:
       throw FormatException('unknown VoWiFi websheet callback "$name"');
   }
@@ -106,8 +110,7 @@ WebsheetResult _fromUrl(String raw) {
   final query = u.queryParameters;
   var name = _firstValue(query, ['event', 'callback', 'action', 'method']);
   if (name.isEmpty) {
-    final parts =
-        u.path.split('/').where((p) => p.isNotEmpty).toList();
+    final parts = u.path.split('/').where((p) => p.isNotEmpty).toList();
     if (parts.isNotEmpty) name = parts.last;
   }
   final normalized = _normalizeCallbackName(name);
@@ -118,11 +121,17 @@ WebsheetResult _fromUrl(String raw) {
 }
 
 WebsheetResult _fromName(
-    String name, List<String> args, Map<String, String> query) {
+  String name,
+  List<String> args,
+  Map<String, String> query,
+) {
   switch (_normalizeCallbackName(name)) {
     case 'profilereadywithactivationcode':
     case 'activation':
-      final ac = _argOrQuery(args, query, 0, ['activationCode', 'activation_code']);
+      final ac = _argOrQuery(args, query, 0, [
+        'activationCode',
+        'activation_code',
+      ]);
       if (ac.isEmpty) {
         throw const FormatException('activation code is required');
       }
@@ -134,8 +143,11 @@ WebsheetResult _fromName(
       );
     case 'profilereadywithdefaultsmdp':
     case 'defaultsmdp':
-      final smdp = _argOrQuery(
-          args, query, 0, ['defaultSmdpAddress', 'smdp', 'smdpFqdn']);
+      final smdp = _argOrQuery(args, query, 0, [
+        'defaultSmdpAddress',
+        'smdp',
+        'smdpFqdn',
+      ]);
       final iccid = _argOrQuery(args, query, 1, ['iccid', 'ICCID']);
       if (smdp.isEmpty || iccid.isEmpty) {
         throw const FormatException('default SM-DP+ and ICCID are required');
@@ -163,7 +175,8 @@ WebsheetResult _fromName(
       return WebsheetResult(
         event: WebsheetCallbackEvent.finishFlow,
         nextAction: _operationFromCallbackText(
-            _argOrQuery(args, query, 0, ['next_action', 'nextAction'])),
+          _argOrQuery(args, query, 0, ['next_action', 'nextAction']),
+        ),
       );
     case 'dismissflow':
     case 'dismiss':
@@ -173,7 +186,8 @@ WebsheetResult _fromName(
     case 'checkprofileservicestatus':
     case 'status':
       return const WebsheetResult(
-          event: WebsheetCallbackEvent.checkProfileServiceStatus);
+        event: WebsheetCallbackEvent.checkProfileServiceStatus,
+      );
     case 'deleteprofileinuse':
     case 'deleteprofile':
       return WebsheetResult(
@@ -182,7 +196,8 @@ WebsheetResult _fromName(
       );
     case 'entitlementchanged':
       return const WebsheetResult(
-          event: WebsheetCallbackEvent.voWiFiEntitlementChanged);
+        event: WebsheetCallbackEvent.voWiFiEntitlementChanged,
+      );
     default:
       throw FormatException('unknown websheet callback "$name"');
   }
@@ -192,7 +207,11 @@ String _callbackNameFromQuery(Map<String, String> query) {
   if (_firstValue(query, ['activationCode', 'activation_code']).isNotEmpty) {
     return 'profileReadyWithActivationCode';
   }
-  if (_firstValue(query, ['defaultSmdpAddress', 'smdp', 'smdpFqdn']).isNotEmpty) {
+  if (_firstValue(query, [
+    'defaultSmdpAddress',
+    'smdp',
+    'smdpFqdn',
+  ]).isNotEmpty) {
     return 'profileReadyWithDefaultSmdp';
   }
   if (_firstValue(query, ['next_action', 'nextAction']).isNotEmpty) {
@@ -265,7 +284,11 @@ String _normalizeCallbackName(String name) {
 }
 
 String _argOrQuery(
-    List<String> args, Map<String, String> query, int index, List<String> keys) {
+  List<String> args,
+  Map<String, String> query,
+  int index,
+  List<String> keys,
+) {
   if (index < args.length && args[index].isNotEmpty) {
     return args[index];
   }

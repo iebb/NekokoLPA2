@@ -39,18 +39,18 @@ class Device {
   });
 
   Device clone() => Device(
-        imei: imei,
-        imeis: List<String>.from(imeis),
-        iccid: iccid,
-        eid: eid,
-        vendor: vendor,
-        model: model,
-        softwareVersion: softwareVersion,
-        serialNumber: serialNumber,
-        friendlyName: friendlyName,
-        service: service,
-        entitlementProtocol: entitlementProtocol,
-      );
+    imei: imei,
+    imeis: List<String>.from(imeis),
+    iccid: iccid,
+    eid: eid,
+    vendor: vendor,
+    model: model,
+    softwareVersion: softwareVersion,
+    serialNumber: serialNumber,
+    friendlyName: friendlyName,
+    service: service,
+    entitlementProtocol: entitlementProtocol,
+  );
 }
 
 /// Carrier TS.43 entitlement configuration. Ported from `Entitlement`.
@@ -220,7 +220,10 @@ class WebsheetResult {
 class UserInputResult {
   final String response;
   final int button; // MessageButton
-  const UserInputResult({this.response = '', this.button = MessageButton.unknown});
+  const UserInputResult({
+    this.response = '',
+    this.button = MessageButton.unknown,
+  });
 }
 
 class ContinueRequest {
@@ -357,8 +360,8 @@ class TransferTokenResult {
   final AuthToken auth;
   final TemporaryToken temporary;
   TransferTokenResult({AuthToken? auth, TemporaryToken? temporary})
-      : auth = auth ?? AuthToken(),
-        temporary = temporary ?? TemporaryToken();
+    : auth = auth ?? AuthToken(),
+      temporary = temporary ?? TemporaryToken();
 }
 
 String firstNonEmpty(List<String> values) {

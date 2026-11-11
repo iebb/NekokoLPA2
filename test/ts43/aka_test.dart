@@ -22,8 +22,7 @@ void main() {
         'AQIAfBcBAAABBQAAXOZSkCjxysgE43GWqHJvgQIFAABrikWGrekAALNU4TxmCDPoCwUAAJT0nqXeAYlqzT0UGXINENWBBQAA7z3fhImkg+vcCKWIZBdvuYIJAAAPRUFp7KWFo+Thr78Qj9hEkB2zA0i6KakODsufBC+BJQ==';
     const responseB64 =
         '2wjHnwKln8mjjxDzMKJvLBzMHtm0X9SNBsUWEAbEiAdD7xeqqZ7nsXzukRkIhd6SDZ4bj7s=';
-    const identity =
-        '0234107813240779@nai.epc.mnc010.mcc234.3gppnetwork.org';
+    const identity = '0234107813240779@nai.epc.mnc010.mcc234.3gppnetwork.org';
     const want =
         '020200281701000003030040C79F02A59FC9A38F0B0500001C141BDDDE8BEF2E502FB6793808DE7C';
 
@@ -54,9 +53,6 @@ void main() {
 
   test('imsiEapIdentity builds the 3GPP NAI', () {
     final id = imsiEapIdentity('234010', '234107813240779', 'nai.epc');
-    expect(
-      id,
-      '0234107813240779@nai.epc.mnc010.mcc234.3gppnetwork.org',
-    );
+    expect(id, '0234107813240779@nai.epc.mnc010.mcc234.3gppnetwork.org');
   });
 }

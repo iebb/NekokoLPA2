@@ -48,6 +48,7 @@ Future<QrtrSocket> openQrtrSocket() async {
 
   throw UnsupportedError('QRTR is only reachable on Android');
 }
+
 /// The socket in the process Shizuku runs, reached a datagram at a time.
 class QrtrHostSocket implements QrtrSocket {
   QrtrHostSocket(this._bus);

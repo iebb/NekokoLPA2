@@ -20,12 +20,12 @@ const _records = '''
 ''';
 
 Identity _id({String gid1 = ''}) => Identity(
-      iccid: '8900',
-      imsi: '204040000000000',
-      mcc: '204',
-      mnc: '04',
-      gid1: gid1,
-    );
+  iccid: '8900',
+  imsi: '204040000000000',
+  mcc: '204',
+  mnc: '04',
+  gid1: gid1,
+);
 
 void main() {
   group('entitlement discovery', () {
@@ -33,14 +33,22 @@ void main() {
 
     test('GID1 match wins over fallback', () {
       final e = discoverEntitlementForChannel(
-          records, _id(gid1: '5A'), SimType.esim, EntitlementChannel.google);
+        records,
+        _id(gid1: '5A'),
+        SimType.esim,
+        EntitlementChannel.google,
+      );
       expect(e.server, 'https://sasktel.example');
       expect(e.transferType, 2);
     });
 
     test('falls back to the null-GID1 record', () {
       final e = discoverEntitlementForChannel(
-          records, _id(gid1: 'ZZ'), SimType.esim, EntitlementChannel.google);
+        records,
+        _id(gid1: 'ZZ'),
+        SimType.esim,
+        EntitlementChannel.google,
+      );
       expect(e.server, 'https://fallback.example');
       expect(e.usePost, isTrue);
       expect(e.transferType, 6);
@@ -49,10 +57,11 @@ void main() {
     test('unknown MCCMNC throws not found', () {
       expect(
         () => discoverEntitlementForChannel(
-            records,
-            Identity(iccid: '', imsi: '999990000', mcc: '999', mnc: '99'),
-            SimType.esim,
-            EntitlementChannel.google),
+          records,
+          Identity(iccid: '', imsi: '999990000', mcc: '999', mnc: '99'),
+          SimType.esim,
+          EntitlementChannel.google,
+        ),
         throwsA(isA<EntitlementException>()),
       );
     });
@@ -61,8 +70,9 @@ void main() {
   group('websheet callback parsing', () {
     test('JSON activation code callback', () {
       final r = parseWebsheetResult(
-          '{"event":"profileReadyWithActivationCode",'
-          '"activationCode":"LPA:1\$smdp\$M","iccid":"8900"}');
+        '{"event":"profileReadyWithActivationCode",'
+        '"activationCode":"LPA:1\$smdp\$M","iccid":"8900"}',
+      );
       expect(r.event, WebsheetCallbackEvent.profileReadyWithActivationCode);
       expect(r.activationCode, 'LPA:1\$smdp\$M');
       expect(r.iccid, '8900');
@@ -70,13 +80,15 @@ void main() {
 
     test('JS ODSAServiceFlow callback', () {
       final r = parseWebsheetResult(
-          "TS43_ODSA_CALLBACK ODSAServiceFlow.dismissFlow()");
+        "TS43_ODSA_CALLBACK ODSAServiceFlow.dismissFlow()",
+      );
       expect(r.event, WebsheetCallbackEvent.dismissFlow);
     });
 
     test('URL callback', () {
       final r = parseWebsheetResult(
-          'https://carrier.example/_callback?event=finishFlow&next_action=acquireConfiguration');
+        'https://carrier.example/_callback?event=finishFlow&next_action=acquireConfiguration',
+      );
       expect(r.event, WebsheetCallbackEvent.finishFlow);
       expect(r.nextAction, Operation.acquireConf);
     });

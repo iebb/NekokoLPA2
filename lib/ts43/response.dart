@@ -43,7 +43,7 @@ class OdsaResponse {
   static bool _looksLikeJson(String s) {
     if (s.isEmpty) return false;
     final c = s.codeUnitAt(0);
-    if (c != 0x7b /* { */ && c != 0x5b /* [ */) return false;
+    if (c != 0x7b /* { */ && c != 0x5b /* [ */ ) return false;
     try {
       jsonDecode(s);
       return true;
@@ -54,8 +54,9 @@ class OdsaResponse {
 
   void _applyMap(_Fields f) {
     operationResult = OperationResult.parse(f.app['OperationResult']);
-    primaryAppEligibility =
-        AppEligibility.parse(f.app['PrimaryAppEligibility']);
+    primaryAppEligibility = AppEligibility.parse(
+      f.app['PrimaryAppEligibility'],
+    );
     subscriptionResult = SubscriptionResult.parse(f.app['SubscriptionResult']);
     serviceStatus = ServiceStatus.parse(f.primary['ServiceStatus']);
 
@@ -86,8 +87,9 @@ class OdsaResponse {
       rejectButtonLabel: f.msg['Reject_btn_label'] ?? '',
       acceptFreeText: _one(f.msg['Accept_freetext']),
       acceptFreeTextHint: f.msg['Accept_freetext_hint'] ?? '',
-      acceptFreeTextValidation:
-          _encodedPrefixedField(f.msg['Accept_freetext_validation'] ?? ''),
+      acceptFreeTextValidation: _encodedPrefixedField(
+        f.msg['Accept_freetext_validation'] ?? '',
+      ),
       acceptFreeTextValidationFailedErrorText:
           f.msg['Accept_freetext_validation_failed_error_text'] ?? '',
     );
@@ -95,15 +97,17 @@ class OdsaResponse {
     if (subscriptionResult == SubscriptionResult.continueToWebsheet) {
       websheet = Websheet(
         url: f.app['SubscriptionServiceURL'] ?? '',
-        userData:
-            _encodedPrefixedField(f.app['SubscriptionServiceUserData'] ?? ''),
+        userData: _encodedPrefixedField(
+          f.app['SubscriptionServiceUserData'] ?? '',
+        ),
         contentsType: f.app['SubscriptionServiceContentsType'] ?? '',
       );
     }
 
     download = DownloadConfig(
-      activationCode:
-          _activationCodeField(f.download['ProfileActivationCode'] ?? ''),
+      activationCode: _activationCodeField(
+        f.download['ProfileActivationCode'] ?? '',
+      ),
     );
     var smdp = f.download['ProfileSmdpAddress'] ?? '';
     if (smdp.isEmpty) smdp = f.download['SubscriptionServiceURL'] ?? '';
@@ -165,7 +169,9 @@ _Fields _jsonToFieldMap(dynamic root) {
       'PollingInterval',
       'PollingIntervalUnit',
     ]);
-    download ??= primary['DownloadInfo'] is Map ? primary['DownloadInfo'] : null;
+    download ??= primary['DownloadInfo'] is Map
+        ? primary['DownloadInfo']
+        : null;
     msg ??= primary['MSG'] is Map ? primary['MSG'] : null;
   }
   if (download is Map) {
@@ -248,11 +254,7 @@ bool _one(String? s) => (s ?? '').trim() == '1';
 
 List<String> _splitList(String s) {
   if (s.isEmpty) return const [];
-  return s
-      .split(',')
-      .map((e) => e.trim())
-      .where((e) => e.isNotEmpty)
-      .toList();
+  return s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
 }
 
 List<Operation> _splitOperations(String s) =>

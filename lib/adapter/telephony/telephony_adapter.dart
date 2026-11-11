@@ -34,7 +34,7 @@ class TelephonyAdapter extends BaseAdapter {
 
   @override
   String? get lastAtr => null; // TelephonyManager doesn't give ATR directly
- 
+
   @override
   bool get supportsRawApdu => false;
 

@@ -11,7 +11,8 @@ class _WebTransport implements Ts43Transport {
 
   String _proxied(String url) {
     final uri = Uri.parse(url);
-    final hostPath = '${uri.host}${uri.hasPort ? ':${uri.port}' : ''}${uri.path}';
+    final hostPath =
+        '${uri.host}${uri.hasPort ? ':${uri.port}' : ''}${uri.path}';
     final query = uri.hasQuery ? '?${uri.query}' : '';
     return 'https://nlpa-data.nekoko.ee/ts43/$hostPath$query';
   }

@@ -6,8 +6,7 @@ class Ts43Constants {
       'application/json, text/vnd.wap.connectivity-xml';
   static const wfcResponseAccept = 'text/vnd.wap.connectivity-xml';
   static const samsungResponseAccept = 'application/xml, text/xml';
-  static const eapRelayContentType =
-      'application/vnd.gsma.eap-relay.v1.0+json';
+  static const eapRelayContentType = 'application/vnd.gsma.eap-relay.v1.0+json';
   static const defaultOdsaClientTs43 = 'client-Primary-ODSA';
   static const samsungOdsaClientTs43 = 'Primary-ODSA';
   static const defaultWfcClientTs43 = 'client-IMS-Entitlement';

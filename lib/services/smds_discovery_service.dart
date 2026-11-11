@@ -55,7 +55,9 @@ class SmdsDiscoveryService {
     await adapter.connect(reader);
     final channel = await manager.openSession();
     try {
-      final challengeBytes = await manager.getEuiccChallenge(useChannel: channel);
+      final challengeBytes = await manager.getEuiccChallenge(
+        useChannel: channel,
+      );
       final info1Bytes = await manager.getEuiccInfo1(useChannel: channel);
 
       // SM-DS uses an empty matching ID; the flow is otherwise identical.
@@ -104,8 +106,9 @@ class SmdsDiscoveryService {
       final clientResp = await Es9PlusService().authenticateClient(
         smdpAddress: host,
         transactionId: txnId,
-        authenticateServerResponse:
-            base64Encode(authClientReq.authenticateServerResponse!.encode()),
+        authenticateServerResponse: base64Encode(
+          authClientReq.authenticateServerResponse!.encode(),
+        ),
       );
 
       return _parseEventEntries(clientResp);

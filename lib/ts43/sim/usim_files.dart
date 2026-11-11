@@ -3,9 +3,15 @@ import 'dart:typed_data';
 /// USIM file identifiers and APDU constants, ported from `sim/usim.go`.
 class UsimFiles {
   /// USIM ADF AID prefix (3GPP, Telecom).
-  static final Uint8List usimAidPrefix = Uint8List.fromList(
-    [0xa0, 0x00, 0x00, 0x00, 0x87, 0x10, 0x02],
-  );
+  static final Uint8List usimAidPrefix = Uint8List.fromList([
+    0xa0,
+    0x00,
+    0x00,
+    0x00,
+    0x87,
+    0x10,
+    0x02,
+  ]);
 
   // File identifiers.
   static const int masterFile = 0x3f00;

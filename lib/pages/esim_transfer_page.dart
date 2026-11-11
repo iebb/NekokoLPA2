@@ -88,8 +88,10 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
       final session = await widget.manager.openSession();
       try {
         if (!widget.profile.enabled) {
-          await widget.manager.enableProfile(widget.profile.rawIccid,
-              useChannel: session);
+          await widget.manager.enableProfile(
+            widget.profile.rawIccid,
+            useChannel: session,
+          );
         }
         try {
           targetEid = await widget.manager.getEid(useChannel: session);
@@ -115,8 +117,10 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
       _setStatus(_l10n.transferCheckingEligibility);
       Entitlement entitlement;
       try {
-        entitlement =
-            await Ts43EntitlementDb.discover(_identity!, SimType.esim);
+        entitlement = await Ts43EntitlementDb.discover(
+          _identity!,
+          SimType.esim,
+        );
       } on EntitlementException catch (e) {
         _log.warning('Entitlement discovery failed: $e');
         _terminalError(_l10n.transferNoEntitlement);
@@ -133,12 +137,14 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
         eid: targetEid ?? '',
       );
 
-      _client = Ts43Client(Ts43Config(
-        entitlement: entitlement,
-        source: Endpoint(channel: _source, device: source),
-        target: Endpoint(device: target),
-        appVersion: '1',
-      ));
+      _client = Ts43Client(
+        Ts43Config(
+          entitlement: entitlement,
+          source: Endpoint(channel: _source, device: source),
+          target: Endpoint(device: target),
+          appVersion: '1',
+        ),
+      );
 
       // 5. Run the transfer state machine.
       _setStatus(_l10n.transferContactingCarrier);
@@ -167,16 +173,20 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
           final answer = await _askUserInput(event.message);
           if (answer == null) return;
           _setStatus(_l10n.transferContactingCarrier);
-          result = await _client!
-              .continueFlow(result, ContinueRequest(userInput: answer));
+          result = await _client!.continueFlow(
+            result,
+            ContinueRequest(userInput: answer),
+          );
           break;
         case Ts43State.pendingWebsheet:
           final event = result.event as WebsheetEvent;
           final ws = await _openWebsheet(event.websheet);
           if (ws == null) return;
           _setStatus(_l10n.transferContactingCarrier);
-          result = await _client!
-              .continueFlow(result, ContinueRequest(websheet: ws));
+          result = await _client!.continueFlow(
+            result,
+            ContinueRequest(websheet: ws),
+          );
           break;
         case Ts43State.pendingSourceProfileDeletion:
           final event = result.event as SourceProfileDeletionEvent;
@@ -184,27 +194,35 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
           if (!ok) return;
           _setStatus(_l10n.transferContactingCarrier);
           result = await _client!.continueFlow(
-              result, const ContinueRequest(sourceProfileDeleted: true));
+            result,
+            const ContinueRequest(sourceProfileDeleted: true),
+          );
           break;
         case Ts43State.pendingDownload:
           final iccid = await _downloadProfile(result.downloadConfig);
           _setStatus(_l10n.transferContactingCarrier);
-          result = await _client!
-              .completeActivation(result, ActivationResult(iccid: iccid ?? ''));
+          result = await _client!.completeActivation(
+            result,
+            ActivationResult(iccid: iccid ?? ''),
+          );
           break;
         case Ts43State.pendingSmdsDiscovery:
           final iccid = await _smdsDiscoverAndDownload();
           if (iccid == null) return; // terminal state handled or cancelled
           _setStatus(_l10n.transferContactingCarrier);
-          result = await _client!
-              .completeActivation(result, ActivationResult(iccid: iccid));
+          result = await _client!.completeActivation(
+            result,
+            ActivationResult(iccid: iccid),
+          );
           break;
         case Ts43State.pendingDelayedDownload:
           final iccid = await _promptInstalledIccid();
           if (iccid == null) return;
           _setStatus(_l10n.transferContactingCarrier);
-          result = await _client!
-              .completeActivation(result, ActivationResult(iccid: iccid));
+          result = await _client!.completeActivation(
+            result,
+            ActivationResult(iccid: iccid),
+          );
           break;
         default:
           _terminalInfo(_l10n.transferPendingActivation);
@@ -222,7 +240,9 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
       barrierDismissible: false,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(message.title.isNotEmpty ? message.title : _l10n.transferTitle),
+          title: Text(
+            message.title.isNotEmpty ? message.title : _l10n.transferTitle,
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,11 +264,14 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
             if (message.rejectButton)
               TextButton(
                 onPressed: () => Navigator.pop(
-                    ctx,
-                    const UserInputResult(button: MessageButton.rejected)),
-                child: Text(message.rejectButtonLabel.isNotEmpty
-                    ? message.rejectButtonLabel
-                    : _l10n.transferReject),
+                  ctx,
+                  const UserInputResult(button: MessageButton.rejected),
+                ),
+                child: Text(
+                  message.rejectButtonLabel.isNotEmpty
+                      ? message.rejectButtonLabel
+                      : _l10n.transferReject,
+                ),
               ),
             FilledButton(
               onPressed: () => Navigator.pop(
@@ -258,9 +281,11 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
                   button: MessageButton.accepted,
                 ),
               ),
-              child: Text(message.acceptButtonLabel.isNotEmpty
-                  ? message.acceptButtonLabel
-                  : _l10n.transferAccept),
+              child: Text(
+                message.acceptButtonLabel.isNotEmpty
+                    ? message.acceptButtonLabel
+                    : _l10n.transferAccept,
+              ),
             ),
           ],
         );
@@ -271,9 +296,7 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
   Future<WebsheetResult?> _openWebsheet(Websheet websheet) async {
     return Navigator.push<WebsheetResult>(
       context,
-      MaterialPageRoute(
-        builder: (_) => _WebsheetPage(websheet: websheet),
-      ),
+      MaterialPageRoute(builder: (_) => _WebsheetPage(websheet: websheet)),
     );
   }
 
@@ -314,7 +337,8 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
             autoRemoveInstall: settings.notifAutoRemoveInstall,
             autoSendEnable: settings.notifAutoSendEnable,
             autoRemoveEnable: settings.notifAutoRemoveEnable,
-            deleteWithoutSendingEnable: settings.notifDeleteWithoutSendingEnable,
+            deleteWithoutSendingEnable:
+                settings.notifDeleteWithoutSendingEnable,
             autoSendDisable: settings.notifAutoSendDisable,
             autoRemoveDisable: settings.notifAutoRemoveDisable,
             deleteWithoutSendingDisable:
@@ -347,7 +371,8 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
     final result = await downloader.downloadInstallEnable(
       activationCode: code,
       onStatus: (m) => _setStatus(m, progress: _progress),
-      onProgress: (p) => _setStatus(_l10n.transferDownloadingProfile, progress: p),
+      onProgress: (p) =>
+          _setStatus(_l10n.transferDownloadingProfile, progress: p),
     );
     return (result.iccid?.isNotEmpty ?? false)
         ? result.iccid
@@ -400,18 +425,21 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
       adapter: widget.adapter,
       reader: widget.reader,
     );
-    final events =
-        await service.discover(smdsAddress: kRootSmdsAddress, imei: imei);
+    final events = await service.discover(
+      smdsAddress: kRootSmdsAddress,
+      imei: imei,
+    );
     if (events.isEmpty) {
       _terminalInfo(_l10n.transferSmdsNoProfiles);
       return null;
     }
-    final chosen = events.length == 1 ? events.first : await _selectEvent(events);
+    final chosen = events.length == 1
+        ? events.first
+        : await _selectEvent(events);
     if (chosen == null) return null;
-    return _downloadProfile(DownloadConfig(
-      smdpFqdn: chosen.address,
-      matchingId: chosen.eventId,
-    ));
+    return _downloadProfile(
+      DownloadConfig(smdpFqdn: chosen.address, matchingId: chosen.eventId),
+    );
   }
 
   Future<DiscoveredEvent?> _selectEvent(List<DiscoveredEvent> events) {
@@ -584,25 +612,29 @@ class _WebsheetPageState extends State<_WebsheetPage> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..addJavaScriptChannel('TS43Channel',
-          onMessageReceived: (msg) => _onCallback(msg.message))
-      ..setNavigationDelegate(NavigationDelegate(
-        onPageFinished: (_) async {
-          // Inject the bundled ODSA bridge then our channel forwarder.
-          try {
-            await _controller.runJavaScript(_bridge);
-          } catch (e) {
-            _log.warning('Bridge injection failed: $e');
-          }
-        },
-        onNavigationRequest: (request) {
-          if (request.url.contains('/_callback')) {
-            _onCallback(request.url);
-            return NavigationDecision.prevent;
-          }
-          return NavigationDecision.navigate;
-        },
-      ));
+      ..addJavaScriptChannel(
+        'TS43Channel',
+        onMessageReceived: (msg) => _onCallback(msg.message),
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (_) async {
+            // Inject the bundled ODSA bridge then our channel forwarder.
+            try {
+              await _controller.runJavaScript(_bridge);
+            } catch (e) {
+              _log.warning('Bridge injection failed: $e');
+            }
+          },
+          onNavigationRequest: (request) {
+            if (request.url.contains('/_callback')) {
+              _onCallback(request.url);
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          },
+        ),
+      );
     final uri = Uri.tryParse(widget.websheet.url);
     if (uri != null) {
       _controller.loadRequest(uri);

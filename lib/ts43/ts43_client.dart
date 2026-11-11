@@ -52,8 +52,8 @@ class _TransferCredential {
     AuthToken? auth,
     TemporaryToken? temporary,
     this.temporaryToken = false,
-  })  : auth = auth ?? AuthToken(),
-        temporary = temporary ?? TemporaryToken();
+  }) : auth = auth ?? AuthToken(),
+       temporary = temporary ?? TemporaryToken();
 
   static _TransferCredential ofAuth(AuthToken token) =>
       _TransferCredential(auth: token);
@@ -86,17 +86,32 @@ class Ts43Client {
   Ts43Transport _transport;
   bool _ownsTransport = false;
 
-  Ts43Client._(this._entitlement, this._source, this._target, this._companion,
-      this._appVersion, this._clientTs43Override, this._realmOverride,
-      this._onEvent, this._nowFn, this._sleepFn, this._entitlementRecords,
-      this._transport, this._ownsTransport);
+  Ts43Client._(
+    this._entitlement,
+    this._source,
+    this._target,
+    this._companion,
+    this._appVersion,
+    this._clientTs43Override,
+    this._realmOverride,
+    this._onEvent,
+    this._nowFn,
+    this._sleepFn,
+    this._entitlementRecords,
+    this._transport,
+    this._ownsTransport,
+  );
 
   factory Ts43Client(Ts43Config cfg) {
     final e = cfg.entitlement;
     e.transferType = _selectedTransferType(e);
     if (e.timeout == Duration.zero) e.timeout = defaultEntitlementTimeout;
-    if (e.pollInterval == Duration.zero) e.pollInterval = const Duration(minutes: 1);
-    if (e.pollTimeout == Duration.zero) e.pollTimeout = const Duration(minutes: 10);
+    if (e.pollInterval == Duration.zero) {
+      e.pollInterval = const Duration(minutes: 1);
+    }
+    if (e.pollTimeout == Duration.zero) {
+      e.pollTimeout = const Duration(minutes: 10);
+    }
     if (e.autoRetry511Limit == 0) e.autoRetry511Limit = 1;
 
     var transport = cfg.transport;
@@ -105,9 +120,21 @@ class Ts43Client {
       transport = createTs43Transport(timeout: e.timeout);
       owns = true;
     }
-    return Ts43Client._(e, cfg.source, cfg.target, cfg.companion, cfg.appVersion,
-        cfg.clientTs43, cfg.realm, cfg.onEvent, cfg.now, cfg.sleep,
-        cfg.entitlementRecords, transport, owns);
+    return Ts43Client._(
+      e,
+      cfg.source,
+      cfg.target,
+      cfg.companion,
+      cfg.appVersion,
+      cfg.clientTs43,
+      cfg.realm,
+      cfg.onEvent,
+      cfg.now,
+      cfg.sleep,
+      cfg.entitlementRecords,
+      transport,
+      owns,
+    );
   }
 
   void dispose() {
@@ -144,7 +171,10 @@ class Ts43Client {
       authToken: tokens.auth,
       temporaryToken: tokens.temporary,
     );
-    return _activate(offer, const UserInputResult(button: MessageButton.unknown));
+    return _activate(
+      offer,
+      const UserInputResult(button: MessageButton.unknown),
+    );
   }
 
   Future<void> _discoverEntitlement(Identity identity) async {
@@ -152,7 +182,11 @@ class Ts43Client {
     final requested = _entitlement;
     final records = _entitlementRecords ?? await Ts43EntitlementDb.load();
     final discovered = discoverEntitlementForChannel(
-        records, identity, requested.sourceSimType, requested.channel);
+      records,
+      identity,
+      requested.sourceSimType,
+      requested.channel,
+    );
     discovered.sourceSimType = requested.sourceSimType;
     if (requested.timeout != defaultEntitlementTimeout ||
         discovered.timeout == Duration.zero) {
@@ -169,7 +203,10 @@ class Ts43Client {
     _entitlement = discovered;
   }
 
-  Future<Ts43Result> continueFlow(Ts43Result result, ContinueRequest req) async {
+  Future<Ts43Result> continueFlow(
+    Ts43Result result,
+    ContinueRequest req,
+  ) async {
     switch (result.state) {
       case Ts43State.pendingUserInput:
         final session = _requireSession(result);
@@ -198,19 +235,25 @@ class Ts43Client {
           }
           return _pollAfterSourceProfileDeletion(result);
         }
-        return _activate(session.offer,
-            const UserInputResult(button: MessageButton.unknown));
+        return _activate(
+          session.offer,
+          const UserInputResult(button: MessageButton.unknown),
+        );
       default:
         throw StateError('state ${result.state} cannot continue');
     }
   }
 
   Future<Ts43Result> completeActivation(
-      Ts43Result result, ActivationResult activation) async {
+    Ts43Result result,
+    ActivationResult activation,
+  ) async {
     final session = _requireSession(result);
     final offer = session.offer;
-    final iccid =
-        firstNonEmpty([activation.iccid, result.downloadConfig.profileIccid]);
+    final iccid = firstNonEmpty([
+      activation.iccid,
+      result.downloadConfig.profileIccid,
+    ]);
     if (iccid.isNotEmpty) {
       offer.targetDevice.iccid = iccid;
       result.downloadConfig.profileIccid = iccid;
@@ -223,10 +266,14 @@ class Ts43Client {
     }
     var credential = await _transferCredential(offer);
     OdsaResponse? update;
-    for (var attempt = 0;; attempt++) {
+    for (var attempt = 0; ; attempt++) {
       try {
-        update = await _updateSubscription(offer.sourceIdentity,
-            offer.sourceDevice, offer.targetDevice, credential);
+        update = await _updateSubscription(
+          offer.sourceIdentity,
+          offer.sourceDevice,
+          offer.targetDevice,
+          credential,
+        );
         break;
       } catch (err) {
         if (isHttpStatus(err, 511) &&
@@ -255,17 +302,24 @@ class Ts43Client {
     if (sr == SubscriptionResult.delayedDownload) {
       result.state = Ts43State.pendingActivation;
       result.event = ActivationPendingEvent(
-          iccid: offer.targetDevice.iccid, subscriptionResult: sr);
+        iccid: offer.targetDevice.iccid,
+        subscriptionResult: sr,
+      );
       _emit(result.event!);
       return result;
     }
     try {
-      final configuration = await _pollActivationConfiguration(offer, credential);
+      final configuration = await _pollActivationConfiguration(
+        offer,
+        credential,
+      );
       result.updateConfiguration = configuration;
     } on _PollingNotTriggered {
       result.state = Ts43State.pendingActivation;
       result.event = ActivationPendingEvent(
-          iccid: offer.targetDevice.iccid, subscriptionResult: sr);
+        iccid: offer.targetDevice.iccid,
+        subscriptionResult: sr,
+      );
       _emit(result.event!);
       return result;
     }
@@ -278,12 +332,16 @@ class Ts43Client {
   // ---- Token fetch ----
 
   Future<TransferTokenResult> _fetchTransferToken(
-      Identity identity, Device source, Device target) async {
-    for (var attempt = 0;; attempt++) {
+    Identity identity,
+    Device source,
+    Device target,
+  ) async {
+    for (var attempt = 0; ; attempt++) {
       try {
         return await _fetchTransferTokenOnce(identity, source, target);
       } catch (err) {
-        if (isHttpStatus(err, 511) && attempt < _entitlement.autoRetry511Limit) {
+        if (isHttpStatus(err, 511) &&
+            attempt < _entitlement.autoRetry511Limit) {
           continue;
         }
         rethrow;
@@ -292,14 +350,21 @@ class Ts43Client {
   }
 
   Future<TransferTokenResult> _fetchTransferTokenOnce(
-      Identity identity, Device source, Device target) async {
+    Identity identity,
+    Device source,
+    Device target,
+  ) async {
     var auth = await _authenticate(identity, source);
     auth = await _checkEligibility(identity, source, auth, target);
     return _transferTokens(identity, source, target, auth);
   }
 
-  Future<TransferTokenResult> _transferTokens(Identity identity, Device source,
-      Device target, AuthToken auth) async {
+  Future<TransferTokenResult> _transferTokens(
+    Identity identity,
+    Device source,
+    Device target,
+    AuthToken auth,
+  ) async {
     if (!_usesTemporaryToken()) {
       return TransferTokenResult(auth: auth);
     }
@@ -329,11 +394,18 @@ class Ts43Client {
       expires = _now().add(Duration(seconds: resp.authTokenValidity));
     }
     return AuthToken(
-        value: resp.authenticationToken, expiresAt: expires, cookies: result.cookies);
+      value: resp.authenticationToken,
+      expiresAt: expires,
+      cookies: result.cookies,
+    );
   }
 
-  Future<TransferTokenResult> _acquireTemporaryToken(Identity identity,
-      Device source, Device target, AuthToken auth) async {
+  Future<TransferTokenResult> _acquireTemporaryToken(
+    Identity identity,
+    Device source,
+    Device target,
+    AuthToken auth,
+  ) async {
     final req = _authRequest(source, auth);
     final op = temporaryTokenOperation(_entitlement, source, target);
     _addOptionalOperationFields(op);
@@ -363,8 +435,12 @@ class Ts43Client {
     );
   }
 
-  Future<AuthToken> _checkEligibility(Identity identity, Device source,
-      AuthToken auth, Device target) async {
+  Future<AuthToken> _checkEligibility(
+    Identity identity,
+    Device source,
+    AuthToken auth,
+    Device target,
+  ) async {
     final req = _authRequest(source, auth);
     final op = checkEligibilityOperation(_entitlement, source, target);
     _addOptionalOperationFields(op);
@@ -375,29 +451,55 @@ class Ts43Client {
       throw CarrierDeniedError(operation: Operation.check, result: resp);
     }
     return _authTokenFromResponse(
-        auth, resp, mergeCookieHeaders(auth.cookies, result.cookies));
+      auth,
+      resp,
+      mergeCookieHeaders(auth.cookies, result.cookies),
+    );
   }
 
   // ---- Subscription operations ----
 
-  Future<OdsaResponse> _manageSubscription(Identity identity, Device source,
-      Device target, _TransferCredential credential, UserInputResult answer) async {
-    final reqDevice =
-        manageSubscriptionRequestDevice(_entitlement, source, target);
+  Future<OdsaResponse> _manageSubscription(
+    Identity identity,
+    Device source,
+    Device target,
+    _TransferCredential credential,
+    UserInputResult answer,
+  ) async {
+    final reqDevice = manageSubscriptionRequestDevice(
+      _entitlement,
+      source,
+      target,
+    );
     final req = _transferRequest(reqDevice, credential);
-    final op = manageSubscriptionOperation(_entitlement, source, target, answer);
+    final op = manageSubscriptionOperation(
+      _entitlement,
+      source,
+      target,
+      answer,
+    );
     _addOptionalOperationFields(op);
     final result = await _call(identity, req, op);
     if (!_manageSubscriptionAccepted(result.resp)) {
-      throw CarrierDeniedError(operation: Operation.manage, result: result.resp);
+      throw CarrierDeniedError(
+        operation: Operation.manage,
+        result: result.resp,
+      );
     }
     return result.resp;
   }
 
-  Future<OdsaResponse> _acquireConfiguration(Identity identity, Device source,
-      Device target, _TransferCredential credential) async {
-    final reqDevice =
-        acquireConfigurationRequestDevice(_entitlement, source, target);
+  Future<OdsaResponse> _acquireConfiguration(
+    Identity identity,
+    Device source,
+    Device target,
+    _TransferCredential credential,
+  ) async {
+    final reqDevice = acquireConfigurationRequestDevice(
+      _entitlement,
+      source,
+      target,
+    );
     final req = _transferRequest(reqDevice, credential);
     final op = acquireConfigurationOperation(_entitlement, source, target);
     _addOptionalOperationFields(op);
@@ -405,20 +507,30 @@ class Ts43Client {
     return result.resp;
   }
 
-  Future<OdsaResponse> _updateSubscription(Identity identity, Device source,
-      Device target, _TransferCredential credential) async {
+  Future<OdsaResponse> _updateSubscription(
+    Identity identity,
+    Device source,
+    Device target,
+    _TransferCredential credential,
+  ) async {
     final req = _transferRequest(target, credential);
     final op = updateSubscriptionOperation(_entitlement, source, target);
     _addOptionalOperationFields(op);
     final result = await _call(identity, req, op);
     if (!_subscriptionUpdateAccepted(result.resp)) {
-      throw CarrierDeniedError(operation: Operation.manage, result: result.resp);
+      throw CarrierDeniedError(
+        operation: Operation.manage,
+        result: result.resp,
+      );
     }
     return result.resp;
   }
 
   Future<OdsaResponse> _acquireActivationConfiguration(
-      Identity identity, Device target, _TransferCredential credential) async {
+    Identity identity,
+    Device target,
+    _TransferCredential credential,
+  ) async {
     final req = _transferRequest(target, credential);
     final op = activationConfigurationOperation(_entitlement, target);
     _addOptionalOperationFields(op);
@@ -428,16 +540,25 @@ class Ts43Client {
 
   // ---- activate / poll ----
 
-  Future<Ts43Result> _activate(TransferOffer offer, UserInputResult answer) async {
+  Future<Ts43Result> _activate(
+    TransferOffer offer,
+    UserInputResult answer,
+  ) async {
     var credential = await _transferCredential(offer);
     OdsaResponse? manage;
-    for (var attempt = 0;; attempt++) {
+    for (var attempt = 0; ; attempt++) {
       try {
-        manage = await _manageSubscription(offer.sourceIdentity,
-            offer.sourceDevice, offer.targetDevice, credential, answer);
+        manage = await _manageSubscription(
+          offer.sourceIdentity,
+          offer.sourceDevice,
+          offer.targetDevice,
+          credential,
+          answer,
+        );
         break;
       } catch (err) {
-        if (isHttpStatus(err, 511) && attempt < _entitlement.autoRetry511Limit) {
+        if (isHttpStatus(err, 511) &&
+            attempt < _entitlement.autoRetry511Limit) {
           credential = await _refreshTransferCredential(offer);
           continue;
         }
@@ -445,15 +566,20 @@ class Ts43Client {
       }
     }
     final result = Ts43Result(
-        manageSubscription: manage, session: TransferSession(offer: offer));
+      manageSubscription: manage,
+      session: TransferSession(offer: offer),
+    );
     credential = _updateTransferCredential(offer, manage, credential);
 
     if (_sourceProfileDeletionRequired(manage)) {
-      result.session!.sourceProfileIccid = firstNonEmpty(
-          [offer.sourceDevice.iccid, offer.sourceIdentity.iccid]);
+      result.session!.sourceProfileIccid = firstNonEmpty([
+        offer.sourceDevice.iccid,
+        offer.sourceIdentity.iccid,
+      ]);
       result.state = Ts43State.pendingSourceProfileDeletion;
-      result.event =
-          SourceProfileDeletionEvent(result.session!.sourceProfileIccid);
+      result.event = SourceProfileDeletionEvent(
+        result.session!.sourceProfileIccid,
+      );
       _emit(result.event!);
       return result;
     }
@@ -470,8 +596,10 @@ class Ts43Client {
       return result;
     }
     if (_downloadProfileReady(manage)) {
-      result.downloadConfig =
-          _completeDownloadConfig(manage.download, offer.targetDevice);
+      result.downloadConfig = _completeDownloadConfig(
+        manage.download,
+        offer.targetDevice,
+      );
       result.state = Ts43State.pendingDownload;
       result.event = DownloadReadyEvent(result.downloadConfig);
       _emit(result.event!);
@@ -501,8 +629,9 @@ class Ts43Client {
     } on _PollingNotTriggered {
       result.state = Ts43State.pendingActivation;
       result.event = ActivationPendingEvent(
-          iccid: offer.targetDevice.iccid,
-          subscriptionResult: manage.subscriptionResult);
+        iccid: offer.targetDevice.iccid,
+        subscriptionResult: manage.subscriptionResult,
+      );
       _emit(result.event!);
       return result;
     }
@@ -518,15 +647,19 @@ class Ts43Client {
       return _applyDownloadConfiguration(result, configuration.download);
     } on _PollingNotTriggered {
       result.state = Ts43State.pendingActivation;
-      result.event =
-          ActivationPendingEvent(iccid: offer.targetDevice.iccid, subscriptionResult: 0);
+      result.event = ActivationPendingEvent(
+        iccid: offer.targetDevice.iccid,
+        subscriptionResult: 0,
+      );
       _emit(result.event!);
       return result;
     }
   }
 
   Future<OdsaResponse> _pollConfiguration(
-      TransferOffer offer, _TransferCredential credential) async {
+    TransferOffer offer,
+    _TransferCredential credential,
+  ) async {
     final deadline = _now().add(_entitlement.pollTimeout);
     var retries = 0;
     while (true) {
@@ -535,10 +668,15 @@ class Ts43Client {
       }
       OdsaResponse resp;
       try {
-        resp = await _acquireConfiguration(offer.sourceIdentity,
-            offer.sourceDevice, offer.targetDevice, credential);
+        resp = await _acquireConfiguration(
+          offer.sourceIdentity,
+          offer.sourceDevice,
+          offer.targetDevice,
+          credential,
+        );
       } catch (err) {
-        if (isHttpStatus(err, 511) && retries < _entitlement.autoRetry511Limit) {
+        if (isHttpStatus(err, 511) &&
+            retries < _entitlement.autoRetry511Limit) {
           retries++;
           credential = await _refreshTransferCredential(offer);
           continue;
@@ -564,7 +702,9 @@ class Ts43Client {
   }
 
   Future<OdsaResponse> _pollActivationConfiguration(
-      TransferOffer offer, _TransferCredential credential) async {
+    TransferOffer offer,
+    _TransferCredential credential,
+  ) async {
     final deadline = _now().add(_entitlement.pollTimeout);
     var retries = 0;
     while (true) {
@@ -574,9 +714,13 @@ class Ts43Client {
       OdsaResponse resp;
       try {
         resp = await _acquireActivationConfiguration(
-            offer.sourceIdentity, offer.targetDevice, credential);
+          offer.sourceIdentity,
+          offer.targetDevice,
+          credential,
+        );
       } catch (err) {
-        if (isHttpStatus(err, 511) && retries < _entitlement.autoRetry511Limit) {
+        if (isHttpStatus(err, 511) &&
+            retries < _entitlement.autoRetry511Limit) {
           retries++;
           credential = await _refreshTransferCredential(offer);
           continue;
@@ -595,10 +739,12 @@ class Ts43Client {
           throw StateError('activation service is deactivated');
         case ServiceStatus.deactivatedNoReuse:
           throw StateError(
-              'activation service is deactivated with no ICCID reuse');
+            'activation service is deactivated with no ICCID reuse',
+          );
         default:
           throw StateError(
-              'unexpected activation service status ${resp.serviceStatus}');
+            'unexpected activation service status ${resp.serviceStatus}',
+          );
       }
     }
   }
@@ -606,9 +752,13 @@ class Ts43Client {
   // ---- Credential management ----
 
   Future<_TransferCredential> _refreshTransferCredential(
-      TransferOffer offer) async {
+    TransferOffer offer,
+  ) async {
     final tokens = await _fetchTransferToken(
-        offer.sourceIdentity, offer.sourceDevice, offer.targetDevice);
+      offer.sourceIdentity,
+      offer.sourceDevice,
+      offer.targetDevice,
+    );
     offer.authToken = tokens.auth;
     offer.temporaryToken = tokens.temporary;
     return _transferCredentialFromTokens(tokens);
@@ -627,7 +777,9 @@ class Ts43Client {
     return _refreshTransferCredential(offer);
   }
 
-  _TransferCredential _transferCredentialFromTokens(TransferTokenResult tokens) {
+  _TransferCredential _transferCredentialFromTokens(
+    TransferTokenResult tokens,
+  ) {
     if (_usesTemporaryToken()) {
       return _TransferCredential.ofTemporary(tokens.temporary);
     }
@@ -635,13 +787,22 @@ class Ts43Client {
   }
 
   _TransferCredential _updateTransferCredential(
-      TransferOffer offer, OdsaResponse resp, _TransferCredential credential) {
+    TransferOffer offer,
+    OdsaResponse resp,
+    _TransferCredential credential,
+  ) {
     if (resp.authenticationToken.isEmpty) return credential;
-    offer.authToken =
-        _authTokenFromResponse(offer.authToken, resp, offer.authToken.cookies);
+    offer.authToken = _authTokenFromResponse(
+      offer.authToken,
+      resp,
+      offer.authToken.cookies,
+    );
     if (_usesTemporaryToken()) return credential;
     final next = _authTokenFromResponse(
-        credential.auth, resp, credential.auth.cookies);
+      credential.auth,
+      resp,
+      credential.auth.cookies,
+    );
     offer.authToken = next;
     return _TransferCredential.ofAuth(next);
   }
@@ -649,7 +810,9 @@ class Ts43Client {
   // ---- Websheet (websheet.go) ----
 
   Future<Ts43Result> _handleWebsheetResult(
-      Ts43Result result, WebsheetResult callback) async {
+    Ts43Result result,
+    WebsheetResult callback,
+  ) async {
     final session = _requireSession(result);
     final offer = session.offer;
     switch (callback.event) {
@@ -677,10 +840,15 @@ class Ts43Client {
         }
         if (callback.iccid.isNotEmpty) {
           offer.sourceDevice.iccid = callback.iccid;
-          offer.sourceIdentity = offer.sourceIdentity.copyWith(iccid: callback.iccid);
+          offer.sourceIdentity = offer.sourceIdentity.copyWith(
+            iccid: callback.iccid,
+          );
         }
         if (callback.imei.isNotEmpty) offer.sourceDevice.imei = callback.imei;
-        return _activate(offer, const UserInputResult(button: MessageButton.unknown));
+        return _activate(
+          offer,
+          const UserInputResult(button: MessageButton.unknown),
+        );
       case WebsheetCallbackEvent.dismissFlow:
         throw const WebsheetException(websheetDismissed);
       case WebsheetCallbackEvent.finishFlow:
@@ -711,7 +879,9 @@ class Ts43Client {
   }
 
   Future<Ts43Result> _continueWebsheetNextAction(
-      Ts43Result result, Operation next) async {
+    Ts43Result result,
+    Operation next,
+  ) async {
     final session = _requireSession(result);
     final offer = session.offer;
     if (next == Operation.none) next = Operation.acquireConf;
@@ -722,7 +892,10 @@ class Ts43Client {
       return _applyDownloadConfiguration(result, configuration.download);
     }
     if (next == Operation.manage) {
-      return _activate(offer, const UserInputResult(button: MessageButton.unknown));
+      return _activate(
+        offer,
+        const UserInputResult(button: MessageButton.unknown),
+      );
     }
     throw StateError('unsupported websheet next action ${next.value}');
   }
@@ -730,7 +903,10 @@ class Ts43Client {
   // ---- HTTP call + EAP relay (client.go) ----
 
   Future<_CallResult> _call(
-      Identity identity, ServiceEntitlementRequest req, OdsaOperation op) async {
+    Identity identity,
+    ServiceEntitlementRequest req,
+    OdsaOperation op,
+  ) async {
     final prepared = buildPreparedRequest(
       entitlement: _entitlement,
       identity: identity,
@@ -775,7 +951,10 @@ class Ts43Client {
   }
 
   Future<Ts43HttpResponse> _eapRelay(
-      Identity identity, Ts43HttpResponse initial, ServiceEntitlementRequest req) async {
+    Identity identity,
+    Ts43HttpResponse initial,
+    ServiceEntitlementRequest req,
+  ) async {
     var body = initial.body;
     var requestCookies = initial.cookies;
     var responseCookies = initial.cookies;
@@ -785,11 +964,11 @@ class Ts43Client {
         return Ts43HttpResponse(body, responseCookies);
       }
       final challenge = AkaChallenge.fromBase64(packet);
-      final akaResp = await _source.channel!
-          .authenticateAka(challenge.authenticationRequest());
+      final akaResp = await _source.channel!.authenticateAka(
+        challenge.authenticationRequest(),
+      );
       final eapId = imsiEapIdentity(identity.mccMnc, identity.imsi, _realm());
-      final responseText =
-          respondToChallengeBase64(challenge, akaResp, eapId);
+      final responseText = respondToChallengeBase64(challenge, akaResp, eapId);
       final next = await _postRelay(responseText, req, requestCookies);
       requestCookies = next.cookies;
       responseCookies = next.cookies;
@@ -799,13 +978,18 @@ class Ts43Client {
   }
 
   Future<Ts43HttpResponse> _postRelay(
-      String packet, ServiceEntitlementRequest req, List<String> cookies) async {
+    String packet,
+    ServiceEntitlementRequest req,
+    List<String> cookies,
+  ) async {
     final data = jsonEncode({'eap-relay-packet': packet});
     final headers = <String, String>{
       'Content-Type': Ts43Constants.eapRelayContentType,
       'Accept': _relayResponseAccept(req),
       'User-Agent': userAgent(
-          req, firstNonEmpty([req.clientTs43, _clientTs43()])),
+        req,
+        firstNonEmpty([req.clientTs43, _clientTs43()]),
+      ),
     };
     final httpReq = Ts43HttpRequest(
       method: Ts43Method.post,
@@ -838,7 +1022,10 @@ class Ts43Client {
   // ---- Request builders ----
 
   ServiceEntitlementRequest _baseRequest(
-      Device device, String authToken, String tempToken) {
+    Device device,
+    String authToken,
+    String tempToken,
+  ) {
     return ServiceEntitlementRequest(
       entitlementVersion: _entitlementVersion(),
       requestVersion: _requestVersion(),
@@ -863,14 +1050,18 @@ class Ts43Client {
   }
 
   ServiceEntitlementRequest _temporaryRequest(
-      Device device, TemporaryToken token) {
+    Device device,
+    TemporaryToken token,
+  ) {
     final req = _baseRequest(device, '', token.value);
     req.cookies = token.cookies;
     return req;
   }
 
   ServiceEntitlementRequest _transferRequest(
-      Device device, _TransferCredential credential) {
+    Device device,
+    _TransferCredential credential,
+  ) {
     if (credential.temporaryToken) {
       return _temporaryRequest(device, credential.temporary);
     }
@@ -897,8 +1088,9 @@ class Ts43Client {
     return Ts43Constants.defaultOdsaClientTs43;
   }
 
-  String _realm() =>
-      _realmOverride.isNotEmpty ? _realmOverride : Ts43Constants.defaultEapAkaRealm;
+  String _realm() => _realmOverride.isNotEmpty
+      ? _realmOverride
+      : Ts43Constants.defaultEapAkaRealm;
 
   String _appName() {
     if (_entitlement.appName.isNotEmpty) return _entitlement.appName;
@@ -919,13 +1111,14 @@ class Ts43Client {
   }
 
   String _requestVersion() {
-    if (_entitlement.requestVersion.isNotEmpty) return _entitlement.requestVersion;
+    if (_entitlement.requestVersion.isNotEmpty) {
+      return _entitlement.requestVersion;
+    }
     if (_entitlement.channel == EntitlementChannel.samsung) return '1';
     return '0';
   }
 
-  String _entitlementVersion() =>
-      firstNonEmpty([_entitlement.version, '9.0']);
+  String _entitlementVersion() => firstNonEmpty([_entitlement.version, '9.0']);
 
   // ---- Response predicates ----
 
@@ -946,7 +1139,8 @@ class Ts43Client {
         r.subscriptionResult != SubscriptionResult.downloadProfile) {
       return false;
     }
-    return r.download.activationCode.isNotEmpty || r.download.smdpFqdn.isNotEmpty;
+    return r.download.activationCode.isNotEmpty ||
+        r.download.smdpFqdn.isNotEmpty;
   }
 
   bool _subscriptionDone(OdsaResponse r) =>
@@ -962,9 +1156,14 @@ class Ts43Client {
       r.subscriptionResult == SubscriptionResult.delayedDownload;
 
   void _applyDelayedDownloadState(
-      Ts43Result result, TransferOffer offer, int subscriptionResult) {
-    final sourceIccid =
-        firstNonEmpty([offer.sourceDevice.iccid, offer.sourceIdentity.iccid]);
+    Ts43Result result,
+    TransferOffer offer,
+    int subscriptionResult,
+  ) {
+    final sourceIccid = firstNonEmpty([
+      offer.sourceDevice.iccid,
+      offer.sourceIdentity.iccid,
+    ]);
     if (_entitlement.useSmdsDelayedDownload) {
       result.state = Ts43State.pendingSmdsDiscovery;
       result.event = SmdsDiscoveryEvent(
@@ -984,7 +1183,10 @@ class Ts43Client {
     }
   }
 
-  Ts43Result _applyDownloadConfiguration(Ts43Result result, DownloadConfig cfg) {
+  Ts43Result _applyDownloadConfiguration(
+    Ts43Result result,
+    DownloadConfig cfg,
+  ) {
     final session = _requireSession(result);
     cfg = _completeDownloadConfig(cfg, session.offer.targetDevice);
     if (cfg.activationCode.isEmpty && cfg.smdpFqdn.isEmpty) {
@@ -1053,9 +1255,15 @@ class Ts43Client {
   }
 
   AuthToken _authTokenFromResponse(
-      AuthToken current, OdsaResponse resp, List<String> cookies) {
+    AuthToken current,
+    OdsaResponse resp,
+    List<String> cookies,
+  ) {
     final next = AuthToken(
-        value: current.value, expiresAt: current.expiresAt, cookies: cookies);
+      value: current.value,
+      expiresAt: current.expiresAt,
+      cookies: cookies,
+    );
     if (resp.authenticationToken.isEmpty) return next;
     next.value = resp.authenticationToken;
     next.expiresAt = null;

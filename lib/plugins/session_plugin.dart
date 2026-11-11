@@ -43,5 +43,8 @@ abstract class SessionPlugin {
 
   /// Called in the background to determine if a reader has special capabilities.
   /// Returns a map of properties to update on the reader, or null.
-  Future<Map<String, dynamic>?> probeReaderCapabilities(String? eid, String? aid) async => null;
+  Future<Map<String, dynamic>?> probeReaderCapabilities(
+    String? eid,
+    String? aid,
+  ) async => null;
 }

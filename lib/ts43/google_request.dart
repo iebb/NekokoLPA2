@@ -29,9 +29,15 @@ OdsaOperation googleCheckEligibilityOperation(Entitlement e, Device target) {
 }
 
 OdsaOperation googleManageSubscriptionOperation(
-    Entitlement e, Device source, Device target, UserInputResult answer) {
+  Entitlement e,
+  Device source,
+  Device target,
+  UserInputResult answer,
+) {
   final op = baseManageSubscriptionOperation(
-      OperationType.transferSubscription, answer);
+    OperationType.transferSubscription,
+    answer,
+  );
   if (TransferType.isSourceCredential(e.transferType)) {
     op.targetTerminalId = target.imei;
     op.targetTerminalEid = target.eid;
@@ -47,7 +53,10 @@ OdsaOperation googleManageSubscriptionOperation(
 }
 
 OdsaOperation googleAcquireConfigurationOperation(
-    Entitlement e, Device source, Device target) {
+  Entitlement e,
+  Device source,
+  Device target,
+) {
   final op = OdsaOperation(
     operation: Operation.acquireConf,
     operationType: OperationType.omit,
@@ -67,7 +76,10 @@ OdsaOperation googleAcquireConfigurationOperation(
 }
 
 OdsaOperation googleUpdateSubscriptionOperation(
-    Entitlement e, Device source, Device target) {
+  Entitlement e,
+  Device source,
+  Device target,
+) {
   final op = OdsaOperation(
     operation: Operation.manage,
     operationType: OperationType.updateSubscription,
@@ -82,7 +94,9 @@ OdsaOperation googleUpdateSubscriptionOperation(
 }
 
 OdsaOperation googleActivationConfigurationOperation(
-    Entitlement e, Device target) {
+  Entitlement e,
+  Device target,
+) {
   final op = OdsaOperation(
     operation: Operation.acquireConf,
     operationType: OperationType.omit,
@@ -95,7 +109,10 @@ OdsaOperation googleActivationConfigurationOperation(
 }
 
 void _setGoogleTargetTerminalFields(
-    OdsaOperation op, Device target, bool includeIdentity) {
+  OdsaOperation op,
+  Device target,
+  bool includeIdentity,
+) {
   if (includeIdentity) {
     op.targetTerminalId = target.imei;
     op.targetTerminalEid = target.eid;
@@ -104,12 +121,16 @@ void _setGoogleTargetTerminalFields(
   op.targetTerminalModel = target.model;
   op.targetTerminalSn = target.serialNumber;
   op.targetTerminalImeis = terminalImeis(target);
-  op.targetTerminalEntitlementProto =
-      entitlementProtocol(target.entitlementProtocol);
+  op.targetTerminalEntitlementProto = entitlementProtocol(
+    target.entitlementProtocol,
+  );
 }
 
 void _addGoogleOldTerminalFields(
-    OdsaOperation op, Entitlement e, Device source) {
+  OdsaOperation op,
+  Entitlement e,
+  Device source,
+) {
   if (!_googleIncludeOldTerminalIds(e)) return;
   op.oldTerminalId = source.imei;
   op.oldTerminalIccid = source.iccid;
@@ -138,7 +159,9 @@ bool _googleIncludeOldTerminalIds(Entitlement e) {
 }
 
 OdsaOperation baseManageSubscriptionOperation(
-    OperationType operationType, UserInputResult answer) {
+  OperationType operationType,
+  UserInputResult answer,
+) {
   return OdsaOperation(
     operation: Operation.manage,
     operationType: operationType,

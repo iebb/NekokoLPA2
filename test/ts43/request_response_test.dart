@@ -32,8 +32,10 @@ void main() {
       realm: 'nai.epc',
     );
     expect(prepared.usePost, isFalse);
-    expect(prepared.params['EAP_ID']!.first,
-        '0234107813240779@nai.epc.mnc010.mcc234.3gppnetwork.org');
+    expect(
+      prepared.params['EAP_ID']!.first,
+      '0234107813240779@nai.epc.mnc010.mcc234.3gppnetwork.org',
+    );
     expect(prepared.params['operation']!.first, 'CheckEligibility');
     expect(prepared.params['app']!.first, 'ap2009');
     // EAP relay accept is added for the initial (token-less) request.
@@ -45,12 +47,12 @@ void main() {
 
   test('POST request emits JSON body', () {
     final prepared = buildPreparedRequest(
-      entitlement: Entitlement(channel: EntitlementChannel.google, usePost: true),
-      identity: identity,
-      req: ServiceEntitlementRequest(
-        app: 'ap2009',
-        authenticationToken: 'TOK',
+      entitlement: Entitlement(
+        channel: EntitlementChannel.google,
+        usePost: true,
       ),
+      identity: identity,
+      req: ServiceEntitlementRequest(app: 'ap2009', authenticationToken: 'TOK'),
       op: OdsaOperation(operation: Operation.manage),
       clientTs43: 'client-Primary-ODSA',
       realm: 'nai.epc',
@@ -68,7 +70,8 @@ void main() {
         'OperationResult': 1,
         'SubscriptionResult': 2,
         'DownloadInfo': {
-          'ProfileActivationCode': 'encodedValue=' +
+          'ProfileActivationCode':
+              'encodedValue=' +
               base64.encode(utf8.encode('1\$smdp.example.com\$MATCH-123')),
           'ProfileIccid': '8900000000000000002',
         },

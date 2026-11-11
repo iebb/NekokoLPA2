@@ -558,66 +558,68 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('narrow Apple layout handles large text across all sections', (
-    tester,
-  ) async {
-    SharedPreferences.setMockInitialValues({});
-    AppSettings().setRevealSensitiveProfileData(true);
-    await tester.binding.setSurfaceSize(const Size(320, 690));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final ble = RedBleAdapter();
-    final reader = Reader(
-      id: 'large-text',
-      name: 'ESTKme-RED Bluetooth reader',
-      source: ble,
-    );
-    final service = _PageService(ble, reader)
-      ..status = {
-        'phase': 'ready',
-        'registered': true,
-        'msisdn': '+441212345678',
-      };
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.theme(false),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(1.8)),
-          child: child!,
-        ),
-        home: VoWifiPage(adapter: ble, reader: reader, service: service),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('🇬🇧 +441212345678'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    for (final section in [1, 2, 0]) {
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('vowifi-section')),
-        180,
-        scrollable: find
-            .descendant(
-              of: find.byKey(const ValueKey('vowifi-content')),
-              matching: find.byType(Scrollable),
-            )
-            .first,
+  testWidgets(
+    'narrow Apple layout handles large text across all sections',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      AppSettings().setRevealSensitiveProfileData(true);
+      await tester.binding.setSurfaceSize(const Size(320, 690));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final ble = RedBleAdapter();
+      final reader = Reader(
+        id: 'large-text',
+        name: 'ESTKme-RED Bluetooth reader',
+        source: ble,
       );
-      tester
-          .widget<TextButton>(find.byKey(ValueKey('vowifi-action-$section')))
-          .onPressed!();
+      final service = _PageService(ble, reader)
+        ..status = {
+          'phase': 'ready',
+          'registered': true,
+          'msisdn': '+441212345678',
+        };
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.theme(false),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(1.8)),
+            child: child!,
+          ),
+          home: VoWifiPage(adapter: ble, reader: reader, service: service),
+        ),
+      );
       await tester.pumpAndSettle();
+      expect(find.text('🇬🇧 +441212345678'), findsOneWidget);
       expect(tester.takeException(), isNull);
-    }
-    service.receiveCall();
-    await tester.pumpAndSettle();
-    expect(find.text('Incoming call'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await tester.ensureVisible(find.text('Answer'));
-    await tester.tap(find.text('Answer'));
-    await tester.pumpAndSettle();
-    expect(service.actions, ['answer']);
-    await tester.pumpWidget(const SizedBox.shrink());
-    expect(tester.takeException(), isNull);
-  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+      for (final section in [1, 2, 0]) {
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('vowifi-section')),
+          180,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const ValueKey('vowifi-content')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        tester
+            .widget<TextButton>(find.byKey(ValueKey('vowifi-action-$section')))
+            .onPressed!();
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
+      service.receiveCall();
+      await tester.pumpAndSettle();
+      expect(find.text('Incoming call'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.text('Answer'));
+      await tester.tap(find.text('Answer'));
+      await tester.pumpAndSettle();
+      expect(service.actions, ['answer']);
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
 }
