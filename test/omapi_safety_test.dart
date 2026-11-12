@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nlpa2/adapter/composite_adapter.dart';
 import 'package:nlpa2/adapter/euicc_adapter.dart';
 import 'package:nlpa2/adapter/omapi/omapi_adapter.dart';
 import 'package:nlpa2/adapter/omapi/omapi_safety.dart';
@@ -225,6 +226,110 @@ void main() {
       await adapter.disconnect();
     },
   );
+
+  test(
+    'profile switch response loss retires stale handles without a service reset',
+    () async {
+      const aid = 'A0000005591010FFFFFFFF8900000100';
+      var writes = 0;
+      final methods = <String>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(omapiChannel, (call) async {
+            methods.add(call.method);
+            switch (call.method) {
+              case 'connect':
+                return {'success': true, 'atr': ''};
+              case 'openChannel':
+                return {'success': true, 'aid': aid};
+              case 'transmitOnChannel':
+                if (++writes == 1) {
+                  throw PlatformException(
+                    code: omapiProfileSwitchResponseLostCode,
+                  );
+                }
+                return '9000';
+              default:
+                return true;
+            }
+          });
+
+      final composite = CompositeAdapter();
+      await composite.disconnect();
+      final adapter = OmapiAdapter();
+      final reader = Reader(id: 'omapi:SIM2', name: 'SIM 2', source: adapter);
+      await composite.connect(reader);
+      final stale = await adapter.openChannel(aids: const [aid]);
+      await expectLater(
+        stale.transmit(
+          0x80,
+          0xE2,
+          0x91,
+          0,
+          Uint8List.fromList([0xBF, 0x31, 0]),
+        ),
+        throwsA(predicate<Object>(isOmapiProfileSwitchResponseLost)),
+      );
+      expect(adapter.isPoisoned, isFalse);
+      await composite.reconnect(resetService: false);
+
+      final fresh = await adapter.openChannel(aids: const [aid]);
+      expect(await fresh.transmit(0, 0xCA, 0, 0), [0x90, 0]);
+      expect(writes, 2);
+      expect(methods.where((method) => method == 'openChannel'), hasLength(2));
+      expect(
+        methods.where(
+          (method) => method == 'reset' || method == 'closeChannel',
+        ),
+        isEmpty,
+      );
+
+      await fresh.close();
+      await composite.reconnect();
+      expect(methods, contains('reset'));
+      await composite.disconnect();
+    },
+  );
+
+  test('response loss and reload errors are classified for verification', () {
+    final lost = PlatformException(code: omapiProfileSwitchResponseLostCode);
+    expect(isOmapiProfileSwitchResponseLost(lost), isTrue);
+    expect(
+      isOmapiProfileSwitchResponseLost(
+        AppException(AppErrorCode.ERROR_UNKNOWN, originalError: lost),
+      ),
+      isTrue,
+    );
+    expect(isOmapiSessionCorruptedError(lost), isFalse);
+    expect(
+      isOmapiProfileSwitchResponseLost(
+        PlatformException(code: omapiSessionCorruptedCode),
+      ),
+      isFalse,
+    );
+
+    expect(
+      isOmapiReaderReloadingError(PlatformException(code: 'TRANSMIT_FAILED')),
+      isTrue,
+    );
+    expect(
+      isOmapiReaderReloadingError(
+        AppException(AppErrorCode.ERROR_OMAPI_CHANNEL_OPEN_FAILED),
+      ),
+      isTrue,
+    );
+    expect(
+      isOmapiReaderReloadingError(
+        PlatformException(code: omapiSessionCorruptedCode),
+      ),
+      isFalse,
+    );
+    expect(
+      isOmapiReaderReloadingError(
+        AppException(AppErrorCode.ERROR_OMAPI_PERMISSION_DENIED),
+      ),
+      isFalse,
+    );
+  });
 
   test(
     'shared channel cannot be switched to another AID by one handle',
