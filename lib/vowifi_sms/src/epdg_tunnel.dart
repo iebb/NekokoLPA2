@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:pointycastle/export.dart';
 
 import 'eap_aka_codec.dart';
+import 'ike_auth_codec.dart';
 import 'ike_datagram_codec.dart';
 import 'models.dart';
 
@@ -908,6 +909,7 @@ class _BootstrapState {
     required this.skPr,
     required this.natDetected,
     required this.saInitRequest,
+    required this.saInitResponse,
     required this.localAddress,
     required this.localPort,
     required this.remoteAddress,
@@ -929,6 +931,7 @@ class _BootstrapState {
   final Uint8List skPr;
   final bool natDetected;
   final Uint8List saInitRequest;
+  final Uint8List saInitResponse;
   final InternetAddress localAddress;
   final int localPort;
   final InternetAddress remoteAddress;
@@ -1218,6 +1221,9 @@ _BootstrapState _parseSaInitResponse(Uint8List raw, _InitState state) {
   }
   var nextPayload = stripped[16];
   final length = _readU32(stripped, 24);
+  if (length < 28 || length > stripped.length) {
+    throw StateError('Malformed IKE_SA_INIT response length');
+  }
   var offset = 28;
   Uint8List? nonceR;
   Uint8List? keR;
@@ -1279,6 +1285,7 @@ _BootstrapState _parseSaInitResponse(Uint8List raw, _InitState state) {
     skPr: keys[6],
     natDetected: natDetected,
     saInitRequest: state.message,
+    saInitResponse: stripped.sublist(0, length),
     localAddress: state.localAddress,
     localPort: state.localPort,
     remoteAddress: state.remoteAddress,
@@ -1334,6 +1341,7 @@ Future<_AuthState> _continueIkeAuth({
     ike: true,
   );
   Uint8List msk = Uint8List(0);
+  Uint8List? responderId;
   while (true) {
     final raw = await inbox.readIkeMessage(const Duration(seconds: 10));
     final response = _decryptIkeAuthResponse(
@@ -1342,6 +1350,7 @@ Future<_AuthState> _continueIkeAuth({
       algs: algs,
       messageId: messageId,
     );
+    responderId ??= response.idr;
     onInfo?.call(
       'ike_auth msgid=$messageId payloads=${response.payloads} notifies=${response.notifies.length}(${_formatNotifies(response.notifies)}) eap=${response.eap != null}',
     );
@@ -1354,6 +1363,14 @@ Future<_AuthState> _continueIkeAuth({
       if (response.childSpiR == 0 || response.childSa.isEmpty) {
         throw StateError('IKE_AUTH finished without CHILD_SA');
       }
+      _verifyResponderAuth(
+        bootstrap: bootstrap,
+        algs: algs,
+        msk: msk,
+        responderId: responderId,
+        auth: response.auth,
+      );
+      onInfo?.call('ePDG authenticated with the EAP-AKA MSK');
       return _AuthState(
         childSpiI: childSpiI,
         childSpiR: response.childSpiR,
@@ -1435,6 +1452,13 @@ Future<_AuthState> _continueIkeAuth({
         continue;
       }
       final keys = _deriveEapAkaKeys(idi, aka.ik, aka.ck);
+      // The SIM has checked AUTN; AT_MAC shows this request came from the
+      // server holding the keys the SIM just derived, not from a relay.
+      if (!VowifiEapAkaCodec.hasValidMac(eap.raw, keys[0])) {
+        throw StateError(
+          'EAP-AKA challenge failed its AT_MAC check; the ePDG was not authenticated',
+        );
+      }
       msk = keys[1];
       messageId++;
       final req = _buildEncryptedRequest(
@@ -1508,6 +1532,8 @@ class _AuthDecodeState {
     this.payloads = const <int>[],
     this.notifies = const <_Notify>[],
     this.eap,
+    this.idr,
+    this.auth,
   });
 
   final int childSpiR;
@@ -1519,6 +1545,8 @@ class _AuthDecodeState {
   final List<int> payloads;
   final List<_Notify> notifies;
   final _EapPacket? eap;
+  final Uint8List? idr;
+  final Uint8List? auth;
 }
 
 _AuthDecodeState _decryptIkeAuthResponse({
@@ -1568,6 +1596,8 @@ _AuthDecodeState _decryptIkeAuthResponse({
   final payloads = <int>[];
   final notifies = <_Notify>[];
   _EapPacket? eap;
+  Uint8List? idr;
+  Uint8List? auth;
   while (current != 0 && offset + 4 <= plain.length) {
     final next = plain[offset];
     final length = _readU16(plain, offset + 2);
@@ -1580,6 +1610,10 @@ _AuthDecodeState _decryptIkeAuthResponse({
         childSa = parsed.$2;
       case _payloadEap:
         eap = _parseEap(segment);
+      case _payloadIdr:
+        idr = segment;
+      case _payloadAuth:
+        auth = segment;
       case _payloadCp:
         final cfg = _parseConfigReply(segment);
         ip4 = cfg.$1 ?? ip4;
@@ -1602,6 +1636,8 @@ _AuthDecodeState _decryptIkeAuthResponse({
     payloads: payloads,
     notifies: notifies,
     eap: eap,
+    idr: idr,
+    auth: auth,
   );
 }
 
@@ -1680,6 +1716,7 @@ class _EapPacket {
     required this.type,
     required this.subtype,
     required this.attributes,
+    required this.raw,
   });
 
   final int code;
@@ -1687,6 +1724,7 @@ class _EapPacket {
   final int type;
   final int subtype;
   final List<_AkaAttribute> attributes;
+  final Uint8List raw;
 }
 
 class _AkaAttribute {
@@ -2272,12 +2310,13 @@ _EapPacket _parseEap(Uint8List raw) {
   final code = raw[0];
   final identifier = raw[1];
   if (code == _eapCodeSuccess) {
-    return const _EapPacket(
+    return _EapPacket(
       code: _eapCodeSuccess,
       identifier: 0,
       type: 0,
       subtype: 0,
-      attributes: <_AkaAttribute>[],
+      attributes: const <_AkaAttribute>[],
+      raw: raw,
     );
   }
   final type = raw[4];
@@ -2297,6 +2336,7 @@ _EapPacket _parseEap(Uint8List raw) {
     type: type,
     subtype: subtype,
     attributes: attributes,
+    raw: raw,
   );
 }
 
@@ -2410,19 +2450,54 @@ Uint8List _buildFinalAuth({
   required String identity,
   required Uint8List msk,
 }) {
-  final idRaw = _encodeIdPayload(3, identity);
-  final signedOctets = Uint8List.fromList(<int>[
-    ...bootstrap.saInitRequest,
-    ...bootstrap.nonceR,
-    ..._prfByName(algs.prfName, bootstrap.skPi, idRaw),
-  ]);
-  final tmp = _prfByName(
-    algs.prfName,
-    msk,
-    Uint8List.fromList('Key Pad for IKEv2'.codeUnits),
+  final authData = VowifiIkeAuthCodec.sharedKeyAuthData(
+    prf: algs.prfName,
+    msk: msk,
+    message: bootstrap.saInitRequest,
+    nonce: bootstrap.nonceR,
+    skP: bootstrap.skPi,
+    idPayload: _encodeIdPayload(3, identity),
   );
-  final authData = _prfByName(algs.prfName, tmp, signedOctets);
-  return Uint8List.fromList(<int>[2, 0, 0, 0, ...authData]);
+  return Uint8List.fromList(<int>[
+    VowifiIkeAuthCodec.sharedKeyMethod,
+    0,
+    0,
+    0,
+    ...authData,
+  ]);
+}
+
+/// Checks the AUTH the ePDG sends with the CHILD_SA (RFC 7296 §2.16).
+///
+/// Only a server given the MSK by the operator's AAA can compute it, and it
+/// covers this IKE_SA_INIT exchange, so it rules out a relay that merely
+/// forwarded the EAP exchange. Its signature AUTH, when sent at all, is not
+/// checked: there is no trust anchor for operator ePDG certificates.
+void _verifyResponderAuth({
+  required _BootstrapState bootstrap,
+  required _AuthAlgorithms algs,
+  required Uint8List msk,
+  required Uint8List? responderId,
+  required Uint8List? auth,
+}) {
+  if (msk.isEmpty) {
+    throw StateError('ePDG offered a CHILD_SA before EAP-AKA completed');
+  }
+  if (responderId == null || auth == null) {
+    throw StateError('ePDG sent no IDr or AUTH; it was not authenticated');
+  }
+  final ok = VowifiIkeAuthCodec.verifySharedKeyAuth(
+    authPayload: auth,
+    prf: algs.prfName,
+    msk: msk,
+    message: bootstrap.saInitResponse,
+    nonce: bootstrap.nonceI,
+    skP: bootstrap.skPr,
+    idPayload: responderId,
+  );
+  if (!ok) {
+    throw StateError('ePDG AUTH check failed; it was not authenticated');
+  }
 }
 
 Future<void> _sendDatagram(

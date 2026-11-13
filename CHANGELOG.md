@@ -11,7 +11,7 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ### Security
 - Accept unverified TLS certificates only on SM-DP+ and SM-DS requests, where the eUICC authenticates the server. Making one such request previously turned certificate checks off for the rest of the app until it was closed, including the update check and reader firmware downloads.
-
+- Desktop VoWiFi authenticates the ePDG before it tunnels anything. The tunnel checks the AT_MAC on the EAP-AKA challenge and the AUTH the ePDG sends with the tunnel, and fails the attach if either is wrong or missing. Previously a server that relayed the EAP-AKA exchange to the real ePDG could take over the tunnel.
 - Desktop VoWiFi no longer writes the SIM's IMSI, ICCID or AKA authentication vectors (RAND, AUTN, RES, CK, IK) to its logs.
 
 ### Fixed
