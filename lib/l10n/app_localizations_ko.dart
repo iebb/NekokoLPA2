@@ -1323,6 +1323,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get configuredServers => '구성된 서버';
 
   @override
+  String get favoriteServers => 'Favorite RemoCard Servers';
+
+  @override
+  String get addToFavorites => 'Add to favorites';
+
+  @override
+  String get removeFromFavorites => 'Remove from favorites';
+
+  @override
   String get secureHttps => '보안 (HTTPS)';
 
   @override

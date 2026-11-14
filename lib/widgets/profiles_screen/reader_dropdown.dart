@@ -100,11 +100,10 @@ Widget buildReaderDropdown({
                           if (selectedReader != null)
                             Flexible(
                               child: Text(
-                                _formatReaderEid(
-                                      selectedReader,
-                                      showFullEid: showFullEid,
-                                    ) ??
-                                    "Unknown EID",
+                                _readerSubtitle(
+                                  selectedReader,
+                                  showFullEid: showFullEid,
+                                ),
                                 style: AppTheme.mono(
                                   TextStyle(
                                     fontSize: 11,
@@ -182,8 +181,7 @@ Widget buildReaderDropdown({
                                 ),
                               ),
                               Text(
-                                _formatReaderEid(r, showFullEid: showFullEid) ??
-                                    "Unknown EID",
+                                _readerSubtitle(r, showFullEid: showFullEid),
                                 style: AppTheme.mono(
                                   TextStyle(
                                     fontSize: 10,
@@ -260,4 +258,24 @@ String? _formatReaderEid(Reader? reader, {required bool showFullEid}) {
   if (eid == null || eid.isEmpty) return null;
 
   return ProfileRedaction.redactEid(eid, revealFull: showFullEid);
+}
+
+String _readerSubtitle(Reader reader, {required bool showFullEid}) {
+  final eid = _formatReaderEid(reader, showFullEid: showFullEid);
+  if (eid != null) return eid;
+
+  final remoteName = _formatRemoCardDeviceName(reader);
+  return remoteName ?? 'Unknown EID';
+}
+
+String? _formatRemoCardDeviceName(Reader reader) {
+  if (!reader.id.startsWith('remocard:')) return null;
+
+  final contextName = reader.context;
+  final name = contextName is String ? contextName.trim() : '';
+  if (name.isEmpty) return null;
+
+  final characters = name.runes.toList(growable: false);
+  if (characters.length <= 32) return name;
+  return '${String.fromCharCodes(characters.take(31))}…';
 }

@@ -2621,6 +2621,24 @@ abstract class AppLocalizations {
   /// **'Configured Servers'**
   String get configuredServers;
 
+  /// Heading for persistent RemoCard server favorites
+  ///
+  /// In en, this message translates to:
+  /// **'Favorite RemoCard Servers'**
+  String get favoriteServers;
+
+  /// No description provided for @addToFavorites.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to favorites'**
+  String get addToFavorites;
+
+  /// No description provided for @removeFromFavorites.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from favorites'**
+  String get removeFromFavorites;
+
   /// No description provided for @secureHttps.
   ///
   /// In en, this message translates to:

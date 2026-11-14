@@ -1306,6 +1306,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get configuredServers => '已配置的服务器';
 
   @override
+  String get favoriteServers => 'Favorite RemoCard Servers';
+
+  @override
+  String get addToFavorites => 'Add to favorites';
+
+  @override
+  String get removeFromFavorites => 'Remove from favorites';
+
+  @override
   String get secureHttps => '安全 (HTTPS)';
 
   @override

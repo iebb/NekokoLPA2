@@ -263,6 +263,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
   Timer? _simChangeDebounce;
   StreamSubscription<String>? _deepLinkSub;
   StreamSubscription? _simChangeSub;
+  StreamSubscription<void>? _readerListChangedSub;
 
   bool _isBle(Reader? reader) {
     return reader?.source is BleAdapter;
@@ -618,6 +619,14 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       }
     });
 
+    // Remote settings can discover or remove RemoCard readers while this
+    // screen is behind the settings route. Refresh the Select Device list as
+    // soon as that shared adapter cache changes.
+    _readerListChangedSub = _adapter.readerListChangedStream.listen((_) {
+      if (!mounted || _voWifiOwnsReader) return;
+      unawaited(_loadReaders(skipLoading: true));
+    });
+
     // Check initial values
     _onPendingLpaChanged();
     _onPendingSigningUriChanged();
@@ -642,6 +651,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     ProfilesScreen.isSwitchingGlobal = false;
     _simChangeDebounce?.cancel();
     _simChangeSub?.cancel();
+    _readerListChangedSub?.cancel();
     BleManager().removeListener(_onBleManagerChanged);
     AppSettings().removeListener(_onSettingsChanged);
     NotificationService().isProcessing.removeListener(_onProcessingChanged);
@@ -1505,7 +1515,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     if (_selectedReader == null) return;
     final reader = _selectedReader!;
 
-    _log.info("Disconnecting and removing reader: ${reader.id}");
+    _log.info("Disconnecting session reader: ${reader.id}");
 
     setState(() {
       _loading = true;
@@ -5047,14 +5057,6 @@ class _ProfilesScreenState extends State<ProfilesScreen>
           ),
         ),
         actions: [
-          if (url != null)
-            TextButton(
-              onPressed: () => Navigator.pop(context, "DELETE_CONNECTION"),
-              child: Text(
-                AppLocalizations.of(context)!.deleteConnection,
-                style: const TextStyle(color: Colors.red),
-              ),
-            ),
           TextButton(
             onPressed: () => Navigator.pop(context, null),
             child: Text(AppLocalizations.of(context)!.cancel),
@@ -5103,14 +5105,6 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         try {
           String? result;
           result = await _promptForRemotePassword(url: targetUrl);
-
-          if (result == "DELETE_CONNECTION") {
-            if (targetUrl != null) {
-              await AppSettings().removeRemoCardUrl(targetUrl);
-              await _loadReaders(skipLoading: true);
-            }
-            return false;
-          }
 
           final password = result;
           if (password != null && password.isNotEmpty) {
