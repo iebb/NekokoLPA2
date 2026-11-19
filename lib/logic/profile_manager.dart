@@ -539,12 +539,46 @@ class ProfileManager {
 
             try {
               commandSubmitted = true;
-              final responseData = await transmitLogicalApdu(
+              var refreshWanted = wantsRefresh;
+              var responseData = await transmitLogicalApdu(
                 channel,
                 requestData,
               );
-              final resp = EnableProfileResponse.decode(responseData);
+              var resp = EnableProfileResponse.decode(responseData);
               _logAsn1Response(resp);
+
+              // Some cards refuse to run the REFRESH themselves and answer
+              // with a vendor-specific enableResult (a test eUICC
+              // returns 7 for refreshFlag=TRUE). Retrying once with
+              // refreshFlag=FALSE succeeds there, because the LPA then resets
+              // the card itself instead of asking it for a REFRESH.
+              final refreshRejected =
+                  refreshWanted &&
+                  resp.enableResult != null &&
+                  resp.enableResult != EnableProfileResponse_enableResult.ok &&
+                  resp.enableResult !=
+                      EnableProfileResponse_enableResult
+                          .profileNotInDisabledState;
+              if (refreshRejected) {
+                _log.warning(
+                  'enableProfile: card rejected refreshFlag=TRUE '
+                  '(enableResult=${resp.enableResult?.name}); retrying with '
+                  'refreshFlag=FALSE',
+                );
+                final retry = EnableProfileRequest(
+                  profileIdentifier: EnableProfileRequest_profileIdentifier(
+                    iccid: iccidBytes,
+                  ),
+                  refreshFlag: false,
+                );
+                _logAsn1Request(retry);
+                requestData = retry.encode();
+                responseData = await transmitLogicalApdu(channel, requestData);
+                resp = EnableProfileResponse.decode(responseData);
+                _logAsn1Response(resp);
+                refreshWanted = false;
+              }
+
               if (resp.enableResult == null) {
                 throw Exception('ENABLE_FAILED:missingResult');
               }
@@ -554,7 +588,11 @@ class ProfileManager {
                           .profileNotInDisabledState) {
                 throw Exception('ENABLE_FAILED:${resp.enableResult?.name}');
               }
-              if (request.refreshFlag == true) {
+              _log.info(
+                'enableProfile: $iccid enabled '
+                '(result=${resp.enableResult?.name}, refresh=$refreshWanted)',
+              );
+              if (refreshWanted) {
                 await _handleRefresh(channel);
               } else {
                 await _resetAfterProfileSwitch(channel, 'Enable');

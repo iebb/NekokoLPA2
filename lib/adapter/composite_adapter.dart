@@ -20,6 +20,7 @@ import 'telephony/telephony_adapter.dart';
 import 'scrp/scrp_adapter.dart';
 import 'qrtr/qrtr_reader_adapter.dart';
 import 'se_hal_adapter.dart';
+import 'serial_phoenix/phoenix_adapter.dart';
 
 import 'remote/remocard_adapter.dart';
 import '../settings/app_settings.dart';
@@ -50,6 +51,7 @@ class CompositeAdapter extends BaseAdapter {
   final ScrpAdapter _scrpAdapter = ScrpAdapter();
   final QrtrReaderAdapter _qrtrAdapter = QrtrReaderAdapter();
   final SeHalAdapter _seHalAdapter = SeHalAdapter();
+  final PhoenixAdapter _phoenixAdapter = PhoenixAdapter();
   final Logger _log = Logger('CompositeAdapter');
 
   Future<Reader?> scanScrp() => _scrpAdapter.scanScrp();
@@ -221,6 +223,17 @@ class CompositeAdapter extends BaseAdapter {
       } catch (e) {
         _log.warning("CCID list failed: $e");
       }
+    }
+
+    // 4b. Phoenix / Smartmouse serial readers (desktop only)
+    if (AppSettings().enablePhoenixReader) {
+      try {
+        addReaders(await _phoenixAdapter.listReaders(force: force));
+      } catch (e) {
+        _log.warning("Phoenix reader list failed: $e");
+      }
+    } else {
+      _log.info("Phoenix serial reader connector is disabled in settings");
     }
 
     final useNBridge =
@@ -490,6 +503,13 @@ class CompositeAdapter extends BaseAdapter {
         throw AppException(
           AppErrorCode.ERROR_OMAPI_PERMISSION_DENIED,
           message: "CCID connector is disabled",
+        );
+      }
+    } else if (reader.source is PhoenixAdapter) {
+      if (!AppSettings().enablePhoenixReader) {
+        throw AppException(
+          AppErrorCode.ERROR_OMAPI_PERMISSION_DENIED,
+          message: "Phoenix serial reader is disabled",
         );
       }
     } else if (reader.source is OmapiAdapter) {

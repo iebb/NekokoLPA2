@@ -408,6 +408,11 @@ class AppSettings extends ChangeNotifier {
   bool _enableCcidConnector = true;
   bool get enableCcidConnector => _enableCcidConnector;
 
+  /// Phoenix / Smartmouse style RS-232 readers. Off by default: they are
+  /// desktop-only and enumerate every COM port.
+  bool _enablePhoenixReader = false;
+  bool get enablePhoenixReader => _enablePhoenixReader;
+
   /// The modem's own QRTR bus, which needs no USB at all.
   bool _enableQrtrConnector = false;
   bool get enableQrtrConnector => _enableQrtrConnector;
@@ -610,6 +615,7 @@ class AppSettings extends ChangeNotifier {
         _prefs?.getBool('enableScheduledNotifications') ?? true;
     _enableBleConnector = _prefs?.getBool('enableBleConnector') ?? true;
     _enableCcidConnector = _prefs?.getBool('enableCcidConnector') ?? true;
+    _enablePhoenixReader = _prefs?.getBool('enablePhoenixReader') ?? false;
     // On a Qualcomm device the bus is there whether or not anything is
     // plugged in, so it starts on there and off everywhere else.
     _enableQrtrConnector =
@@ -1283,6 +1289,12 @@ class AppSettings extends ChangeNotifier {
   Future<void> setEnableCcidConnector(bool value) async {
     _enableCcidConnector = value;
     await _prefs?.setBool('enableCcidConnector', value);
+    notifyListeners();
+  }
+
+  Future<void> setEnablePhoenixReader(bool value) async {
+    _enablePhoenixReader = value;
+    await _prefs?.setBool('enablePhoenixReader', value);
     notifyListeners();
   }
 

@@ -503,6 +503,18 @@ abstract class AppLocalizations {
   /// **'USB smart card readers and PC/SC devices'**
   String get ccidReaderSubtitle;
 
+  /// No description provided for @phoenixReaderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Phoenix serial reader'**
+  String get phoenixReaderTitle;
+
+  /// No description provided for @phoenixReaderSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'RS-232 Phoenix/Smartmouse readers on a COM port (PL2303, CH340)'**
+  String get phoenixReaderSubtitle;
+
   /// No description provided for @bluetoothReaderTitle.
   ///
   /// In en, this message translates to:
@@ -1612,6 +1624,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Ensure your CCID reader is connected to your computer.'**
   String get connectReaderSubtitleCcid;
+
+  /// No description provided for @connectReaderSubtitlePhoenix.
+  ///
+  /// In en, this message translates to:
+  /// **'Make sure your Phoenix (serial) reader is plugged in, and turn it on under Settings → Reader types.'**
+  String get connectReaderSubtitlePhoenix;
+
+  /// No description provided for @connectReaderSubtitleDesktop.
+  ///
+  /// In en, this message translates to:
+  /// **'Ensure your CCID reader is connected. Using a Phoenix serial reader? Enable it under Settings → Reader types.'**
+  String get connectReaderSubtitleDesktop;
 
   /// No description provided for @downloadExtension.
   ///

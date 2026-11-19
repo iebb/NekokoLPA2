@@ -794,6 +794,21 @@ class AppLocalizationsKo extends AppLocalizations {
   String get connectReaderSubtitleCcid => 'CCID 리더가 컴퓨터에 연결되어 있는지 확인하세요.';
 
   @override
+  String get connectReaderSubtitlePhoenix =>
+      'Make sure your Phoenix (serial) reader is plugged in, and turn it on under Settings → Reader types.';
+
+  @override
+  String get connectReaderSubtitleDesktop =>
+      'Ensure your CCID reader is connected. Using a Phoenix serial reader? Enable it under Settings → Reader types.';
+
+  @override
+  String get phoenixReaderTitle => 'Phoenix serial reader';
+
+  @override
+  String get phoenixReaderSubtitle =>
+      'RS-232 Phoenix/Smartmouse readers on a COM port (PL2303, CH340)';
+
+  @override
   String get downloadExtension => '스마트 카드 확장 프로그램 다운로드';
 
   @override
