@@ -67,6 +67,11 @@ class TelephonyAdapter extends BaseAdapter {
 
         final int simState = slot['simState'] ?? 0;
 
+        // An empty removable slot holds no card to connect to. An eUICC is
+        // soldered in, so it stays listed even while no profile is enabled
+        // and the platform reports the slot as absent.
+        if (simState == 1 && slot['isEuicc'] != true) continue;
+
         for (final port in ports) {
           final int portIndex = port['portIndex'] ?? 0;
 

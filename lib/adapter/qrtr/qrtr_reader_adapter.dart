@@ -17,10 +17,11 @@ import 'qrtr_socket.dart';
 /// A bus has no device list, so what is offered is what the modem itself says
 /// it has: one reader per card slot, named for the slot. The bus is only
 /// reachable through Shizuku on Android, so nothing is offered on a device
-/// whose SoC says there is no bus, or when the user does not want it. If the
-/// slots cannot be asked for yet — permission has not been granted, the modem
-/// is not answering — one reader for the modem as a whole is offered instead,
-/// so there is still something to connect to.
+/// whose SoC says there is no bus, or when the user does not want it. Until
+/// the user lets the app use Shizuku the modem cannot be asked, so one reader
+/// for the modem as a whole is offered instead — connecting to it is what asks
+/// for the permission. With the permission granted, a modem that does not
+/// answer offers nothing: a reader it could not be connected to anyway.
 ///
 /// The modem has no basic channel: the card is only reachable inside a logical
 /// channel the modem opened for an AID, and the channel travels beside the
@@ -83,6 +84,11 @@ class QrtrReaderAdapter extends BaseAdapter {
     if (PlatformX.isAndroid) {
       if (!await QrtrHost.isSupported()) return const [];
       if (!await QrtrHost.isAvailable()) return const [];
+
+      // Until the user lets the app use Shizuku, the modem cannot be asked
+      // for its slots, so the modem as a whole is offered: connecting to it
+      // is what asks for the permission.
+      if (!await QrtrHost.hasPermission()) return [_readerFor(0)];
     }
 
     final slots = await _slotNumbers();
@@ -102,8 +108,8 @@ class QrtrReaderAdapter extends BaseAdapter {
     return slot == null || slot == 0 ? null : slot;
   }
 
-  /// The card slots the modem reports, or the modem itself when it cannot be
-  /// asked — slot zero standing for the whole modem.
+  /// The card slots the modem reports, or no slots at all when the modem does
+  /// not answer or reports none — [connect] would fail on such a reader too.
   Future<List<int>> _slotNumbers() async {
     ModemSessionHandle? handle;
 
@@ -111,12 +117,11 @@ class QrtrReaderAdapter extends BaseAdapter {
       handle = await _openSession();
 
       final slots = await handle.session.state().timeout(commandTimeout);
-      if (slots.isEmpty) return const [0];
 
       return slots.map((slot) => slot.slot).toList(growable: false);
     } catch (e) {
       _log.fine('Could not ask the modem for its slots: $e');
-      return const [0];
+      return const [];
     } finally {
       try {
         await handle?.close();
@@ -125,7 +130,8 @@ class QrtrReaderAdapter extends BaseAdapter {
   }
 
   /// One reader per card slot; slot zero is the modem as a whole, which is
-  /// what is offered when the slots cannot be asked for.
+  /// what is offered while the slots cannot be asked for yet because the
+  /// Shizuku permission has not been granted.
   Reader _readerFor(int slot) => Reader(
     id: slot == 0 ? 'qrtr:modem' : 'qrtr:$slot',
     name: slot == 0 ? 'QRTR' : 'QRTR-$slot',
