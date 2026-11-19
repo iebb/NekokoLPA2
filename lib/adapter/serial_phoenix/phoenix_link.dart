@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -20,6 +21,12 @@ class PhoenixException implements Exception {
 /// 7816 framing are produced by this process, and RST is wired to RTS.
 class _Win32Serial {
   static final DynamicLibrary _k32 = DynamicLibrary.open('kernel32.dll');
+
+  static final void Function(int) _sleep =
+      _k32.lookupFunction<Void Function(Uint32), void Function(int)>('Sleep');
+
+  /// Blocking sleep. Only ever called from the worker isolate.
+  static void sleep(int ms) => _sleep(ms);
 
   static final int Function(Pointer<Utf16>, int, int, Pointer<Void>, int, int, int)
       _createFileW = _k32
@@ -222,54 +229,16 @@ class _Win32Serial {
 }
 
 /// T=0 transport for a Phoenix/Smartmouse style serial reader.
-class PhoenixLink {
-  static const int defaultBaud = 19200;
+///
+/// Everything in this class blocks: `ReadFile` loops, `Sleep` between RTS
+/// transitions, and up to 8 s waiting for a status word. It therefore runs on
+/// a dedicated isolate -- a profile download chains thousands of these calls
+/// and none of them may run on the UI isolate.
+class _PhoenixWorker {
+  _PhoenixWorker(this._port);
 
   final _Win32Serial _port;
   int echoErrors = 0;
-
-  PhoenixLink._(this._port);
-
-  /// COM ports that currently exist. Probed by a brief open/close, which does
-  /// not touch DTR/RTS, so an attached device is not disturbed.
-  static List<String> availablePorts() {
-    if (!Platform.isWindows) return const [];
-
-    // Preferred: ask the object manager for the DOS device list. This works
-    // even when another process (VMware, a terminal) holds the port open, so
-    // the port still shows up and the user gets a clear "cannot open" instead
-    // of a silently empty list.
-    final named = _Win32Serial.comPorts();
-    if (named.isNotEmpty) {
-      named.sort((a, b) =>
-          int.parse(a.substring(3)).compareTo(int.parse(b.substring(3))));
-      return named;
-    }
-
-    // Fallback: probe COM1..COM32 by opening each one.
-    final found = <String>[];
-    for (var i = 1; i <= 32; i++) {
-      final name = 'COM$i';
-      final probe = _Win32Serial.tryOpen(name);
-      if (probe != null) {
-        probe.close();
-        found.add(name);
-      }
-    }
-    return found;
-  }
-
-  static PhoenixLink open(String portName, {int baud = defaultBaud}) {
-    final serial = _Win32Serial.tryOpen(portName, baud: baud);
-    if (serial == null) {
-      throw PhoenixException('cannot open $portName');
-    }
-    return PhoenixLink._(serial);
-  }
-
-  void close() => _port.close();
-
-  Future<void> _delay(int ms) => Future<void>.delayed(Duration(milliseconds: ms));
 
   /// RTS is wired to RST on a Phoenix reader: assert, release, read the ATR.
   ///
@@ -277,13 +246,13 @@ class PhoenixLink {
   /// hardware (300 ms power settle, 300 ms reset pulse, then read until the
   /// line has been quiet for ~700 ms). A short pulse leaves some eUICCs in a
   /// half-reset state where they still emit an ATR but ignore every APDU.
-  Future<Uint8List> reset() async {
+  Uint8List reset() {
     _port.setRts(false);
     _port.setDtr(false);
-    await _delay(300);
+    _Win32Serial.sleep(300);
     _port.purgeInput();
     _port.setRts(true);
-    await _delay(300);
+    _Win32Serial.sleep(300);
     _port.purgeInput();
     _port.setRts(false);
 
@@ -305,21 +274,21 @@ class PhoenixLink {
 
   /// TX and RX are tied together on the card I/O line, so every transmitted
   /// byte comes back and has to be drained before the card answers.
-  Future<void> _txByte(int value) async {
+  void _txByte(int value) {
     _port.writeByte(value);
     final echo = _port.read(1, 300);
     if (echo.length != 1 || echo[0] != value) echoErrors++;
   }
 
-  Future<void> _txBytes(Uint8List data) async {
+  void _txBytes(Uint8List data) {
     for (final b in data) {
-      await _txByte(b);
+      _txByte(b);
     }
   }
 
   /// First non-NULL byte after a header: either the procedure byte (INS) or
   /// the first byte of the card's answer.
-  Future<int> _firstResponseByte() async {
+  int _firstResponseByte() {
     var b = _port.read(1, 1500);
     while (b.isNotEmpty && b[0] == 0x60) {
       b = _port.read(1, 1500); // NULL: card is still working
@@ -377,7 +346,7 @@ class PhoenixLink {
   }
 
   /// One T=0 transaction (ISO 7816-3). Handles case 1/2/3/4.
-  Future<Uint8List> transceive(Uint8List apdu) async {
+  Uint8List transceive(Uint8List apdu) {
     if (apdu.length < 5) {
       throw PhoenixException('APDU shorter than 5 bytes');
     }
@@ -405,11 +374,11 @@ class PhoenixLink {
     final hasData = lc > 0;
     final le = bodyLen > p3 ? apdu[5 + p3] : 0;
 
-    await _txBytes(Uint8List.sublistView(apdu, 0, 5));
+    _txBytes(Uint8List.sublistView(apdu, 0, 5));
 
     // Case 3/4: the card acknowledges with the INS byte before taking data.
     if (hasData) {
-      final pb = await _firstResponseByte();
+      final pb = _firstResponseByte();
       if (pb == (ins ^ 0xFF)) {
         // Complemented INS: the card asks for one data byte at a time, and
         // acknowledges each byte with the complement of INS. Legal T=0, and
@@ -417,9 +386,9 @@ class PhoenixLink {
         var ack = pb;
         var sent = 0;
         while (sent < lc && ack == (ins ^ 0xFF)) {
-          await _txBytes(Uint8List.sublistView(apdu, 5 + sent, 6 + sent));
+          _txBytes(Uint8List.sublistView(apdu, 5 + sent, 6 + sent));
           sent++;
-          ack = await _firstResponseByte();
+          ack = _firstResponseByte();
         }
         if (sent < lc) {
           // The card stopped early; ack is already the first status byte.
@@ -429,7 +398,7 @@ class PhoenixLink {
         return _readStatusWord();
       }
       if (pb == ins) {
-        await _txBytes(Uint8List.sublistView(apdu, 5, 5 + lc));
+        _txBytes(Uint8List.sublistView(apdu, 5, 5 + lc));
         if (le > 0) return _readResponseBody(le);
         return _readStatusWord();
       }
@@ -438,7 +407,7 @@ class PhoenixLink {
 
     // Case 1/2: no input data. The card either sends Le bytes then SW, or SW
     // straight away -- so the first byte is data, not a procedure byte.
-    final first = await _firstResponseByte();
+    final first = _firstResponseByte();
     if (first == ins) {
       // The ACK means the data field follows, so Le = 0 is 256 bytes here.
       final body = _port.read(p3 == 0 ? 256 : p3, 5000);
@@ -449,5 +418,220 @@ class PhoenixLink {
     }
     final body = Uint8List.fromList([first, ..._port.read(p3 - 1, 5000)]);
     return Uint8List.fromList([...body, ..._readStatusWord()]);
+  }
+
+  void close() => _port.close();
+}
+
+class _WorkerInit {
+  const _WorkerInit(this.replies, this.portName, this.baud);
+
+  final SendPort replies;
+  final String portName;
+  final int baud;
+}
+
+/// Entry point of the worker isolate. Replies are `[id, ok, payload, echoErrors]`;
+/// the handshake uses id 0 and carries the command port instead of a payload.
+void _phoenixWorkerMain(_WorkerInit init) {
+  final serial = _Win32Serial.tryOpen(init.portName, baud: init.baud);
+  if (serial == null) {
+    init.replies.send(<Object?>[0, false, 'cannot open ${init.portName}']);
+    return;
+  }
+  final worker = _PhoenixWorker(serial);
+  final commands = ReceivePort();
+  init.replies.send(<Object?>[0, true, commands.sendPort]);
+
+  commands.listen((message) {
+    final request = message as List<Object?>;
+    final id = request[0] as int;
+    final op = request[1] as String;
+    try {
+      switch (op) {
+        case 'reset':
+          init.replies.send(
+              <Object?>[id, true, worker.reset(), worker.echoErrors]);
+          break;
+        case 'transceive':
+          init.replies.send(<Object?>[
+            id,
+            true,
+            worker.transceive(request[2] as Uint8List),
+            worker.echoErrors,
+          ]);
+          break;
+        case 'close':
+          worker.close();
+          init.replies.send(
+              <Object?>[id, true, Uint8List(0), worker.echoErrors]);
+          break;
+        default:
+          init.replies.send(
+              <Object?>[id, false, 'unknown op $op', worker.echoErrors]);
+      }
+    } catch (e) {
+      init.replies.send(<Object?>[id, false, e.toString(), worker.echoErrors]);
+    }
+  });
+}
+
+/// Proxy for the worker isolate.
+///
+/// Every call is a message round trip, so the blocking `ReadFile` loop never
+/// runs on the caller's isolate.
+class PhoenixLink {
+  PhoenixLink._(this._isolate, this._commands, this._replies);
+
+  static const int defaultBaud = 19200;
+
+  final Isolate _isolate;
+  final SendPort _commands;
+  final ReceivePort _replies;
+  final Map<int, Completer<List<Object?>>> _pending = {};
+  int _nextId = 0;
+  int echoErrors = 0;
+  bool _closed = false;
+
+  /// COM ports that currently exist. Probed by a brief open/close, which does
+  /// not touch DTR/RTS, so an attached device is not disturbed.
+  static List<String> availablePorts() {
+    if (!Platform.isWindows) return const [];
+
+    // Preferred: ask the object manager for the DOS device list. This works
+    // even when another process (VMware, a terminal) holds the port open, so
+    // the port still shows up and the user gets a clear "cannot open" instead
+    // of a silently empty list.
+    final named = _Win32Serial.comPorts();
+    if (named.isNotEmpty) {
+      named.sort((a, b) =>
+          int.parse(a.substring(3)).compareTo(int.parse(b.substring(3))));
+      return named;
+    }
+
+    // Fallback: probe COM1..COM32 by opening each one.
+    final found = <String>[];
+    for (var i = 1; i <= 32; i++) {
+      final name = 'COM$i';
+      final probe = _Win32Serial.tryOpen(name);
+      if (probe != null) {
+        probe.close();
+        found.add(name);
+      }
+    }
+    return found;
+  }
+
+  /// Spawns the worker and waits for it to open the port, so a port that is
+  /// already in use still fails here rather than on the first APDU.
+  static Future<PhoenixLink> open(
+    String portName, {
+    int baud = defaultBaud,
+  }) async {
+    final replies = ReceivePort();
+    final errors = ReceivePort();
+    final handshake = Completer<Object?>();
+    PhoenixLink? link;
+
+    replies.listen((message) {
+      final reply = message as List<Object?>;
+      final id = reply[0] as int;
+      if (id == 0) {
+        if (!handshake.isCompleted) {
+          handshake.complete(reply[1] == true ? reply[2] : null);
+        }
+        return;
+      }
+      final pending = link?._pending.remove(id);
+      if (pending == null || pending.isCompleted) return;
+      link!.echoErrors = reply[3] as int;
+      pending.complete(reply);
+    });
+
+    // onError has to be a SendPort, and the payload is [error, stackTrace].
+    errors.listen((message) {
+      if (!handshake.isCompleted) {
+        handshake.completeError(
+          PhoenixException('serial worker failed: $message'),
+        );
+      }
+    });
+
+    final isolate = await Isolate.spawn(
+      _phoenixWorkerMain,
+      _WorkerInit(replies.sendPort, portName, baud),
+      onError: errors.sendPort,
+      debugName: 'phoenix-$portName',
+    );
+
+    Object? commands;
+    try {
+      commands = await handshake.future.timeout(const Duration(seconds: 5));
+    } catch (_) {
+      isolate.kill(priority: Isolate.immediate);
+      replies.close();
+      rethrow;
+    } finally {
+      errors.close();
+    }
+
+    if (commands is! SendPort) {
+      isolate.kill(priority: Isolate.immediate);
+      replies.close();
+      throw PhoenixException('cannot open $portName');
+    }
+    final created = PhoenixLink._(isolate, commands, replies);
+    link = created;
+    return created;
+  }
+
+  Future<Uint8List> _call(String op, [Object? arg]) {
+    if (_closed) {
+      return Future<Uint8List>.error(PhoenixException('link is closed'));
+    }
+    final id = ++_nextId;
+    final pending = Completer<List<Object?>>();
+    _pending[id] = pending;
+    _commands.send(<Object?>[id, op, arg]);
+    return pending.future.then((reply) {
+      if (reply[1] != true) {
+        throw PhoenixException('$op failed: ${reply[2]}');
+      }
+      final payload = reply[2];
+      return payload is Uint8List ? payload : Uint8List(0);
+    });
+  }
+
+  Future<Uint8List> reset() => _call('reset');
+
+  Future<Uint8List> transceive(Uint8List apdu) => _call('transceive', apdu);
+
+  /// Closes the port before stopping the worker: the handle belongs to the
+  /// process, so killing the isolate alone would leave COMx locked.
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    try {
+      final id = ++_nextId;
+      final pending = Completer<List<Object?>>();
+      _pending[id] = pending;
+      _commands.send(<Object?>[id, 'close', null]);
+      // Longer than the worst-case status-word wait (8 s): killing the worker
+      // mid-read would leak the handle and keep COMx locked for the process.
+      await pending.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => <Object?>[id, false, 'close timed out', 0],
+      );
+    } catch (_) {
+      // The worker may already be gone; nothing to do.
+    }
+    for (final pending in _pending.values) {
+      if (!pending.isCompleted) {
+        pending.completeError(PhoenixException('link closed'));
+      }
+    }
+    _pending.clear();
+    _isolate.kill(priority: Isolate.immediate);
+    _replies.close();
   }
 }

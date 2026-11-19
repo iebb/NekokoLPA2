@@ -53,7 +53,7 @@ class PhoenixAdapter extends BaseAdapter {
   @override
   Future<void> connect(Reader reader) async {
     _logger.info('Opening Phoenix reader ${reader.name}...');
-    final link = PhoenixLink.open(reader.name);
+    final link = await PhoenixLink.open(reader.name);
     try {
       final atr = await link.reset();
       if (atr.isEmpty || (atr[0] != 0x3B && atr[0] != 0x3F)) {
@@ -75,7 +75,7 @@ class PhoenixAdapter extends BaseAdapter {
     } catch (e) {
       _link = null;
       _lastAtr = null;
-      link.close();
+      await link.close();
       _logger.severe('Failed to bring up ${reader.name}: $e');
       rethrow;
     }
@@ -89,7 +89,7 @@ class PhoenixAdapter extends BaseAdapter {
     currentEid = null;
     updateConnectedReader(null);
     _state.add(EuiccPortState.closed);
-    link?.close();
+    await link?.close();
   }
 
   @override
