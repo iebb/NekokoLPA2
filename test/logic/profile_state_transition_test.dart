@@ -135,6 +135,80 @@ void main() {
       },
     );
 
+    test('an unknown command outcome is verified but never replayed', () async {
+      var submits = 0;
+      var reads = 0;
+      var reconnects = 0;
+      final transition = ProfileStateTransition(
+        maxVerificationAttempts: 2,
+        verificationDelay: Duration.zero,
+      );
+
+      await expectLater(
+        transition.run(
+          targetEnabled: true,
+          submit: (_) async {
+            submits++;
+            throw const ProfileStateCommandOutcomeUnknown('response lost');
+          },
+          reconnect: () async => reconnects++,
+          readActualState: () async {
+            reads++;
+            return false;
+          },
+          isTransient: _isTransientBluetoothError,
+        ),
+        throwsA(
+          isA<ProfileStateVerificationException>()
+              .having((error) => error.actualEnabled, 'actualEnabled', false)
+              .having((error) => error.commandAttempts, 'commandAttempts', 1)
+              .having(
+                (error) => error.lastError,
+                'lastError',
+                isA<ProfileStateCommandOutcomeUnknown>(),
+              ),
+        ),
+      );
+
+      expect(submits, 1);
+      expect(reads, 2);
+      expect(reconnects, 0);
+    });
+
+    test(
+      'an unknown command outcome rides out transient reads without reconnecting',
+      () async {
+        var submits = 0;
+        var reads = 0;
+        var reconnects = 0;
+        final transition = ProfileStateTransition(
+          verificationDelay: Duration.zero,
+        );
+
+        final result = await transition.run(
+          targetEnabled: true,
+          submit: (_) async {
+            submits++;
+            throw const ProfileStateCommandOutcomeUnknown('response lost');
+          },
+          reconnect: () async => reconnects++,
+          readActualState: () async {
+            if (++reads == 1) {
+              throw AppException(AppErrorCode.ERROR_BLUETOOTH_NOT_CONNECTED);
+            }
+            return true;
+          },
+          isTransient: _isTransientBluetoothError,
+        );
+
+        expect(result.actualEnabled, isTrue);
+        expect(result.commandAttempts, 1);
+        expect(submits, 1);
+        expect(reads, 2);
+        expect(reconnects, 0);
+      },
+    );
+
     test(
       'propagates transport error when no verification read succeeds',
       () async {
