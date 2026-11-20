@@ -207,6 +207,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get ccidReaderSubtitle => 'USB 스마트 카드 리더 및 PC/SC 장치';
 
   @override
+  String get phoenixReaderTitle => 'Phoenix serial reader';
+
+  @override
+  String get phoenixReaderSubtitle =>
+      'RS-232 Phoenix/Smartmouse readers on a COM port (PL2303, CH340)';
+
+  @override
   String get bluetoothReaderTitle => '블루투스';
 
   @override
@@ -800,13 +807,6 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get connectReaderSubtitleDesktop =>
       'Ensure your CCID reader is connected. Using a Phoenix serial reader? Enable it under Settings → Reader types.';
-
-  @override
-  String get phoenixReaderTitle => 'Phoenix serial reader';
-
-  @override
-  String get phoenixReaderSubtitle =>
-      'RS-232 Phoenix/Smartmouse readers on a COM port (PL2303, CH340)';
 
   @override
   String get downloadExtension => '스마트 카드 확장 프로그램 다운로드';
