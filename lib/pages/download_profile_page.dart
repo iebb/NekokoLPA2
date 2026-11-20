@@ -427,6 +427,35 @@ class _DownloadProfilePageState extends State<DownloadProfilePage> {
     }
   }
 
+  /// Whether the channel kept from the preview step is still usable.
+  ///
+  /// The preview's channel can be closed by an intermediate cleanup while
+  /// [_sessionChannel] still points at it. Reusing that channel number makes
+  /// the card answer 6881 ("logical channel not supported"), which aborts the
+  /// whole download. Selecting ISD-R again is cheap and has no effect on the
+  /// RSP session state, so it works as a liveness probe.
+  Future<bool> _isSessionChannelAlive(Channel channel) async {
+    try {
+      final aid = HexUtils.hexToBytes('A0000005591010FFFFFFFF8900000100');
+      final resp = await channel.transmit(0x00, 0xA4, 0x04, 0x00, aid);
+      if (resp.length < 2) return false;
+      final sw1 = resp[resp.length - 2];
+      final sw2 = resp[resp.length - 1];
+      final alive = (sw1 == 0x90 && sw2 == 0x00) || sw1 == 0x61;
+      if (!alive) {
+        _log.fine(
+          'Session channel probe answered '
+          '${sw1.toRadixString(16).padLeft(2, '0')}'
+          '${sw2.toRadixString(16).padLeft(2, '0')}',
+        );
+      }
+      return alive;
+    } catch (e) {
+      _log.fine('Session channel liveness probe failed: $e');
+      return false;
+    }
+  }
+
   Future<Channel?> _authenticateDownloadSession({
     ActivationCode? activationCode,
     String? confirmationCode,
@@ -809,10 +838,20 @@ class _DownloadProfilePageState extends State<DownloadProfilePage> {
         "matchingIdLength=${activationCode.matchingId.length}, "
         "hasConfirmationCode=${confirmationCode != null}",
       );
-      if (attempt.number == 1 && _sessionChannel != null) {
+      if (attempt.number == 1 &&
+          _sessionChannel != null &&
+          await _isSessionChannelAlive(_sessionChannel!)) {
         _log.info("Reusing existing authenticated session channel");
         channel = _sessionChannel;
       } else {
+        if (_sessionChannel != null) {
+          _log.warning(
+            'Cached session channel is no longer usable (closed by an '
+            'intermediate cleanup); starting a fresh session instead of '
+            'reusing a dead channel number, which the card answers with 6881',
+          );
+          _sessionChannel = null;
+        }
         _log.info(
           'Profile download attempt ${attempt.number}/${attempt.maxAttempts} '
           'starting a fresh eUICC and SM-DP+ session',

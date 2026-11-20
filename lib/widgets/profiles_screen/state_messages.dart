@@ -301,7 +301,11 @@ class NoReadersState extends StatelessWidget {
                         PlatformX.supportsBle &&
                                 AppSettings().enableBleConnector
                             ? l10n.connectReaderSubtitleBle
-                            : l10n.connectReaderSubtitleCcid,
+                            : (PlatformX.isWindows
+                                ? (AppSettings().enablePhoenixReader
+                                    ? l10n.connectReaderSubtitlePhoenix
+                                    : l10n.connectReaderSubtitleDesktop)
+                                : l10n.connectReaderSubtitleCcid),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 15,

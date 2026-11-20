@@ -842,6 +842,21 @@ class AppLocalizationsIt extends AppLocalizations {
       'Assicurati che il tuo lettore CCID sia connesso al computer.';
 
   @override
+  String get connectReaderSubtitlePhoenix =>
+      'Make sure your Phoenix (serial) reader is plugged in, and turn it on under Settings → Reader types.';
+
+  @override
+  String get connectReaderSubtitleDesktop =>
+      'Ensure your CCID reader is connected. Using a Phoenix serial reader? Enable it under Settings → Reader types.';
+
+  @override
+  String get phoenixReaderTitle => 'Phoenix serial reader';
+
+  @override
+  String get phoenixReaderSubtitle =>
+      'RS-232 Phoenix/Smartmouse readers on a COM port (PL2303, CH340)';
+
+  @override
   String get downloadExtension => 'Scarica Estensione Smart Card';
 
   @override

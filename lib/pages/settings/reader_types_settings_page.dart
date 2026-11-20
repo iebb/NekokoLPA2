@@ -32,6 +32,8 @@ class ReaderTypesSettingsPage extends StatelessWidget {
                   subtitle: l10n.enabledReaderTypesSubtitle,
                   children: [
                     if (!PlatformX.isWeb) _buildCcidConnectorSwitcher(context),
+                    if (PlatformX.isWindows)
+                      _buildPhoenixReaderSwitcher(context),
                     if (!PlatformX.isLinux) _buildBleConnectorSwitcher(context),
                     _buildRemoteConnectorSwitcher(context),
                     if (PlatformX.isAndroid) ...[
@@ -279,6 +281,31 @@ class ReaderTypesSettingsPage extends StatelessWidget {
       ),
       onTap: () =>
           settings.setEnableCcidConnector(!settings.enableCcidConnector),
+    );
+  }
+
+  Widget _buildPhoenixReaderSwitcher(BuildContext context) {
+    final settings = AppSettings();
+    final l10n = AppLocalizations.of(context)!;
+
+    return _buildResponsiveTile(
+      context,
+      icon: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.blue.withValues(alpha: 0.1),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.cable_rounded, size: 20, color: Colors.blue),
+      ),
+      title: l10n.phoenixReaderTitle,
+      subtitle: l10n.phoenixReaderSubtitle,
+      child: _buildCustomSwitch(
+        context,
+        settings.enablePhoenixReader,
+        (v) => settings.setEnablePhoenixReader(v),
+      ),
+      onTap: () => settings.setEnablePhoenixReader(!settings.enablePhoenixReader),
     );
   }
 
