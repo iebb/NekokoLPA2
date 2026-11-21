@@ -4,7 +4,10 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+## [2.6.0+607] - 2026-11-21
+
 ### Added
+- Windows: Phoenix/Smartmouse USB-to-serial SIM readers (PL2303, CH340 and the common transparent-shell USB SIM reader), turned on under Settings → Reader types.
 - Foldable and landscape layouts: a labelled navigation rail on touch screens of medium width and up, and the profiles header, profile list and settings split around the fold of a folding screen, including the iPhone Duo on iOS 27.1 and later. Headers keep clear of a landscape phone's side insets.
 
 ### Changed
@@ -20,6 +23,8 @@ All notable changes to NekokoLPA2 will be documented in this file.
 - Desktop VoWiFi no longer writes the SIM's IMSI, ICCID or AKA authentication vectors (RAND, AUTN, RES, CK, IK) to its logs.
 
 ### Fixed
+- Profile download no longer reuses a session channel that has already been closed.
+- Retry enabling a profile without REFRESH when the card rejects REFRESH with a vendor error.
 - Desktop VoWiFi: release the socket of every ePDG address that fails to attach, close the tunnel when registration fails, and ignore malformed IKE and UDP packets that could previously hang or stop the tunnel.
 - Desktop VoWiFi: show an error when sending an SMS, refreshing or disconnecting fails, instead of failing silently.
 - eSIM transfer: stop waiting when a carrier entitlement server accepts a request and never answers.
