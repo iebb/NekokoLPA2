@@ -4,6 +4,9 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- QRTR reader: give the card up to 30 seconds to answer an APDU instead of 2. A command the eUICC took longer over, such as a signature or a block of a profile, was reported as "qrtr did not answer", which could break a download partway and use up the profile.
+
 ## [2.6.0+607] - 2026-11-21
 
 ### Added

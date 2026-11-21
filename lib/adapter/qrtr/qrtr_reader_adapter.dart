@@ -36,6 +36,11 @@ class QrtrReaderAdapter extends BaseAdapter {
   /// How long the modem has to answer anything.
   static const Duration commandTimeout = Duration(seconds: 40);
 
+  /// How long the modem has to reply to one request, an APDU included. It is
+  /// under [commandTimeout], so a card that never answers is reported by the
+  /// session itself rather than by a caller that stopped waiting for it.
+  static const Duration replyTimeout = Duration(seconds: 30);
+
   /// Name of the link, for logs.
   String get link => 'qrtr';
 
@@ -160,7 +165,10 @@ class QrtrReaderAdapter extends BaseAdapter {
 
   /// Open the modem's bus and wrap it in a session.
   Future<ModemSessionHandle> _openSession() async {
-    final socket = await openQrtrSocket();
+    final socket = PatientQrtrSocket(
+      await openQrtrSocket(),
+      replyTimeout: replyTimeout,
+    );
 
     try {
       // The socket is Dart's, and the session asks it for every datagram: on
