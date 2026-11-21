@@ -27,7 +27,6 @@ import '../adapter/telephony/telephony_adapter.dart';
 import '../logic/profile_manager.dart';
 import '../logic/profile_state_transition.dart';
 import '../utils/apdu_exception.dart';
-import '../utils/atr_capabilities.dart';
 import '../utils/profile_tag_utils.dart';
 import '../utils/profile_redaction.dart';
 import '../services/profile_metadata_service.dart';
@@ -1623,13 +1622,9 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     await _listProfiles();
   }
 
-  void _maybeShowOmapiEuiccNotice(Reader reader, String? atr) {
-    if (!PlatformX.isAndroid ||
-        !reader.id.startsWith('omapi:') ||
-        AtrCapabilities.supportsEuicc(atr) != true) {
-      return;
-    }
-    final key = '${reader.id}:$atr';
+  void _maybeShowOmapiEuiccNotice(Reader reader) {
+    if (!PlatformX.isAndroid || !reader.id.startsWith('omapi:')) return;
+    final key = reader.id;
     if (_omapiEuiccNoticesShown.contains(key)) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
@@ -1687,7 +1682,6 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
     String? eid;
     EUICCInfo2? info2;
-    String? connectedAtr;
 
     try {
       _updateReaderSession(reader.id, (s) => s.isConnecting = true);
@@ -1714,7 +1708,6 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         try {
           // Ensure reader is still the selected one or at least the one we started with
           await _adapter.connect(reader);
-          connectedAtr = _adapter.lastAtr;
           if (reopenHal) await _adapter.reconnect();
         } finally {
           _adapter.connectProgress.removeListener(showConnectStep);
@@ -2005,7 +1998,6 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         s.isConnecting = false;
         s.operationLoadingMessage = null;
       });
-      _maybeShowOmapiEuiccNotice(reader, connectedAtr);
     }
   }
 
@@ -2633,6 +2625,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
     List<EuiccProfile>? verifiedProfiles;
     var retryAfterPassword = false;
+    var switchVerified = false;
     void ensureCurrentSwitch() {
       if (switchGeneration != _profileSwitchGeneration) {
         throw AppException(
@@ -2827,6 +2820,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         reader,
       );
       unawaited(_processNotificationsAfterVerifiedSwitch(reader));
+      switchVerified = true;
     } catch (e) {
       if (isOmapiSessionCorruptedError(e)) {
         // OMAPI is unusable until the device reboots, so offer no retry.
@@ -2870,6 +2864,8 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
     if (retryAfterPassword && mounted) {
       await _toggleProfile(p, enable);
+    } else if (switchVerified && !enable && mounted) {
+      _maybeShowOmapiEuiccNotice(reader);
     }
   }
 
