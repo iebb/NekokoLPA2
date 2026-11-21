@@ -3165,4 +3165,8 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get errorReportFailed =>
       'Couldn\'t send the report. Check your connection and try again.';
+
+  @override
+  String get linklanPasswordHint =>
+      '6-digit card password (default: last six digits of the EID)';
 }
