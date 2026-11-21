@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 
 /// A reusable scaffold with a stylized header for secondary pages
-/// Automatically handles safe area padding for mobile devices
+/// Automatically handles safe area padding for mobile devices, including the
+/// side insets of a phone in landscape
 class StyledHeaderScaffold extends StatelessWidget {
   final String? title;
   final Widget? titleWidget;
@@ -32,6 +33,7 @@ class StyledHeaderScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final safePadding = MediaQuery.paddingOf(context);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
@@ -46,12 +48,9 @@ class StyledHeaderScaffold extends StatelessWidget {
             // Custom Header with safe area padding
             Container(
               padding: EdgeInsets.fromLTRB(
-                12,
-                (compact ? 8 : 12) +
-                    MediaQuery.of(
-                      context,
-                    ).padding.top, // Add top safe area padding
-                16,
+                12 + safePadding.left,
+                (compact ? 8 : 12) + safePadding.top,
+                16 + safePadding.right,
                 compact ? 8 : 12,
               ),
               decoration: BoxDecoration(
@@ -133,7 +132,14 @@ class StyledHeaderScaffold extends StatelessWidget {
               ),
             ),
             // Body content
-            Expanded(child: body),
+            Expanded(
+              // The header has taken the top inset.
+              child: MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                child: SafeArea(top: false, bottom: false, child: body),
+              ),
+            ),
           ],
         ),
       ),

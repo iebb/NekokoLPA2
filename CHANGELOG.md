@@ -4,11 +4,15 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Foldable and landscape layouts: a labelled navigation rail on touch screens of medium width and up, and the profiles header, profile list and settings split around the fold of a folding screen, including the iPhone Duo on iOS 27.1 and later. Headers keep clear of a landscape phone's side insets.
+
 ### Changed
 - Sentry, and with it the "Send report" button, is part of the 9eSIM build only. Every other build ignores a Sentry DSN and sends nothing.
 - The BeeSIM "Update BeeSIM firmware" reader action is turned off while the BeeSIM firmware server presents an expired TLS certificate.
 - Startup no longer asks the OTBridge helper for its slot list once the OMAPI and TMAPI reader choices are stored, and waits at most 5 seconds for it otherwise.
 - Readers that cannot be connected to are no longer listed: an empty removable Telephony (TMAPI) slot, and the QRTR modem when it does not answer. An eUICC with no enabled profile stays listed, and QRTR still shows one reader before the Shizuku permission is granted, since connecting to it is what asks for the permission.
+- The OMAPI "Keep this eUICC available" notice appears only after a profile is disabled in the app, no longer on every connection or profile switch.
 
 ### Security
 - Accept unverified TLS certificates only on SM-DP+ and SM-DS requests, where the eUICC authenticates the server. Making one such request previously turned certificate checks off for the rest of the app until it was closed, including the update check and reader firmware downloads.

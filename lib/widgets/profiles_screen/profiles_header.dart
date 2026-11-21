@@ -8,6 +8,7 @@ import 'action_button.dart';
 import 'eid_container.dart';
 import 'switch_mode_button.dart';
 import '../../services/notification_service.dart';
+import '../../theme/adaptive_layout.dart';
 
 class ProfilesHeader extends StatefulWidget {
   final bool isWide;
@@ -93,41 +94,14 @@ class _ProfilesHeaderState extends State<ProfilesHeader> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Reader Selection Area (Tabs or Dropdown)
-              Expanded(
-                flex: widget.isWide ? 2 : 1,
-                child: _buildReaderSelector(context),
-              ),
-
-              // Disconnect button: same row as selector (Wide or Narrow Dropdown)
-              if (widget.selectedReader != null &&
-                  (widget.isWide || !widget.useTabs)) ...[
-                const SizedBox(width: 8),
-                _buildDisconnectButton(context),
-              ],
-
-              // On Wide Layout: EID and Actions follow on the first row
-              if (widget.isWide &&
-                  (widget.eid != null || widget.status != null)) ...[
-                const SizedBox(width: 8),
-                Expanded(flex: 3, child: _buildEidContainer(context)),
-                const SizedBox(width: 8),
-                _buildActionButtons(context),
-              ],
-              // Specific case: Wide layout, No EID row, but can switch
-              if (widget.isWide &&
-                  widget.eid == null &&
-                  widget.status == null &&
-                  (widget.onSwitchMode != null ||
-                      widget.extraActions.isNotEmpty)) ...[
-                const Spacer(),
-                _buildActionButtons(context),
-              ],
-            ],
-          ),
+          if (widget.isWide)
+            FoldAwareBuilder(
+              builder: (context, constraints, fold) => fold == null
+                  ? _buildFirstRow(context)
+                  : _buildFoldRow(context, fold),
+            )
+          else
+            _buildFirstRow(context),
 
           // On Narrow Layout: EID and Buttons move to a second row
           if (!widget.isWide &&
@@ -147,6 +121,81 @@ class _ProfilesHeaderState extends State<ProfilesHeader> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildFirstRow(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Reader Selection Area (Tabs or Dropdown)
+        Expanded(
+          flex: widget.isWide ? 2 : 1,
+          child: _buildReaderSelector(context),
+        ),
+
+        // Disconnect button: same row as selector (Wide or Narrow Dropdown)
+        if (widget.selectedReader != null &&
+            (widget.isWide || !widget.useTabs)) ...[
+          const SizedBox(width: 8),
+          _buildDisconnectButton(context),
+        ],
+
+        // On Wide Layout: EID and Actions follow on the first row
+        if (widget.isWide && (widget.eid != null || widget.status != null)) ...[
+          const SizedBox(width: 8),
+          Expanded(flex: 3, child: _buildEidContainer(context)),
+          const SizedBox(width: 8),
+          _buildActionButtons(context),
+        ],
+        // Specific case: Wide layout, No EID row, but can switch
+        if (widget.isWide &&
+            widget.eid == null &&
+            widget.status == null &&
+            (widget.onSwitchMode != null ||
+                widget.extraActions.isNotEmpty)) ...[
+          const Spacer(),
+          _buildActionButtons(context),
+        ],
+      ],
+    );
+  }
+
+  /// The wide header split around a fold: the reader on one side, the EID
+  /// and actions on the other.
+  Widget _buildFoldRow(BuildContext context, FoldSplit fold) {
+    final hasEid = widget.eid != null || widget.status != null;
+    final hasActions =
+        hasEid || widget.onSwitchMode != null || widget.extraActions.isNotEmpty;
+    final readerPane = Row(
+      children: [
+        Expanded(child: _buildReaderSelector(context)),
+        if (widget.selectedReader != null) ...[
+          const SizedBox(width: 8),
+          _buildDisconnectButton(context),
+        ],
+      ],
+    );
+    final infoPane = Row(
+      children: [
+        if (hasEid)
+          Expanded(child: _buildEidContainer(context))
+        else
+          const Spacer(),
+        if (hasActions) ...[
+          const SizedBox(width: 8),
+          _buildActionButtons(context),
+        ],
+      ],
+    );
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
+    return Row(
+      textDirection: TextDirection.ltr,
+      children: [
+        SizedBox(width: fold.leading, child: isRtl ? infoPane : readerPane),
+        SizedBox(width: fold.gap),
+        SizedBox(width: fold.trailing, child: isRtl ? readerPane : infoPane),
+      ],
     );
   }
 

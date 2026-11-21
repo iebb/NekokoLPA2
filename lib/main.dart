@@ -14,6 +14,7 @@ import 'services/db_init_native.dart'
 import 'services/log_buffer.dart';
 import 'services/local_notification_service.dart';
 import 'services/deep_link_service.dart';
+import 'services/division_regions.dart';
 import 'widgets/profile_installation_dialog.dart';
 import 'plugins/plugin_manager.dart';
 
@@ -336,6 +337,8 @@ class _AppSettingsScopeState extends State<_AppSettingsScope> {
       themeMode: _themeMode,
       locale: resolvedLocale,
       home: const MainTabScreen(),
+      builder: (context, child) =>
+          DivisionRegionScope(child: child ?? const SizedBox.shrink()),
       routes: PluginManager().allRoutes,
       debugShowCheckedModeBanner: false,
       localizationsDelegates: const [

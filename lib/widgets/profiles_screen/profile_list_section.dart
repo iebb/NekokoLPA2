@@ -5,6 +5,7 @@ import '../../l10n/app_localizations.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../settings/app_settings.dart';
 import '../../plugins/plugin_manager.dart';
+import '../../theme/adaptive_layout.dart';
 
 class ProfileListSection extends StatefulWidget {
   final List<EuiccProfile> profiles;
@@ -41,7 +42,13 @@ class ProfileListSection extends StatefulWidget {
   @override
   State<ProfileListSection> createState() => _ProfileListSectionState();
 }
+
 class _ProfileListSectionState extends State<ProfileListSection> {
+  static const double _maxColumnWidth = 400;
+  static const double _minFoldColumnWidth = 280;
+  static const double _columnSpacing = 16;
+  static const double _rowSpacing = 8;
+
   final ValueNotifier<double> _overscrollNotifier = ValueNotifier<double>(0);
 
   @override
@@ -50,136 +57,159 @@ class _ProfileListSectionState extends State<ProfileListSection> {
     super.dispose();
   }
 
+  Widget _buildCard(EuiccProfile p, {bool isCompact = false}) {
+    final cardKey = widget.getCardKey(p.iccid) as GlobalKey;
+    return RepaintBoundary(
+      child: ProfileCard(
+        key: ValueKey(p.iccid),
+        cardKey: cardKey,
+        profile: p,
+        eid: widget.eid,
+        isToggling: widget.togglingIccid == p.iccid,
+        isDeleting: widget.deletingIccid == p.iccid,
+        isLocked: widget.isLocked,
+        isCompact: isCompact,
+        onToggle: (v) => widget.onToggle(p, v),
+        onMenu: () => widget.onMenu(p, cardKey),
+        onTagTap: () => widget.onTagTap(p),
+      ),
+    );
+  }
+
+  Widget _buildHeaders() {
+    return SliverToBoxAdapter(
+      child: ListenableBuilder(
+        listenable: PluginManager(),
+        builder: (context, _) {
+          return Column(
+            children: PluginManager().buildHeaders(context, widget.eid),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Column spans for the wide grid; on a folding screen no column crosses
+  /// the fold.
+  List<ColumnSpan> _wideColumns(
+    double width,
+    EdgeInsets inset,
+    FoldSplit? fold,
+  ) {
+    final start = widget.padding + inset.left;
+    final end = width - widget.padding - inset.right;
+    if (end <= start) return const [];
+    if (fold != null) {
+      final columns = foldColumns(
+        start: start,
+        end: end,
+        fold: fold,
+        minColumnWidth: _minFoldColumnWidth,
+        spacing: _columnSpacing,
+      );
+      if (columns.isNotEmpty) return columns;
+    }
+    final count = ((end - start) / _maxColumnWidth).ceil().clamp(1, 1 << 10);
+    final columnWidth = (end - start - _columnSpacing * (count - 1)) / count;
+    return [
+      for (var i = 0; i < count; i++)
+        (left: start + i * (columnWidth + _columnSpacing), width: columnWidth),
+    ];
+  }
+
+  /// Rows of cards aligned across [columns].
+  Widget _buildAlignedRows(List<ColumnSpan> columns, bool isRtl) {
+    final count = columns.length;
+    return SliverList(
+      delegate: SliverChildBuilderDelegate((context, rowIndex) {
+        final children = <Widget>[];
+        var x = 0.0;
+        for (var i = 0; i < count; i++) {
+          final column = columns[i];
+          // Physical columns run left to right; items follow reading order.
+          final itemIndex = rowIndex * count + (isRtl ? count - 1 - i : i);
+          children
+            ..add(SizedBox(width: column.left - x))
+            ..add(
+              SizedBox(
+                width: column.width,
+                child: itemIndex < widget.profiles.length
+                    ? _buildCard(widget.profiles[itemIndex])
+                    : null,
+              ),
+            );
+          x = column.left + column.width;
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: _rowSpacing),
+          child: Row(
+            textDirection: TextDirection.ltr,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: children,
+          ),
+        );
+      }, childCount: (widget.profiles.length / count).ceil()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
+    final inset = MediaQuery.paddingOf(context);
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
 
     Widget listContent;
 
     if (widget.isWide) {
-      listContent = LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth - widget.padding * 2;
-          if (width <= 0) return const SizedBox.shrink();
+      listContent = FoldAwareBuilder(
+        builder: (context, constraints, fold) {
+          final width = constraints.maxWidth;
+          final columns = _wideColumns(width, inset, fold);
+          if (columns.isEmpty) return const SizedBox.shrink();
 
-          const double maxCrossAxisExtent = 400;
-          const double crossAxisSpacing = 16;
-          int crossAxisCount = (width / maxCrossAxisExtent).ceil();
-          if (crossAxisCount < 1) crossAxisCount = 1;
-
+          final waterfall = AppSettings().useWaterfallLayout;
+          // Only the uniform masonry grid is inset by padding; the other
+          // layouts place their columns from the left edge.
+          final masonry = waterfall && fold == null;
+          final Widget grid;
+          if (!waterfall) {
+            grid = _buildAlignedRows(columns, isRtl);
+          } else if (!masonry) {
+            grid = SliverSpanColumns(
+              columns: columns,
+              itemCount: widget.profiles.length,
+              mainAxisSpacing: _rowSpacing,
+              itemBuilder: (context, index) =>
+                  _buildCard(widget.profiles[index]),
+            );
+          } else {
+            grid = SliverMasonryGrid.count(
+              crossAxisCount: columns.length,
+              mainAxisSpacing: _rowSpacing,
+              crossAxisSpacing: _columnSpacing,
+              itemBuilder: (context, index) =>
+                  _buildCard(widget.profiles[index]),
+              childCount: widget.profiles.length,
+            );
+          }
 
           return CustomScrollView(
             physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
             slivers: [
-              SliverToBoxAdapter(
-                child: ListenableBuilder(
-                  listenable: PluginManager(),
-                  builder: (context, _) {
-                    return Column(
-                      children: PluginManager().buildHeaders(
-                        context,
-                        widget.eid,
-                      ),
-                    );
-                  },
-                ),
-              ),
+              _buildHeaders(),
               SliverPadding(
                 padding: EdgeInsets.only(
-                  left: widget.padding,
-                  right: widget.padding,
+                  left: masonry ? columns.first.left : 0,
+                  right: masonry
+                      ? width - columns.last.left - columns.last.width
+                      : 0,
                   top: widget.paddingV,
                   bottom: widget.paddingV + 80,
                 ),
-                sliver: AppSettings().useWaterfallLayout
-                    ? SliverMasonryGrid.count(
-                        crossAxisCount: crossAxisCount,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: crossAxisSpacing,
-                        itemBuilder: (context, index) {
-                          final p = widget.profiles[index];
-                          final cardKey =
-                              widget.getCardKey(p.iccid) as GlobalKey;
-                          return RepaintBoundary(
-                            child: ProfileCard(
-                              key: ValueKey(p.iccid),
-                              cardKey: cardKey,
-                              profile: p,
-                              eid: widget.eid,
-                              isToggling: widget.togglingIccid == p.iccid,
-                              isDeleting: widget.deletingIccid == p.iccid,
-                              isLocked: widget.isLocked,
-                              onToggle: (v) => widget.onToggle(p, v),
-                              onMenu: () => widget.onMenu(p, cardKey),
-                              onTagTap: () => widget.onTagTap(p),
-                            ),
-                          );
-                        },
-                        childCount: widget.profiles.length,
-                      )
-                    : SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, rowIndex) {
-                            final startIndex = rowIndex * crossAxisCount;
-
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 8.0),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  for (int i = 0; i < crossAxisCount; i++) ...[
-                                    if (i > 0) SizedBox(width: crossAxisSpacing),
-                                    Expanded(
-                                      child: (startIndex + i < widget.profiles.length)
-                                          ? RepaintBoundary(
-                                              child: ProfileCard(
-                                                key: ValueKey(
-                                                  widget.profiles[startIndex + i]
-                                                      .iccid,
-                                                ),
-                                                cardKey: widget.getCardKey(
-                                                  widget.profiles[startIndex + i]
-                                                      .iccid,
-                                                ) as GlobalKey,
-                                                profile: widget.profiles[startIndex + i],
-                                                eid: widget.eid,
-                                                isToggling: widget.togglingIccid ==
-                                                    widget.profiles[startIndex + i]
-                                                        .iccid,
-                                                isDeleting: widget.deletingIccid ==
-                                                    widget.profiles[startIndex + i]
-                                                        .iccid,
-                                                isLocked: widget.isLocked,
-                                                onToggle: (v) => widget.onToggle(
-                                                  widget.profiles[startIndex + i],
-                                                  v,
-                                                ),
-                                                onMenu: () => widget.onMenu(
-                                                  widget.profiles[startIndex + i],
-                                                  widget.getCardKey(
-                                                    widget.profiles[startIndex + i]
-                                                        .iccid,
-                                                  ) as GlobalKey,
-                                                ),
-                                                onTagTap: () => widget.onTagTap(
-                                                  widget.profiles[startIndex + i],
-                                                ),
-                                              ),
-                                            )
-                                          : const SizedBox.shrink(),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            );
-                          },
-                          childCount: (widget.profiles.length / crossAxisCount)
-                              .ceil(),
-                        ),
-                      ),
+                sliver: grid,
               ),
             ],
           );
@@ -191,43 +221,20 @@ class _ProfileListSectionState extends State<ProfileListSection> {
           parent: AlwaysScrollableScrollPhysics(),
         ),
         slivers: [
-          SliverToBoxAdapter(
-            child: ListenableBuilder(
-              listenable: PluginManager(),
-              builder: (context, _) {
-                return Column(
-                  children: PluginManager().buildHeaders(context, widget.eid),
-                );
-              },
-            ),
-          ),
+          _buildHeaders(),
           SliverPadding(
             padding: EdgeInsets.only(
-              left: widget.padding,
-              right: widget.padding,
+              left: widget.padding + inset.left,
+              right: widget.padding + inset.right,
               top: widget.paddingV,
               bottom: widget.paddingV + 80,
             ),
             sliver: SliverList(
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final p = widget.profiles[index];
-                final cardKey = widget.getCardKey(p.iccid) as GlobalKey;
-                return RepaintBoundary(
-                  child: ProfileCard(
-                    key: ValueKey(p.iccid),
-                    cardKey: cardKey,
-                    profile: p,
-                    eid: widget.eid,
-                    isToggling: widget.togglingIccid == p.iccid,
-                    isDeleting: widget.deletingIccid == p.iccid,
-                    isLocked: widget.isLocked,
-                    isCompact: true,
-                    onToggle: (v) => widget.onToggle(p, v),
-                    onMenu: () => widget.onMenu(p, cardKey),
-                    onTagTap: () => widget.onTagTap(p),
-                  ),
-                );
-              }, childCount: widget.profiles.length),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) =>
+                    _buildCard(widget.profiles[index], isCompact: true),
+                childCount: widget.profiles.length,
+              ),
             ),
           ),
         ],

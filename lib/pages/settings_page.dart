@@ -28,6 +28,7 @@ import '../utils/platform_adapter.dart';
 import '../utils/imei_codec.dart';
 import '../services/update_service.dart';
 import '../utils/update_utils.dart';
+import '../theme/adaptive_layout.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -232,8 +233,8 @@ class SettingsPage extends StatelessWidget {
         return StyledHeaderScaffold(
           title: l10n.settingsTitle,
           subtitle: AppSettings().versionDisplay,
-          body: LayoutBuilder(
-            builder: (context, constraints) {
+          body: FoldAwareBuilder(
+            builder: (context, constraints, fold) {
               final double width = constraints.maxWidth;
               // "for every 450px add 1 more column"
               final int colCount = (width / 450).floor().clamp(1, 10);
@@ -380,6 +381,29 @@ class SettingsPage extends StatelessWidget {
                   ],
                 ),
               ];
+
+              if (fold != null) {
+                // Keep every section on one side of the fold.
+                return CustomScrollView(
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      sliver: SliverSpanColumns(
+                        columns: foldColumns(
+                          start: 20,
+                          end: width - 20,
+                          fold: fold,
+                          minColumnWidth: 418,
+                          spacing: 32,
+                        ),
+                        itemCount: allSections.length,
+                        mainAxisSpacing: 32,
+                        itemBuilder: (context, index) => allSections[index],
+                      ),
+                    ),
+                  ],
+                );
+              }
 
               return MasonryGridView.count(
                 padding: const EdgeInsets.all(20),
