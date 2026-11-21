@@ -5770,6 +5770,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t send the report. Check your connection and try again.'**
   String get errorReportFailed;
+
+  /// No description provided for @linklanPasswordHint.
+  ///
+  /// In en, this message translates to:
+  /// **'6-digit card password (default: last six digits of the EID)'**
+  String get linklanPasswordHint;
 }
 
 class _AppLocalizationsDelegate
