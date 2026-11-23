@@ -283,6 +283,11 @@ internal class OmapiCleanupCoordinator<C>(
                 cleanupReaderLocked(readerName)
             }
 
+    /** Forgets a reader whose channels the service already closed, without closing anything. */
+    fun discardInvalidatedReader(readerName: String) {
+        cleanupLock.withLock { detachReader(readerName) }
+    }
+
     fun cleanupChannel(
             readerName: String,
             channelKey: String,

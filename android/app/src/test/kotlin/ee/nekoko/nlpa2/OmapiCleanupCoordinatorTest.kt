@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -125,6 +126,23 @@ class OmapiCleanupCoordinatorTest {
     companion object {
         private val BOOT_ONE = OmapiBootIdentity(bootCount = 40L, kernelBootId = "boot-one")
         private val BOOT_TWO = OmapiBootIdentity(bootCount = 41L, kernelBootId = "boot-two")
+    }
+
+    @Test
+    fun discardingAnInvalidatedReaderNeverClosesItsChannels() {
+        val fixture =
+                Fixture(
+                        sessions = mutableSetOf("SIM2"),
+                        channels = mutableMapOf("SIM2" to mutableListOf("isd-r")),
+                        successfulReaders = mutableSetOf("SIM2"),
+                )
+
+        fixture.coordinator.discardInvalidatedReader("SIM2")
+
+        assertTrue(fixture.backend.closed.isEmpty())
+        assertTrue(fixture.sessions.isEmpty() && fixture.channels.isEmpty())
+        assertTrue(fixture.successfulReaders.isEmpty())
+        assertNull(fixture.coordinator.poisonInfo)
     }
 
     @Test

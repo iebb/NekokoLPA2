@@ -296,15 +296,17 @@ class OmapiAdapter extends BaseAdapter {
   }
 
   @override
-  Future<void> reconnect() async {
+  Future<void> reconnect({bool resetService = true}) async {
     return await runExclusive(() async {
       _safety.ensureAvailable();
-      log.info('Hard reconnect for OMAPI reader: $_internalReaderName');
-      try {
-        await _invoke('reset');
-      } catch (e) {
-        log.warning('OMAPI reset failed: $e');
-        if (isOmapiSessionCorruptedError(e)) rethrow;
+      if (resetService) {
+        log.info('Hard reconnect for OMAPI reader: $_internalReaderName');
+        try {
+          await _invoke('reset');
+        } catch (e) {
+          log.warning('OMAPI reset failed: $e');
+          if (isOmapiSessionCorruptedError(e)) rethrow;
+        }
       }
       final reader = connectedReader;
       if (reader != null) {
@@ -476,6 +478,9 @@ class OmapiAdapter extends BaseAdapter {
 
         return HexUtils.hexToBytes(responseHex);
       } catch (e) {
+        if (isOmapiProfileSwitchResponseLost(e)) {
+          _clearChannelTracking();
+        }
         if (e is PlatformException && e.code == 'BUSY') {
           throw CardBusyException(
             e.message ?? 'Card busy - session unavailable',

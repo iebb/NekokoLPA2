@@ -44,6 +44,18 @@ class ProfileStateVerificationException implements Exception {
   }
 }
 
+/// Thrown by a submit callback when the command may already have taken effect
+/// but its response was lost and the transport has discarded the stale
+/// session. The transition then only verifies: no reconnect, no replay.
+class ProfileStateCommandOutcomeUnknown implements Exception {
+  const ProfileStateCommandOutcomeUnknown(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'Profile state command outcome unknown: $cause';
+}
+
 /// Coordinates an idempotent profile state command with independent reads.
 ///
 /// A lost Bluetooth response makes the command outcome ambiguous. This helper
@@ -79,6 +91,7 @@ class ProfileStateTransition {
     var verificationAttempts = 0;
     bool? lastObservedEnabled;
     Object? lastError;
+    var verifyOnly = false;
 
     for (
       var commandAttempt = 1;
@@ -91,6 +104,9 @@ class ProfileStateTransition {
       Object? lastVerificationError;
       try {
         await submit(commandAttempt);
+      } on ProfileStateCommandOutcomeUnknown catch (error) {
+        lastError = error;
+        verifyOnly = true;
       } catch (error) {
         if (!isTransient(error)) rethrow;
         lastError = error;
@@ -126,7 +142,7 @@ class ProfileStateTransition {
                   maxTransientVerificationFailuresWithoutRead) {
             rethrow;
           }
-          await _reconnectIfPossible(reconnect, isTransient);
+          if (!verifyOnly) await _reconnectIfPossible(reconnect, isTransient);
         }
       }
 
@@ -136,6 +152,7 @@ class ProfileStateTransition {
         throw lastVerificationError;
       }
 
+      if (verifyOnly) break;
       if (commandAttempt < maxCommandAttempts) {
         await _reconnectIfPossible(reconnect, isTransient);
       }
