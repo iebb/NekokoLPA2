@@ -161,6 +161,15 @@ class LinklanProtocol {
       throw const FormatException('truncated varint');
     }
 
+    Uint8List take(int length) {
+      if (length < 0 || length > data.length - i) {
+        throw const FormatException('truncated protobuf field');
+      }
+      final value = Uint8List.fromList(data.sublist(i, i + length));
+      i += length;
+      return value;
+    }
+
     while (i < data.length) {
       final key = readVarint();
       final field = key >>> 3;
@@ -169,15 +178,11 @@ class LinklanProtocol {
         case 0:
           out[field] = readVarint();
         case 1:
-          out[field] = Uint8List.fromList(data.sublist(i, i + 8));
-          i += 8;
+          out[field] = take(8);
         case 2:
-          final len = readVarint();
-          out[field] = Uint8List.fromList(data.sublist(i, i + len));
-          i += len;
+          out[field] = take(readVarint());
         case 5:
-          out[field] = Uint8List.fromList(data.sublist(i, i + 4));
-          i += 4;
+          out[field] = take(4);
         default:
           throw FormatException('unsupported protobuf wire type $wire');
       }
@@ -414,6 +419,17 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
   /// The password this link authenticated with, for the settings screen.
   String? _password;
   String? get password => _password;
+
+  /// Whether the PSK in use came from the stored password, not the prompt.
+  bool _pskFromStorage = false;
+
+  /// Whether the card proved the session key in its handshake reply. It may
+  /// leave the proof out, and then a wrong password only shows when the first
+  /// reply fails to decrypt.
+  bool _sessionProven = true;
+
+  /// Whether a reply has decrypted under the current session key.
+  bool _sessionDecrypted = false;
 
   Uint8List? _key;
   Uint8List? _nonce;
@@ -710,6 +726,7 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
     _checkLink();
     if (stored != null) {
       _psk = LinklanProtocol.pskFromPassword(stored);
+      _pskFromStorage = true;
       try {
         await _authenticate(challengeProto: challengeProto);
         _checkLink();
@@ -739,6 +756,7 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
 
     final trimmed = typed.trim();
     _psk = LinklanProtocol.pskFromPassword(trimmed);
+    _pskFromStorage = false;
     // A challenge that already failed a proof cannot be reused, so ask for a
     // new one and replay it.
     await _authenticate();
@@ -894,11 +912,11 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
       );
     }
     // SecurityProtocol{ 2: SecurityAuth{ 1: devRandom } }
-    final protocol = LinklanProtocol.pbDecode(classified.value);
+    final protocol = _decodeReply(classified.value);
     final auth = LinklanProtocol.pbBytesOf(protocol, 2);
     final devRandom = auth == null
         ? null
-        : LinklanProtocol.pbBytesOf(LinklanProtocol.pbDecode(auth), 1);
+        : LinklanProtocol.pbBytesOf(_decodeReply(auth), 1);
     if (devRandom == null || devRandom.length != 16) {
       throw AppException(
         AppErrorCode.ERROR_REMOTE_AUTH_FAILED,
@@ -933,7 +951,7 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
             '${result.code != 0 ? ' ${result.code}' : ''})',
       );
     }
-    final protocolMessage = LinklanProtocol.pbDecode(result.value);
+    final protocolMessage = _decodeReply(result.value);
     final config = LinklanProtocol.pbBytesOf(protocolMessage, 3);
     if (config == null) {
       throw AppException(
@@ -941,7 +959,7 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
         message: 'Linklan: handshake answered without a config',
       );
     }
-    final fields = LinklanProtocol.pbDecode(config);
+    final fields = _decodeReply(config);
     final nonce = LinklanProtocol.pbBytesOf(fields, 1);
     final aad = LinklanProtocol.pbBytesOf(fields, 2);
     if (nonce == null || nonce.length != 12 || aad == null) {
@@ -950,13 +968,9 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
         message: 'Linklan: config without a 12-byte nonce/aad',
       );
     }
-    // A wrong password surfaces here.
-    if (!LinklanProtocol.verifyUpdateProof(
-      mac,
-      nonce,
-      aad,
-      LinklanProtocol.pbBytesOf(fields, 3),
-    )) {
+    // A wrong password surfaces here, unless the card left the proof out.
+    final updateProof = LinklanProtocol.pbBytesOf(fields, 3);
+    if (!LinklanProtocol.verifyUpdateProof(mac, nonce, aad, updateProof)) {
       throw AppException(
         AppErrorCode.ERROR_REMOTE_WRONG_PASSWORD,
         message: 'Linklan: the card rejected our proof (wrong password)',
@@ -967,6 +981,8 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
     _nonce = nonce;
     _aad = aad;
     _counter = 0;
+    _sessionProven = updateProof != null;
+    _sessionDecrypted = false;
     _authenticated = true;
     _log.info('Linklan secure channel established');
     return;
@@ -1010,13 +1026,31 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
       try {
         plain = LinklanProtocol.aesCcmDecrypt(key, nonce, aad, result.value);
       } catch (_) {
-        final failure = AppException(
-          AppErrorCode.ERROR_REMOTE_AUTH_FAILED,
-          message: 'Linklan: invalid session reply',
-        );
+        // With no proof in the handshake, the first reply failing to decrypt is
+        // how a wrong password shows. The link is broken by then, so forget a
+        // stored password and let the next connect ask for it.
+        final wrongPassword = !_sessionProven && !_sessionDecrypted;
+        final deviceName = _deviceName;
+        if (wrongPassword && _pskFromStorage && deviceName != null) {
+          _log.warning('Linklan: forgetting the stored password it rejected');
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(storedPasswordKey(deviceName));
+        }
+        final failure = wrongPassword
+            ? AppException(
+                AppErrorCode.ERROR_REMOTE_WRONG_PASSWORD,
+                message:
+                    'Linklan: the card did not accept the password; '
+                    'connect again to enter it',
+              )
+            : AppException(
+                AppErrorCode.ERROR_REMOTE_AUTH_FAILED,
+                message: 'Linklan: invalid session reply',
+              );
         _breakLink(failure);
         throw failure;
       }
+      _sessionDecrypted = true;
       return plain;
     }
     if (result.kind == 'error' && result.code == 5 && reauthBudget > 0) {
@@ -1084,15 +1118,29 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
     return (result: result, channel: channel);
   }
 
+  /// Decodes a reply from the card, reporting a malformed one as a failed
+  /// transaction rather than a raw [FormatException].
+  static Map<int, Object> _decodeReply(Uint8List data) {
+    try {
+      return LinklanProtocol.pbDecode(data);
+    } on FormatException catch (e) {
+      throw AppException(
+        AppErrorCode.ERROR_TRANSACTION_FAILED,
+        message: 'Linklan: malformed reply (${e.message})',
+        originalError: e,
+      );
+    }
+  }
+
   /// `SmartCardRsp{1: cmd, 2: result, 3: OpenChannelRsp{1: packed channels}}`.
   static ({int result, int channel, List<int> candidates}) parseOpenChannelRsp(
     Uint8List message,
   ) {
-    final decoded = LinklanProtocol.pbDecode(message);
+    final decoded = _decodeReply(message);
     final payload = LinklanProtocol.pbBytesOf(decoded, 3);
     final packed = payload == null
         ? null
-        : LinklanProtocol.pbBytesOf(LinklanProtocol.pbDecode(payload), 1);
+        : LinklanProtocol.pbBytesOf(_decodeReply(payload), 1);
     final candidates = LinklanAdapter.channelCandidatesFromOpenChannelRsp(
       packed,
     );
@@ -1305,11 +1353,14 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
     _forgetChannel();
     if (channel == 0 || !_authenticated || _linkBroken) return;
     try {
+      // A re-challenge here must not start a handshake, which could open the
+      // password dialog in the middle of a disconnect.
       final rsp = await _request(
         LinklanProtocol.cmdScard,
         LinklanProtocol.closeChannel(channel),
+        0,
       );
-      final result = LinklanProtocol.pbIntOf(LinklanProtocol.pbDecode(rsp), 2);
+      final result = LinklanProtocol.pbIntOf(_decodeReply(rsp), 2);
       if (result == 0) {
         _log.fine('Linklan: channel $channel closed');
       } else {
@@ -1345,7 +1396,7 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
       6,
       timeout,
     );
-    final message = LinklanProtocol.pbDecode(response);
+    final message = _decodeReply(response);
     final transmitApduResponse = LinklanProtocol.pbBytesOf(message, 4);
     if (transmitApduResponse == null) {
       // Bridge could not use the channel.
@@ -1362,7 +1413,7 @@ class LinklanAdapter extends BaseAdapter implements BleAdapter {
         message: 'Linklan: no transmitApdu response',
       );
     }
-    final inner = LinklanProtocol.pbDecode(transmitApduResponse);
+    final inner = _decodeReply(transmitApduResponse);
     final sw1 = LinklanProtocol.unzigzag(LinklanProtocol.pbIntOf(inner, 1));
     final sw2 = LinklanProtocol.unzigzag(LinklanProtocol.pbIntOf(inner, 2));
     return (

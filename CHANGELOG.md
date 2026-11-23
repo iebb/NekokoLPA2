@@ -4,7 +4,11 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Linklan/Linksfield BLE-eSIM Bluetooth readers (#64). The card's six-digit password defaults to the last six digits of its EID; it is asked for on first use, and asked for again on the next connect if the card turns it down.
+
 ### Fixed
+- OMAPI: when the SIM reloads during a profile switch and the reply is lost, read the profile state back on fresh channels instead of requiring a device restart (#60). The restart lock stays when the slot does not reload or an old channel is still open.
 - QRTR reader: give the card up to 30 seconds to answer an APDU instead of 2. A command the eUICC took longer over, such as a signature or a block of a profile, was reported as "qrtr did not answer", which could break a download partway and use up the profile.
 
 ## [2.6.0+607] - 2026-11-21

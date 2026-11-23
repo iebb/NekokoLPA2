@@ -726,6 +726,75 @@ void main() {
         expect(card.apdus.length, count);
       },
     );
+
+    test(
+      'forgets a stored password the card rejected without a proof',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          LinklanAdapter.storedPasswordKey(reader.name): 'wrong-password',
+        });
+        card
+          ..acceptAnyProof = true
+          ..sendProof = false;
+        await expectLater(
+          adapter.connect(reader),
+          throwsA(_error(AppErrorCode.ERROR_REMOTE_WRONG_PASSWORD)),
+        );
+        final prefs = await SharedPreferences.getInstance();
+        expect(
+          prefs.getString(LinklanAdapter.storedPasswordKey(reader.name)),
+          isNull,
+        );
+      },
+    );
+
+    test('keeps the stored password when the proof is left out', () async {
+      card.sendProof = false;
+      await connect();
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getString(LinklanAdapter.storedPasswordKey(reader.name)),
+        _password,
+      );
+    });
+
+    test(
+      'a re-challenge while closing the channel starts no handshake',
+      () async {
+        await connect();
+        final handshakes = card.handshakes;
+        card.challengeOnClose = true;
+        await adapter.disconnect();
+        expect(card.closes, 1);
+        expect(card.handshakes, handshakes);
+      },
+    );
+  });
+
+  group('protobuf decoding', () {
+    test('rejects a length that runs past the end', () {
+      // Field 2, length 5, three bytes.
+      expect(
+        () => LinklanProtocol.pbDecode(hex('1205010203')),
+        throwsFormatException,
+      );
+      // Fixed64 with four bytes, fixed32 with two.
+      expect(
+        () => LinklanProtocol.pbDecode(hex('0901020304')),
+        throwsFormatException,
+      );
+      expect(
+        () => LinklanProtocol.pbDecode(hex('0d0102')),
+        throwsFormatException,
+      );
+    });
+
+    test('reports a malformed open-channel reply as a failed transaction', () {
+      expect(
+        () => LinklanAdapter.parseOpenChannelRsp(hex('1a05')),
+        throwsA(_error(AppErrorCode.ERROR_TRANSACTION_FAILED)),
+      );
+    });
   });
 }
 
@@ -795,6 +864,8 @@ class _Card extends Fake implements BluetoothDevice {
   (int, List<int>) Function(_Apdu) reply = (_) => (0x9000, []);
   int opens = 0, closes = 0, resets = 0, disconnects = 0, reportedMtu = 247;
   bool hasAckWriter = true, deferReply = false;
+  bool sendProof = true, acceptAnyProof = false, challengeOnClose = false;
+  int handshakes = 0;
   Uint8List? lateReply;
   Completer<void>? holdNextWrite;
   final random = Uint8List(16), base = Uint8List(12), aad = Uint8List(16);
@@ -883,8 +954,10 @@ class _Card extends Fake implements BluetoothDevice {
         random,
         cli,
       );
-      if (LinklanProtocol.bytesToHex(auth[2] as Uint8List) !=
-          LinklanProtocol.bytesToHex(LinklanProtocol.authProof(mac, cli))) {
+      handshakes++;
+      if (!acceptAnyProof &&
+          LinklanProtocol.bytesToHex(auth[2] as Uint8List) !=
+              LinklanProtocol.bytesToHex(LinklanProtocol.authProof(mac, cli))) {
         return LinklanProtocol.pbInt(5, 5);
       }
       key = mac.sublist(16);
@@ -895,15 +968,27 @@ class _Card extends Fake implements BluetoothDevice {
           join([
             bytes(1, base),
             bytes(2, aad),
-            bytes(3, LinklanProtocol.authProof(mac, join([base, aad]))),
+            if (sendProof)
+              bytes(3, LinklanProtocol.authProof(mac, join([base, aad]))),
           ]),
         ),
       );
     }
     final nonce = LinklanProtocol.nonceFor(base, security[1] as int);
-    final request = decode(
-      LinklanProtocol.aesCcmDecrypt(key, nonce, aad, security[2] as Uint8List),
-    );
+    final Uint8List plain;
+    try {
+      plain = LinklanProtocol.aesCcmDecrypt(
+        key,
+        nonce,
+        aad,
+        security[2] as Uint8List,
+      );
+    } on StateError {
+      // The client keyed the session with another password: answer with a
+      // ciphertext it cannot open either.
+      return bytes(2, Uint8List(24));
+    }
+    final request = decode(plain);
     var response = hex('0801');
     if (request[1] == LinklanProtocol.cmdScard) {
       final scard = decode(request[2] as Uint8List);
@@ -912,6 +997,7 @@ class _Card extends Fake implements BluetoothDevice {
         response = bytes(3, bytes(1, [4])); // channel 2
       } else if (scard[1] == LinklanProtocol.scardClose) {
         closes++;
+        if (challengeOnClose) return bytes(3, bytes(2, bytes(1, random)));
       } else if (scard[1] == LinklanProtocol.scardTransmit) {
         final fields = decode(scard[4] as Uint8List);
         int field(int n) =>
