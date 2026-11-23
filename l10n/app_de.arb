@@ -1211,5 +1211,6 @@
       }
     }
   },
-  "errorReportFailed": "Couldn't send the report. Check your connection and try again."
+  "errorReportFailed": "Couldn't send the report. Check your connection and try again.",
+  "linklanPasswordHint": "6-digit card password (default: last six digits of the EID)"
 }
