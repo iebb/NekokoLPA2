@@ -10,6 +10,7 @@ import '../utils/iccid_formatter.dart';
 import 'dart:math';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
+import '../utils/profile_redaction.dart';
 import '../utils/platform_adapter.dart';
 import '../l10n/app_localizations.dart';
 import '../settings/app_settings.dart';
@@ -304,7 +305,11 @@ class LocalNotificationService {
       }
 
       if (dateTag == null && content == "No date tag found") {
-        content = "ICCID: ${IccidFormatter.forDisplay(profile.iccid)}";
+        // Redacted at schedule time, like every other ICCID display;
+        // a notification scheduled before full-hide was enabled keeps
+        // the value it was scheduled with until it is rescheduled.
+        content =
+            "ICCID: ${IccidFormatter.forDisplay(ProfileRedaction.redactIccid(profile.iccid))}";
       }
 
       // final scheduledTime = tz.TZDateTime.now(tz.local).add(const Duration(seconds: 5)); // Removed

@@ -2529,7 +2529,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
                 enable ? l10n.seHalSwitchTitle : l10n.seHalDisableTitle,
               ),
               content: Text(
-                '${p.displayName}\nICCID: ${p.iccid}\n\n${enable ? l10n.seHalEnableWarning : l10n.seHalDisableWarning}',
+                '${p.displayName}\nICCID: ${ProfileRedaction.redactIccid(p.iccid)}\n\n${enable ? l10n.seHalEnableWarning : l10n.seHalDisableWarning}',
               ),
               actions: [
                 TextButton(
@@ -3447,7 +3447,11 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     Clipboard.setData(ClipboardData(text: profile.iccid));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(AppLocalizations.of(context)!.iccidCopied(profile.iccid)),
+        content: Text(
+          AppLocalizations.of(
+            context,
+          )!.iccidCopied(ProfileRedaction.redactIccid(profile.iccid)),
+        ),
         duration: const Duration(seconds: 2),
       ),
     );
@@ -3978,7 +3982,9 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     if (profile.profileClass == 1) {
       classStr = AppLocalizations.of(context)!.provisioning;
     }
-    final displayIccid = IccidFormatter.forDisplay(profile.iccid);
+    final displayIccid = IccidFormatter.forDisplay(
+      ProfileRedaction.redactIccid(profile.iccid),
+    );
 
     final l10n = AppLocalizations.of(context)!;
     _showPremiumInfoDialog(

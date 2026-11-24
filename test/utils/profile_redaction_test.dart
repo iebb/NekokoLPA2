@@ -390,7 +390,7 @@ void main() {
     });
 
     test('does not mark complete when a flag write fails', () async {
-      final store = _FailingFlagWriteStore({
+      final store = _FailingWriteStore({
         'flutter.redactEidFirst': true,
         'flutter.redactEidMiddle': false,
         'flutter.redactEidLast': true,
@@ -398,6 +398,7 @@ void main() {
         'flutter.redactIccidMiddle': true,
         'flutter.redactIccidLast': true,
       });
+      store.failingKeys.add('flutter.redactEidMiddle');
       SharedPreferences.setMockInitialValues({
         'redactEidFirst': true,
         'redactEidMiddle': false,
@@ -421,13 +422,110 @@ void main() {
       expect(await store.persisted('flutter.redactEidFirst'), isFalse);
 
       // The retry, with writes succeeding, finishes from the snapshot.
-      store.failMiddleWrite = false;
+      store.failingKeys.clear();
       await AppSettings.migrateRedactionFlags(prefs);
       expect(await store.persisted('flutter.redactEidMiddle'), isTrue);
       expect(
         await store.persisted('flutter.redactionFlagsMigratedV2'),
         isTrue,
       );
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('init loads converted values when the snapshot write fails',
+        () async {
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': false,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigrationSourceV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': false,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      // The migration bailed out, but this run still shows the converted
+      // values instead of reading old show-segment flags as new
+      // mask-segment flags.
+      expect(settings.redactEidFirst, isFalse);
+      expect(settings.redactEidMiddle, isTrue);
+      expect(settings.redactEidLast, isFalse);
+      expect(settings.redactIccidFirst, isFalse);
+      expect(settings.redactIccidMiddle, isFalse);
+      expect(settings.redactIccidLast, isFalse);
+      expect(
+        await store.persisted('flutter.redactionFlagsMigratedV2'),
+        isNull,
+      );
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('edits made before a migration retry are preserved', () async {
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': false,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': false,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      // The marker write failed, so the migration is still pending; the
+      // flags themselves landed.
+      expect(
+        await store.persisted('flutter.redactionFlagsMigratedV2'),
+        isNull,
+      );
+      expect(settings.redactIccidFirst, isFalse);
+
+      // The user enables masking for the ICCID first segment before the
+      // next startup retries the migration.
+      await settings.setRedactIccidFirst(true);
+      expect(
+        (jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationSourceV2')
+              as String,
+        ) as Map)['redactIccidFirst'],
+        isFalse,
+      );
+
+      // The retry recomputes the edited value instead of overwriting it.
+      // Simulate a relaunch with a fresh prefs instance reading only what
+      // actually persisted: the old instance's optimistic cache would
+      // claim the failed marker write succeeded and skip the retry.
+      store.failingKeys.clear();
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await AppSettings.migrateRedactionFlags(prefs);
+      expect(prefs.getBool('redactIccidFirst'), isTrue);
+      expect(prefs.getBool('redactionFlagsMigratedV2'), isTrue);
 
       // Restore the default mock store for the tests after this one.
       SharedPreferences.setMockInitialValues({});
@@ -463,16 +561,16 @@ void main() {
   });
 }
 
-/// An in-memory prefs store that can fail one flag write, to prove the
-/// migration does not mark itself complete on a partial write.
-class _FailingFlagWriteStore extends InMemorySharedPreferencesStore {
-  _FailingFlagWriteStore(super.data) : super.withData();
+/// An in-memory prefs store that can fail chosen writes, to prove the
+/// migration copes with partial failures.
+class _FailingWriteStore extends InMemorySharedPreferencesStore {
+  _FailingWriteStore(super.data) : super.withData();
 
-  var failMiddleWrite = true;
+  final Set<String> failingKeys = {};
 
   @override
   Future<bool> setValue(String valueType, String key, Object value) async {
-    if (failMiddleWrite && key == 'flutter.redactEidMiddle') return false;
+    if (failingKeys.contains(key)) return false;
     return super.setValue(valueType, key, value);
   }
 
