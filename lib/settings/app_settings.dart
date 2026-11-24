@@ -1279,9 +1279,23 @@ class AppSettings extends ChangeNotifier {
     final prefs = _prefs;
     if (prefs == null) return true;
     if (_migrationCompleted) return true;
+    final previous = prefs.getString(_migrationEditsKey);
     final edits = _readMigrationEdits(prefs);
     edits[key] = newValue;
-    return await prefs.setString(_migrationEditsKey, jsonEncode(edits));
+    if (await prefs.setString(_migrationEditsKey, jsonEncode(edits))) {
+      return true;
+    }
+    // The failed write still replaced the in-memory cache, so restore
+    // the previous record: otherwise a later successful edit would read
+    // the rejected edit from the cache and persist it. The restore is
+    // itself an optimistic write, so the cache is fixed even if the
+    // store write fails again (the store never received the new value).
+    if (previous == null) {
+      await prefs.remove(_migrationEditsKey);
+    } else {
+      await prefs.setString(_migrationEditsKey, previous);
+    }
+    return false;
   }
 
   /// Sets one segment flag, recording the edit first when the migration
