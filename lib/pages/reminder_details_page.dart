@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/profile_metadata_service.dart';
 import '../../utils/iccid_formatter.dart';
+import '../../utils/profile_redaction.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/styled_header_scaffold.dart';
 
@@ -67,7 +68,9 @@ class _ReminderDetailsPageState extends State<ReminderDetailsPage> {
               const SizedBox(height: 16),
               Text(l10n.profileNotFound),
               const SizedBox(height: 8),
-              Text("${l10n.iccid}: ${IccidFormatter.forDisplay(widget.iccid)}"),
+              Text(
+                "${l10n.iccid}: ${IccidFormatter.forDisplay(ProfileRedaction.redactIccid(widget.iccid))}",
+              ),
             ],
           ),
         ),
@@ -153,15 +156,19 @@ class _ReminderDetailsPageState extends State<ReminderDetailsPage> {
                   _buildDetailRow(
                     context,
                     l10n.iccid,
-                    IccidFormatter.forDisplay(p.iccid),
+                    IccidFormatter.forDisplay(
+                      ProfileRedaction.redactIccid(p.iccid),
+                    ),
                   ),
                   _buildDetailRow(
                     context,
                     "EID",
                     IccidFormatter.forDisplay(
-                      widget.eid.isEmpty
-                          ? (p.eid ?? l10n.unavailable)
-                          : widget.eid,
+                      widget.eid.isNotEmpty
+                          ? ProfileRedaction.redactEid(widget.eid)
+                          : (p.eid == null
+                              ? l10n.unavailable
+                              : ProfileRedaction.redactEid(p.eid!)),
                     ),
                   ), // Use notification EID if valid
                   _buildDetailRow(

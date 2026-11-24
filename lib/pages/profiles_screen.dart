@@ -844,7 +844,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
                         Text(reader.id, style: const TextStyle(fontSize: 10)),
                         if (eid != null)
                           Text(
-                            "EID: $eid",
+                            "EID: ${ProfileRedaction.redactEid(eid)}",
                             style: AppTheme.mono(
                               const TextStyle(
                                 fontSize: 10,

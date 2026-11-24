@@ -522,6 +522,15 @@ class AppSettings extends ChangeNotifier {
   static const _migrationMarkerKey = 'redactionFlagsMigratedV2';
   static const _migrationSnapshotKey = 'redactionFlagsMigrationSourceV2';
 
+  /// Edits made to the segment flags while the migration is still
+  /// pending, recorded in new-semantics terms. A retry writes these
+  /// values as-is instead of recomputing them from the snapshot, so an
+  /// edit can never be undone by the frozen pre-migration values — and
+  /// the coupled EID pair is recorded together, not inverted flag by
+  /// flag into the snapshot (inverting only Last of the conservative
+  /// old pair would flip the middle back to visible on retry).
+  static const _migrationEditsKey = 'redactionFlagsMigrationEditsV2';
+
   /// Converts stored old-semantics flag values ("show this segment") to
   /// the new "mask this segment" values. The EID segment boundaries
   /// changed with the new defaults: the middle range now runs to
@@ -544,26 +553,46 @@ class AppSettings extends ChangeNotifier {
   }
 
   /// New-semantics flag values for the current run, given the stored
-  /// values and the migration snapshot (if one exists). A key already at
-  /// its converted value is taken as-is, a key still at its snapshot
-  /// value takes the converted value, and a key that matches neither was
-  /// edited after the snapshot, so the stored (new-semantics) value is
-  /// trusted. With no snapshot every stored value is still old-semantics
-  /// and is converted.
+  /// values, the migration snapshot (if one exists), and edits made
+  /// while the migration is pending. A key already at its converted
+  /// value is taken as-is, a key still at its snapshot value takes the
+  /// converted value, and a key that matches neither was edited after
+  /// the snapshot, so the stored (new-semantics) value is trusted. With
+  /// no snapshot every stored value is still old-semantics and is
+  /// converted. Recorded edits win over anything recomputed: they are
+  /// new-semantics values the user chose.
   static Map<String, bool> _displayValues(
     Map<String, bool> stored,
     Map<String, bool>? source,
+    Map<String, bool> edits,
   ) {
-    if (source == null) return _convertedFlags(stored);
-    final targets = _convertedFlags(source);
-    return {
-      for (final entry in stored.entries)
-        entry.key: entry.value == targets[entry.key]
-            ? entry.value
-            : entry.value == source[entry.key]
-                ? targets[entry.key]!
-                : entry.value,
-    };
+    final Map<String, bool> base;
+    if (source == null) {
+      base = _convertedFlags(stored);
+    } else {
+      final targets = _convertedFlags(source);
+      base = {
+        for (final entry in stored.entries)
+          entry.key: entry.value == targets[entry.key]
+              ? entry.value
+              : entry.value == source[entry.key]
+                  ? targets[entry.key]!
+                  : entry.value,
+      };
+    }
+    return {...base, ...edits};
+  }
+
+  /// Reads the pending migration edits, or an empty map when there are
+  /// none or the record is corrupt.
+  static Map<String, bool> _readMigrationEdits(SharedPreferences prefs) {
+    final raw = prefs.getString(_migrationEditsKey);
+    if (raw == null) return <String, bool>{};
+    try {
+      return Map<String, bool>.from(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return <String, bool>{};
+    }
   }
 
   /// Reads the migration snapshot, or null when there is none or it is
@@ -591,6 +620,9 @@ class AppSettings extends ChangeNotifier {
   /// unmask a segment the user had masked. If the snapshot itself cannot
   /// be stored, nothing is flipped and the next startup retries cleanly.
   /// The snapshot is left in place afterwards as the migration's record.
+  /// Edits made while the migration is pending are recorded separately
+  /// (see [_migrationEditsKey]) and win over the snapshot on retry, so
+  /// they are never undone by the frozen pre-migration values.
   /// `init()` loads the in-memory flags through [_displayValues], so a run
   /// whose migration did not complete still shows the converted values.
   ///
@@ -614,6 +646,9 @@ class AppSettings extends ChangeNotifier {
       }
     }
     final targets = _convertedFlags(source);
+    // Edits made while the migration was pending win over the snapshot:
+    // they are the values the user chose, in new-semantics terms.
+    targets.addAll(_readMigrationEdits(prefs));
     var allWritesSucceeded = true;
     for (final entry in targets.entries) {
       if (!await prefs.setBool(entry.key, entry.value)) {
@@ -624,7 +659,12 @@ class AppSettings extends ChangeNotifier {
     // otherwise the next startup retries from the snapshot instead of
     // reinterpreting a stale value under the new semantics.
     if (!allWritesSucceeded) return false;
-    return await prefs.setBool(_migrationMarkerKey, true);
+    final markerOk = await prefs.setBool(_migrationMarkerKey, true);
+    if (markerOk) {
+      // The edits are now the stored values; drop the pending record.
+      await prefs.remove(_migrationEditsKey);
+    }
+    return markerOk;
   }
 
   Future<void> init() async {
@@ -669,13 +709,19 @@ class AppSettings extends ChangeNotifier {
     // show-segment flags as new mask-segment flags. Once migrated, the
     // stored values are already new-semantics and load as-is.
     final storedFlags = <String, bool>{};
-    for (final key in _segmentFlagKeys) {
-      final value = prefs?.getBool(key);
-      if (value != null) storedFlags[key] = value;
+    Map<String, bool>? snapshot;
+    var edits = <String, bool>{};
+    if (prefs != null) {
+      for (final key in _segmentFlagKeys) {
+        final value = prefs.getBool(key);
+        if (value != null) storedFlags[key] = value;
+      }
+      snapshot = _readMigrationSnapshot(prefs);
+      edits = _readMigrationEdits(prefs);
     }
     final displayFlags = migrated
         ? storedFlags
-        : _displayValues(storedFlags, _readMigrationSnapshot(prefs));
+        : _displayValues(storedFlags, snapshot, edits);
     _redactEidFirst = displayFlags['redactEidFirst'] ?? false;
     _redactEidMiddle = displayFlags['redactEidMiddle'] ?? true;
     _redactEidLast = displayFlags['redactEidLast'] ?? false;
@@ -1225,66 +1271,57 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Records a segment-flag edit in the pending migration snapshot (in
-  /// old-semantics terms) while the migration marker is unset, so a later
-  /// retry recomputes the edited value instead of overwriting it.
-  Future<void> _syncPendingMigration(String key, bool newValue) async {
+  /// Records a segment-flag edit made while the migration is still
+  /// pending, in new-semantics terms, so a later retry writes the edited
+  /// value instead of recomputing it from the frozen snapshot. Returns
+  /// false when the record itself cannot be stored.
+  Future<bool> _syncPendingMigrationEdit(String key, bool newValue) async {
     final prefs = _prefs;
-    if (prefs == null) return;
-    if (_migrationCompleted) return;
-    var source = _readMigrationSnapshot(prefs);
-    if (source == null) {
-      source = <String, bool>{};
-      for (final flagKey in _segmentFlagKeys) {
-        final stored = prefs.getBool(flagKey);
-        if (stored != null) source[flagKey] = stored;
-      }
-    }
-    source[key] = !newValue;
-    await prefs.setString(_migrationSnapshotKey, jsonEncode(source));
+    if (prefs == null) return true;
+    if (_migrationCompleted) return true;
+    final edits = _readMigrationEdits(prefs);
+    edits[key] = newValue;
+    return await prefs.setString(_migrationEditsKey, jsonEncode(edits));
   }
 
-  Future<void> setRedactEidFirst(bool value) async {
-    _redactEidFirst = value;
-    await _syncPendingMigration('redactEidFirst', value);
-    await _prefs?.setBool('redactEidFirst', value);
+  /// Sets one segment flag, recording the edit first when the migration
+  /// is still pending. If the record cannot be stored, the flag is left
+  /// untouched: persisting it would let the next startup read it as an
+  /// old-semantics value and negate it.
+  Future<void> _setSegmentFlag(
+    String key,
+    bool value,
+    void Function(bool value) setField,
+  ) async {
+    if (!await _syncPendingMigrationEdit(key, value)) return;
+    setField(value);
+    await _prefs?.setBool(key, value);
     notifyListeners();
   }
 
-  Future<void> setRedactEidMiddle(bool value) async {
-    _redactEidMiddle = value;
-    await _syncPendingMigration('redactEidMiddle', value);
-    await _prefs?.setBool('redactEidMiddle', value);
-    notifyListeners();
-  }
+  Future<void> setRedactEidFirst(bool value) =>
+      _setSegmentFlag('redactEidFirst', value, (v) => _redactEidFirst = v);
 
-  Future<void> setRedactEidLast(bool value) async {
-    _redactEidLast = value;
-    await _syncPendingMigration('redactEidLast', value);
-    await _prefs?.setBool('redactEidLast', value);
-    notifyListeners();
-  }
+  Future<void> setRedactEidMiddle(bool value) =>
+      _setSegmentFlag('redactEidMiddle', value, (v) => _redactEidMiddle = v);
 
-  Future<void> setRedactIccidFirst(bool value) async {
-    _redactIccidFirst = value;
-    await _syncPendingMigration('redactIccidFirst', value);
-    await _prefs?.setBool('redactIccidFirst', value);
-    notifyListeners();
-  }
+  Future<void> setRedactEidLast(bool value) =>
+      _setSegmentFlag('redactEidLast', value, (v) => _redactEidLast = v);
 
-  Future<void> setRedactIccidMiddle(bool value) async {
-    _redactIccidMiddle = value;
-    await _syncPendingMigration('redactIccidMiddle', value);
-    await _prefs?.setBool('redactIccidMiddle', value);
-    notifyListeners();
-  }
+  Future<void> setRedactIccidFirst(bool value) => _setSegmentFlag(
+    'redactIccidFirst',
+    value,
+    (v) => _redactIccidFirst = v,
+  );
 
-  Future<void> setRedactIccidLast(bool value) async {
-    _redactIccidLast = value;
-    await _syncPendingMigration('redactIccidLast', value);
-    await _prefs?.setBool('redactIccidLast', value);
-    notifyListeners();
-  }
+  Future<void> setRedactIccidMiddle(bool value) => _setSegmentFlag(
+    'redactIccidMiddle',
+    value,
+    (v) => _redactIccidMiddle = v,
+  );
+
+  Future<void> setRedactIccidLast(bool value) =>
+      _setSegmentFlag('redactIccidLast', value, (v) => _redactIccidLast = v);
 
   Future<void> setNicknameRedactionMode(NicknameRedactionMode value) async {
     _nicknameRedactionMode = value;
@@ -1355,21 +1392,18 @@ class AppSettings extends ChangeNotifier {
   Future<void> applyQuickRedactionPreset() async {
     _revealSensitiveProfileData = false;
     _fullHideSensitiveData = false;
-    _redactEidFirst = false;
-    _redactEidMiddle = true;
-    _redactEidLast = true;
-    _redactIccidFirst = true;
-    _redactIccidMiddle = true;
-    _redactIccidLast = true;
+    // The segment flags go through the setters so an edit made while
+    // the migration is still pending is recorded for the retry instead
+    // of being overwritten by the frozen snapshot on the next launch.
+    await setRedactEidFirst(false);
+    await setRedactEidMiddle(true);
+    await setRedactEidLast(true);
+    await setRedactIccidFirst(true);
+    await setRedactIccidMiddle(true);
+    await setRedactIccidLast(true);
     _nicknameRedactionMode = NicknameRedactionMode.hideNickname;
     _operatorRedactionMode = OperatorRedactionMode.countryName;
 
-    await _prefs?.setBool('redactEidFirst', _redactEidFirst);
-    await _prefs?.setBool('redactEidMiddle', _redactEidMiddle);
-    await _prefs?.setBool('redactEidLast', _redactEidLast);
-    await _prefs?.setBool('redactIccidFirst', _redactIccidFirst);
-    await _prefs?.setBool('redactIccidMiddle', _redactIccidMiddle);
-    await _prefs?.setBool('redactIccidLast', _redactIccidLast);
     await _prefs?.setInt('nicknameRedactionMode', _nicknameRedactionMode.index);
     await _prefs?.setInt('operatorRedactionMode', _operatorRedactionMode.index);
     notifyListeners();

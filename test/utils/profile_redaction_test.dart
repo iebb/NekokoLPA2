@@ -506,13 +506,22 @@ void main() {
       await settings.setRedactIccidFirst(true);
       expect(
         (jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+              as String,
+        ) as Map)['redactIccidFirst'],
+        isTrue,
+      );
+      // The snapshot itself is untouched: the edit lives in the edits
+      // record, not as an inverted snapshot value.
+      expect(
+        (jsonDecode(
           await store.persisted('flutter.redactionFlagsMigrationSourceV2')
               as String,
         ) as Map)['redactIccidFirst'],
-        isFalse,
+        isTrue,
       );
 
-      // The retry recomputes the edited value instead of overwriting it.
+      // The retry writes the recorded edit instead of recomputing it.
       // Simulate a relaunch with a fresh prefs instance reading only what
       // actually persisted: the old instance's optimistic cache would
       // claim the failed marker write succeeded and skip the retry.
@@ -525,6 +534,187 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       await AppSettings.migrateRedactionFlags(prefs);
       expect(prefs.getBool('redactIccidFirst'), isTrue);
+      expect(prefs.getBool('redactionFlagsMigratedV2'), isTrue);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('turning off only the EID last switch keeps the middle masked',
+        () async {
+      // The conservative old combination: show middle, mask last 10.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': false,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': false,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      // The marker write failed, so the migration is still pending; the
+      // conservative mapping masked everything from 8 on.
+      expect(
+        await store.persisted('flutter.redactionFlagsMigratedV2'),
+        isNull,
+      );
+      expect(settings.redactEidMiddle, isTrue);
+      expect(settings.redactEidLast, isTrue);
+
+      // The user turns off only the new Last 2 switch: show the final
+      // two digits, keep the middle masked.
+      await settings.setRedactEidLast(false);
+      expect(
+        (jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+              as String,
+        ) as Map)['redactEidLast'],
+        isFalse,
+      );
+
+      // The retry applies the recorded edit instead of inverting the
+      // snapshot pair (which would expose the middle too).
+      store.failingKeys.clear();
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await AppSettings.migrateRedactionFlags(prefs);
+      expect(prefs.getBool('redactEidMiddle'), isTrue);
+      expect(prefs.getBool('redactEidLast'), isFalse);
+      expect(prefs.getBool('redactionFlagsMigratedV2'), isTrue);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('a flag edit is dropped when its migration record cannot be stored',
+        () async {
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': false,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      store.failingKeys.add('flutter.redactionFlagsMigrationEditsV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': false,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(
+        await store.persisted('flutter.redactionFlagsMigratedV2'),
+        isNull,
+      );
+      expect(settings.redactIccidFirst, isFalse);
+
+      // The edits record cannot be stored, so the setter leaves the
+      // flag untouched instead of persisting a value the next startup
+      // would read as old-semantics and negate.
+      await settings.setRedactIccidFirst(true);
+      expect(settings.redactIccidFirst, isFalse);
+      expect(await store.persisted('flutter.redactIccidFirst'), isFalse);
+      expect(
+        await store.persisted('flutter.redactionFlagsMigrationEditsV2'),
+        isNull,
+      );
+
+      // The retry converts the flag from the snapshot: the edit never
+      // landed, so nothing is lost.
+      store.failingKeys.clear();
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await AppSettings.migrateRedactionFlags(prefs);
+      expect(prefs.getBool('redactIccidFirst'), isFalse);
+      expect(prefs.getBool('redactionFlagsMigratedV2'), isTrue);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('the quick preset is recorded for a pending migration retry',
+        () async {
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(
+        await store.persisted('flutter.redactionFlagsMigratedV2'),
+        isNull,
+      );
+
+      // The eye applies the preset while the migration is still pending.
+      await settings.applyQuickRedactionPreset();
+      expect(
+        jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+              as String,
+        ) as Map,
+        {
+          'redactEidFirst': false,
+          'redactEidMiddle': true,
+          'redactEidLast': true,
+          'redactIccidFirst': true,
+          'redactIccidMiddle': true,
+          'redactIccidLast': true,
+        },
+      );
+
+      // The retry writes the preset values instead of replaying the
+      // all-visible snapshot (which would unmask everything again).
+      store.failingKeys.clear();
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await AppSettings.migrateRedactionFlags(prefs);
+      expect(prefs.getBool('redactEidFirst'), isFalse);
+      expect(prefs.getBool('redactEidMiddle'), isTrue);
+      expect(prefs.getBool('redactEidLast'), isTrue);
+      expect(prefs.getBool('redactIccidFirst'), isTrue);
+      expect(prefs.getBool('redactIccidMiddle'), isTrue);
+      expect(prefs.getBool('redactIccidLast'), isTrue);
       expect(prefs.getBool('redactionFlagsMigratedV2'), isTrue);
 
       // Restore the default mock store for the tests after this one.
