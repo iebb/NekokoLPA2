@@ -5,6 +5,7 @@ import 'package:nlpa2/settings/app_settings.dart';
 import 'package:nlpa2/utils/profile_redaction.dart';
 import 'package:nlpa2/vowifi/privacy_redaction.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -387,5 +388,93 @@ void main() {
       expect(prefs.getBool('redactIccidLast'), isFalse);
       expect(prefs.getBool('redactionFlagsMigratedV2'), isTrue);
     });
+
+    test('does not mark complete when a flag write fails', () async {
+      final store = _FailingFlagWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': false,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': false,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      final prefs = await SharedPreferences.getInstance();
+      await AppSettings.migrateRedactionFlags(prefs);
+      // The middle write failed, so the migration must not be marked
+      // complete; the stale value stays but a later retry can fix it.
+      // (Read the store directly: SharedPreferences caches writes
+      // optimistically, so prefs.getBool would show the new value.)
+      expect(
+        await store.persisted('flutter.redactionFlagsMigratedV2'),
+        isNull,
+      );
+      expect(await store.persisted('flutter.redactEidMiddle'), isFalse);
+      expect(await store.persisted('flutter.redactEidFirst'), isFalse);
+
+      // The retry, with writes succeeding, finishes from the snapshot.
+      store.failMiddleWrite = false;
+      await AppSettings.migrateRedactionFlags(prefs);
+      expect(await store.persisted('flutter.redactEidMiddle'), isTrue);
+      expect(
+        await store.persisted('flutter.redactionFlagsMigratedV2'),
+        isTrue,
+      );
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
   });
+
+  group('unsupported card details', () {
+    const details =
+        'ICCID: 89882810345678901234\nIMSI: 310150123456789\nPLMN: 310-150\nGID1: 01';
+
+    test('masks the ICCID as configured and leaves the rest', () {
+      expect(
+        ProfileRedaction.redactUnsupportedCardDetails(details),
+        'ICCID: 89882810********\nIMSI: 310150123456789\nPLMN: 310-150\nGID1: 01',
+      );
+    });
+
+    test('hides both identifiers under full-hide', () async {
+      settings.setFullHideSensitiveData(true);
+      expect(
+        ProfileRedaction.redactUnsupportedCardDetails(details),
+        'ICCID: ********\nIMSI: ********\nPLMN: 310-150\nGID1: 01',
+      );
+    });
+
+    test('shows everything when revealing', () async {
+      settings.setRevealSensitiveProfileData(true);
+      expect(
+        ProfileRedaction.redactUnsupportedCardDetails(details),
+        details,
+      );
+    });
+  });
+}
+
+/// An in-memory prefs store that can fail one flag write, to prove the
+/// migration does not mark itself complete on a partial write.
+class _FailingFlagWriteStore extends InMemorySharedPreferencesStore {
+  _FailingFlagWriteStore(super.data) : super.withData();
+
+  var failMiddleWrite = true;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    if (failMiddleWrite && key == 'flutter.redactEidMiddle') return false;
+    return super.setValue(valueType, key, value);
+  }
+
+  Future<Object?> persisted(String key) async => (await getAll())[key];
 }

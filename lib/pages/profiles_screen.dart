@@ -5201,7 +5201,11 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         return UnsupportedCardState(
           isTelephony: reader != null && _isTelephony(reader),
           operatorIconBase64: _unsupportedOperatorIcon,
-          fallbackDetails: _unsupportedFallbackDetails,
+          fallbackDetails: _unsupportedFallbackDetails == null
+              ? null
+              : ProfileRedaction.redactUnsupportedCardDetails(
+                  _unsupportedFallbackDetails!,
+                ),
           onRetry: _listProfiles,
           onAboutAram: () => Navigator.push(
             context,

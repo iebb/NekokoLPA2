@@ -558,17 +558,23 @@ class AppSettings extends ChangeNotifier {
     // that combination conservatively to "mask everything from 8 on".
     final eidMaskFromEightOn = source['redactEidMiddle'] == true &&
         source['redactEidLast'] == false;
+    var allWritesSucceeded = true;
     for (final key in keys) {
       final stored = source[key];
       if (stored == null) continue;
-      if (eidMaskFromEightOn &&
-          (key == 'redactEidMiddle' || key == 'redactEidLast')) {
-        await prefs.setBool(key, true);
-      } else {
-        await prefs.setBool(key, !stored);
-      }
+      final target =
+          eidMaskFromEightOn &&
+                  (key == 'redactEidMiddle' || key == 'redactEidLast')
+              ? true
+              : !stored;
+      if (!await prefs.setBool(key, target)) allWritesSucceeded = false;
     }
-    await prefs.setBool('redactionFlagsMigratedV2', true);
+    // Only mark the migration complete when every flag actually landed;
+    // otherwise the next startup retries from the snapshot instead of
+    // reinterpreting a stale value under the new semantics.
+    if (allWritesSucceeded) {
+      await prefs.setBool('redactionFlagsMigratedV2', true);
+    }
   }
 
   Future<void> init() async {

@@ -99,6 +99,24 @@ class ProfileRedaction {
     return '********';
   }
 
+  /// Redacts the identifiers in an unsupported-card probe summary
+  /// ("ICCID: ...\nIMSI: ...\nPLMN: ...\nGID1: ..."). The ICCID line
+  /// follows the configured ICCID segments (and full-hide); the IMSI has
+  /// no segment settings, so it is only masked under full-hide. The other
+  /// lines are not personal identifiers and pass through unchanged.
+  static String redactUnsupportedCardDetails(String details) {
+    final settings = AppSettings();
+    return details.split('\n').map((line) {
+      if (line.startsWith('ICCID: ')) {
+        return 'ICCID: ${redactIccid(line.substring('ICCID: '.length))}';
+      }
+      if (line.startsWith('IMSI: ') && settings.fullHideSensitiveData) {
+        return 'IMSI: ********';
+      }
+      return line;
+    }).join('\n');
+  }
+
   static String displayName(EuiccProfile profile) {
     final settings = AppSettings();
     if (settings.revealSensitiveProfileData) {
