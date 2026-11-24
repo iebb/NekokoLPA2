@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nlpa2/settings/app_settings.dart';
 import 'package:nlpa2/utils/profile_redaction.dart';
@@ -326,6 +328,62 @@ void main() {
       // The ICCID ranges did not change, so its keys flip plainly.
       expect(prefs.getBool('redactIccidFirst'), isFalse);
       expect(prefs.getBool('redactIccidMiddle'), isTrue);
+      expect(prefs.getBool('redactIccidLast'), isFalse);
+      expect(prefs.getBool('redactionFlagsMigratedV2'), isTrue);
+    });
+    test('stores the pre-migration snapshot before flipping', () async {
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': false,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await AppSettings.migrateRedactionFlags(prefs);
+      expect(
+        jsonDecode(prefs.getString('redactionFlagsMigrationSourceV2')!),
+        {
+          'redactEidFirst': true,
+          'redactEidMiddle': false,
+          'redactEidLast': true,
+          'redactIccidFirst': true,
+          'redactIccidMiddle': true,
+          'redactIccidLast': true,
+        },
+      );
+    });
+
+    test('retries an interrupted migration from the snapshot', () async {
+      // A run that was killed after flipping the EID middle but before
+      // the marker: the snapshot holds the original values, the middle
+      // is already flipped, the marker is absent.
+      SharedPreferences.setMockInitialValues({
+        'redactionFlagsMigrationSourceV2': jsonEncode({
+          'redactEidFirst': true,
+          'redactEidMiddle': false,
+          'redactEidLast': true,
+          'redactIccidFirst': true,
+          'redactIccidMiddle': true,
+          'redactIccidLast': true,
+        }),
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await AppSettings.migrateRedactionFlags(prefs);
+      // Same result as an uninterrupted run: the middle stays masked
+      // instead of being flipped back to visible.
+      expect(prefs.getBool('redactEidFirst'), isFalse);
+      expect(prefs.getBool('redactEidMiddle'), isTrue);
+      expect(prefs.getBool('redactEidLast'), isFalse);
+      expect(prefs.getBool('redactIccidFirst'), isFalse);
+      expect(prefs.getBool('redactIccidMiddle'), isFalse);
       expect(prefs.getBool('redactIccidLast'), isFalse);
       expect(prefs.getBool('redactionFlagsMigratedV2'), isTrue);
     });

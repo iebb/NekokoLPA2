@@ -506,25 +506,60 @@ class AppSettings extends ChangeNotifier {
   /// One-time migration for the redaction segment flags: they used to mean
   /// "show this segment" and now mean "mask this segment". Flip any stored
   /// values once so existing installs keep their on-screen display.
+  ///
+  /// Restart-safe: the pre-migration values are snapshotted into a single
+  /// key before any flag is flipped, and a retry recomputes from that
+  /// snapshot. Without it, an app killed mid-migration would flip the
+  /// already-flipped flags a second time on the next startup and could
+  /// unmask a segment the user had masked. If the snapshot itself cannot
+  /// be stored, nothing is flipped and the next startup retries cleanly.
+  /// The snapshot is left in place afterwards as the migration's record.
   @visibleForTesting
   static Future<void> migrateRedactionFlags(SharedPreferences prefs) async {
     if (prefs.getBool('redactionFlagsMigratedV2') == true) return;
-    // The EID segment boundaries changed with the new defaults: the middle
-    // range now runs to length-2 and the last range is only the final 2
-    // digits (was: middle [8,24), last 10). A stored "show middle, mask
-    // last 10" choice would expose 8 digits after a plain flip, so map
-    // that combination conservatively to "mask everything from 8 on".
-    final eidMaskFromEightOn = prefs.getBool('redactEidMiddle') == true &&
-        prefs.getBool('redactEidLast') == false;
-    for (final key in const [
+    const keys = [
       'redactEidFirst',
       'redactEidMiddle',
       'redactEidLast',
       'redactIccidFirst',
       'redactIccidMiddle',
       'redactIccidLast',
-    ]) {
-      final stored = prefs.getBool(key);
+    ];
+    Map<String, bool>? source;
+    final snapshot = prefs.getString('redactionFlagsMigrationSourceV2');
+    if (snapshot != null) {
+      try {
+        source = Map<String, bool>.from(
+          jsonDecode(snapshot) as Map<String, dynamic>,
+        );
+      } catch (_) {
+        // A corrupt snapshot is unusable; fall through and re-capture
+        // from the current flags (best effort, same as before).
+        source = null;
+      }
+    }
+    if (source == null) {
+      source = <String, bool>{};
+      for (final key in keys) {
+        final stored = prefs.getBool(key);
+        if (stored != null) source[key] = stored;
+      }
+      if (!await prefs.setString(
+        'redactionFlagsMigrationSourceV2',
+        jsonEncode(source),
+      )) {
+        return;
+      }
+    }
+    // The EID segment boundaries changed with the new defaults: the middle
+    // range now runs to length-2 and the last range is only the final 2
+    // digits (was: middle [8,24), last 10). A stored "show middle, mask
+    // last 10" choice would expose 8 digits after a plain flip, so map
+    // that combination conservatively to "mask everything from 8 on".
+    final eidMaskFromEightOn = source['redactEidMiddle'] == true &&
+        source['redactEidLast'] == false;
+    for (final key in keys) {
+      final stored = source[key];
       if (stored == null) continue;
       if (eidMaskFromEightOn &&
           (key == 'redactEidMiddle' || key == 'redactEidLast')) {
