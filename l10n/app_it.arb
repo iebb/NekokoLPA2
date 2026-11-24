@@ -1212,5 +1212,6 @@
     }
   },
   "errorReportFailed": "Couldn't send the report. Check your connection and try again.",
-  "linklanPasswordHint": "6-digit card password (default: last six digits of the EID)"
+  "linklanPasswordHint": "6-digit card password (default: last six digits of the EID)",
+  "omapiSwitchOutcomeUnknown": "The SIM reloaded during the profile switch and the result could not be read back. The switch may already have taken effect; refresh the profile list before trying again."
 }
