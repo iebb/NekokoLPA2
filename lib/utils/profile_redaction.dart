@@ -80,7 +80,10 @@ class ProfileRedaction {
     if (value == null || value.isEmpty) return '';
     final settings = AppSettings();
     if (settings.fullHideSensitiveData) return _maskDigits(value, null);
-    if (settings.revealSensitiveProfileData) return value;
+    if (settings.revealSensitiveProfileData ||
+        settings.hasNoRedactionsConfigured) {
+      return value;
+    }
     return _maskDigits(value, 6);
   }
 
@@ -88,8 +91,9 @@ class ProfileRedaction {
   static String redactBalance(String? balance) {
     if (balance == null || balance.isEmpty) return '';
     final settings = AppSettings();
-    if (settings.revealSensitiveProfileData &&
-        !settings.fullHideSensitiveData) {
+    if (!settings.fullHideSensitiveData &&
+        (settings.revealSensitiveProfileData ||
+            settings.hasNoRedactionsConfigured)) {
       return balance;
     }
     return '********';

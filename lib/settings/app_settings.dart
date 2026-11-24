@@ -509,6 +509,13 @@ class AppSettings extends ChangeNotifier {
   @visibleForTesting
   static Future<void> migrateRedactionFlags(SharedPreferences prefs) async {
     if (prefs.getBool('redactionFlagsMigratedV2') == true) return;
+    // The EID segment boundaries changed with the new defaults: the middle
+    // range now runs to length-2 and the last range is only the final 2
+    // digits (was: middle [8,24), last 10). A stored "show middle, mask
+    // last 10" choice would expose 8 digits after a plain flip, so map
+    // that combination conservatively to "mask everything from 8 on".
+    final eidMaskFromEightOn = prefs.getBool('redactEidMiddle') == true &&
+        prefs.getBool('redactEidLast') == false;
     for (final key in const [
       'redactEidFirst',
       'redactEidMiddle',
@@ -518,7 +525,13 @@ class AppSettings extends ChangeNotifier {
       'redactIccidLast',
     ]) {
       final stored = prefs.getBool(key);
-      if (stored != null) await prefs.setBool(key, !stored);
+      if (stored == null) continue;
+      if (eidMaskFromEightOn &&
+          (key == 'redactEidMiddle' || key == 'redactEidLast')) {
+        await prefs.setBool(key, true);
+      } else {
+        await prefs.setBool(key, !stored);
+      }
     }
     await prefs.setBool('redactionFlagsMigratedV2', true);
   }
@@ -1185,8 +1198,10 @@ class AppSettings extends ChangeNotifier {
       _flagRedactionMode == FlagRedactionMode.none;
 
   /// Shared display-only privacy state for profile and Wi-Fi calling pages.
+  /// Full-hide counts as masked even when no redaction is configured.
   bool get isSensitiveDataMasked =>
-      !_revealSensitiveProfileData && !hasNoRedactionsConfigured;
+      _fullHideSensitiveData ||
+      (!_revealSensitiveProfileData && !hasNoRedactionsConfigured);
 
   Future<void> toggleSensitiveDataVisibility() async {
     if (_revealSensitiveProfileData) {

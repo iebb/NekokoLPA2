@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nlpa2/settings/app_settings.dart';
 import 'package:nlpa2/utils/profile_redaction.dart';
+import 'package:nlpa2/vowifi/privacy_redaction.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -119,6 +120,46 @@ void main() {
       expect(ProfileRedaction.redactPhoneNumber(samplePhone), samplePhone);
       expect(ProfileRedaction.redactBalance(sampleBalance), sampleBalance);
     });
+
+    test('nothing configured shows the raw phone number and balance', () async {
+      await setAllSegmentFlags(false);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+      expect(ProfileRedaction.redactPhoneNumber(samplePhone), samplePhone);
+      expect(ProfileRedaction.redactBalance(sampleBalance), sampleBalance);
+    });
+
+    test('full-hide wins over nothing configured', () async {
+      await setAllSegmentFlags(false);
+      settings.setFullHideSensitiveData(true);
+      expect(ProfileRedaction.redactPhoneNumber(samplePhone), '+*** **** ****');
+      expect(ProfileRedaction.redactBalance(sampleBalance), '********');
+    });
+  });
+
+  group('isSensitiveDataMasked', () {
+    test('is true when something is masked', () {
+      expect(settings.isSensitiveDataMasked, isTrue);
+      expect(VoWifiPrivacy.isEnabled, isTrue);
+    });
+
+    test('is false when nothing is configured', () async {
+      await setAllSegmentFlags(false);
+      expect(settings.isSensitiveDataMasked, isFalse);
+      expect(VoWifiPrivacy.isEnabled, isFalse);
+    });
+
+    test('full-hide counts as masked even with nothing configured', () async {
+      await setAllSegmentFlags(false);
+      settings.setFullHideSensitiveData(true);
+      expect(settings.isSensitiveDataMasked, isTrue);
+      expect(VoWifiPrivacy.isEnabled, isTrue);
+    });
+
+    test('reveal counts as unmasked', () {
+      settings.setRevealSensitiveProfileData(true);
+      expect(settings.isSensitiveDataMasked, isFalse);
+      expect(VoWifiPrivacy.isEnabled, isFalse);
+    });
   });
 
   group('full-hide mode', () {
@@ -183,6 +224,30 @@ void main() {
       await AppSettings.migrateRedactionFlags(prefs);
       expect(prefs.getBool('redactEidFirst'), isFalse);
       expect(prefs.getBool('redactIccidFirst'), isFalse);
+    });
+
+    test('masks the EID from 8 on when old middle was shown and old last masked',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': false,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': false,
+        'redactIccidLast': true,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await AppSettings.migrateRedactionFlags(prefs);
+      // The EID middle range widened to length-2, so a plain flip would
+      // expose 8 digits that were masked; map it conservatively instead.
+      expect(prefs.getBool('redactEidFirst'), isFalse);
+      expect(prefs.getBool('redactEidMiddle'), isTrue);
+      expect(prefs.getBool('redactEidLast'), isTrue);
+      // The ICCID ranges did not change, so its keys flip plainly.
+      expect(prefs.getBool('redactIccidFirst'), isFalse);
+      expect(prefs.getBool('redactIccidMiddle'), isTrue);
+      expect(prefs.getBool('redactIccidLast'), isFalse);
+      expect(prefs.getBool('redactionFlagsMigratedV2'), isTrue);
     });
   });
 }
