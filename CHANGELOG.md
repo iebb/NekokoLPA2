@@ -4,6 +4,8 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+## [2.7.0+608] - 2026-11-24
+
 ### Added
 - Linklan/Linksfield BLE-eSIM Bluetooth readers (#64). The card's six-digit password defaults to the last six digits of its EID; it is asked for on first use, and asked for again on the next connect if the card turns it down.
 
