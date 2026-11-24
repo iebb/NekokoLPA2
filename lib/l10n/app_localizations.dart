@@ -5776,6 +5776,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'6-digit card password (default: last six digits of the EID)'**
   String get linklanPasswordHint;
+
+  /// No description provided for @omapiSwitchOutcomeUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'The SIM reloaded during the profile switch and the result could not be read back. The switch may already have taken effect; refresh the profile list before trying again.'**
+  String get omapiSwitchOutcomeUnknown;
 }
 
 class _AppLocalizationsDelegate

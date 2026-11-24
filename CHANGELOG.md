@@ -8,6 +8,8 @@ All notable changes to NekokoLPA2 will be documented in this file.
 - Linklan/Linksfield BLE-eSIM Bluetooth readers (#64). The card's six-digit password defaults to the last six digits of its EID; it is asked for on first use, and asked for again on the next connect if the card turns it down.
 
 ### Fixed
+- OMAPI: when the system refuses the eUICC's application, show "Access denied" with the system's reason, and stop resetting the session and retrying an open that cannot succeed. Pixels on Android 17 with the November 2026 update refuse it with "Restricted AID is not allowed in UICC terminal" (#61), which previously showed as "Card Unsupported"; the restriction itself is in Android and cannot be lifted by the app.
+- OMAPI: the message shown when a profile switch's outcome could not be read back can now be translated.
 - OMAPI: when the SIM reloads during a profile switch and the reply is lost, read the profile state back on fresh channels instead of requiring a device restart (#60). The restart lock stays when the slot does not reload or an old channel is still open.
 - QRTR reader: give the card up to 30 seconds to answer an APDU instead of 2. A command the eUICC took longer over, such as a signature or a block of a profile, was reported as "qrtr did not answer", which could break a download partway and use up the profile.
 

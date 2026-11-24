@@ -933,7 +933,7 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
         val targets =
                 if (aidsList != null && aidsList.isNotEmpty()) aidsList else listOf(singleAid!!)
-        var lastError: Exception? = null
+        val failures = OmapiOpenFailures()
 
         // Background thread work
         for (targetAid in targets) {
@@ -966,23 +966,30 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     runOnUiThread { result.success(responseMap) }
                     return
                 }
+                failures.record(null)
             } catch (e: Exception) {
-                // Check if fatal or just not found
-                lastError = e
-                val message = e.message ?: ""
-
-                // If specific access control or other fatal error, might want to stop?
-                // For now, assume iteration continues unless it's a session death.
+                // A refused AID does not rule out a later one that is permitted.
+                failures.record(e)
                 if (e is SecurityException) {
                     Log.w(TAG, "Security exception for AID $targetAid: ${e.message}")
                 }
             }
         }
 
-        // If we get here, no AID worked.
+        // If we get here, no AID worked. A refusal is final: a new session gets the same answer.
+        if (failures.permissionDenied) {
+            return runOnUiThread {
+                result.error(
+                        "SECURITY_EXCEPTION",
+                        "Access denied: ${failures.deniedMessage() ?: "the AID is not allowed"}",
+                        null,
+                )
+            }
+        }
+        val lastError = failures.lastError
         // Check if we should retry (only if single AID really, or if session looks dead)
         if (!isRetry && lastError != null) {
-            val message = lastError!!.message ?: ""
+            val message = lastError.message ?: ""
             // "OpenLogicalChannel() failed" and NoSuchElementException are typically native/driver
             // state issues.
             // We should retry these even if we haven't successfully opened a channel before,
@@ -1021,7 +1028,7 @@ class OmapiPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             }
         }
         runOnUiThread {
-            result.error("CHANNEL_FAILED", lastError?.message ?: "No AID opened", null)
+            result.error("CHANNEL_FAILED", failures.lastError?.message ?: "No AID opened", null)
         }
     }
 

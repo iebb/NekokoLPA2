@@ -3042,6 +3042,10 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get linklanPasswordHint =>
       '6-digit card password (default: last six digits of the EID)';
+
+  @override
+  String get omapiSwitchOutcomeUnknown =>
+      'The SIM reloaded during the profile switch and the result could not be read back. The switch may already have taken effect; refresh the profile list before trying again.';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).

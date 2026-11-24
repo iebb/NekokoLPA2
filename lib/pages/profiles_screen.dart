@@ -2844,7 +2844,10 @@ class _ProfilesScreenState extends State<ProfilesScreen>
           _updateReaderState(
             reader,
             profiles: [],
-            error: '$omapiSwitchOutcomeUnknownMessage\n$errorStr',
+            error: mounted
+                ? '${AppLocalizations.of(context)!.omapiSwitchOutcomeUnknown}'
+                      '\n$errorStr'
+                : errorStr,
           );
         } else {
           _handleOperationError(

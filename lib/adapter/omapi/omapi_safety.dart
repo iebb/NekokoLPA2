@@ -40,9 +40,6 @@ bool isOmapiProfileSwitchResponseLost(Object error) => switch (error) {
   _ => false,
 };
 
-const String omapiSwitchOutcomeUnknownMessage =
-    'The SIM reloaded during the profile switch and the result could not be read back. The switch may already have taken effect; refresh the profile list before trying again.';
-
 const Set<String> _omapiReaderReloadingCodes = {
   'NOT_CONNECTED',
   'CONNECTION_FAILED',

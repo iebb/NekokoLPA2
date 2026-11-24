@@ -216,7 +216,7 @@ class OmapiAdapter extends BaseAdapter {
       } on PlatformException catch (e) {
         if (isOmapiSessionCorruptedError(e)) rethrow;
         log.severe('Failed to connect to OMAPI reader: $e');
-        if (e.code == 'SecurityException') {
+        if (_isPermissionDenial(e)) {
           throw AppException(
             AppErrorCode.ERROR_OMAPI_SECURITYEXCEPTION,
             originalError: e,
@@ -440,6 +440,13 @@ class OmapiAdapter extends BaseAdapter {
               originalError: e,
             );
           }
+          if (e is PlatformException && _isPermissionDenial(e)) {
+            throw AppException(
+              AppErrorCode.ERROR_OMAPI_SECURITYEXCEPTION,
+              message: e.message,
+              originalError: e,
+            );
+          }
           throw AppException(
             AppErrorCode.ERROR_OMAPI_CHANNEL_OPEN_FAILED,
             originalError: e,
@@ -587,6 +594,11 @@ class OmapiAdapter extends BaseAdapter {
     }
   }
 
+  /// The plugin reports a refused AID as `SECURITY_EXCEPTION`; older paths
+  /// used the exception's class name.
+  static bool _isPermissionDenial(PlatformException e) =>
+      e.code == 'SECURITY_EXCEPTION' || e.code == 'SecurityException';
+
   Future<Map<dynamic, dynamic>> _openChannelInKotlin(
     String aidHex,
     int channelId,
@@ -619,6 +631,14 @@ class OmapiAdapter extends BaseAdapter {
         return resultMap;
       } catch (e) {
         if (isOmapiSessionCorruptedError(e)) rethrow;
+        // A refusal is final; cleaning up other channels would not change it.
+        if (e is PlatformException && _isPermissionDenial(e)) {
+          throw AppException(
+            AppErrorCode.ERROR_OMAPI_SECURITYEXCEPTION,
+            message: e.message,
+            originalError: e,
+          );
+        }
         // If first attempt fails, try heavy cleanup and retry once.
         log.warning(
           'Initial openChannel for $aidHex failed ($e). Retrying after cleanup...',
