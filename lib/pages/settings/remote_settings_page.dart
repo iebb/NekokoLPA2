@@ -5,6 +5,7 @@ import '../../settings/app_settings.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/styled_header_scaffold.dart';
 import '../../l10n/app_localizations.dart';
+import '../../adapter/composite_adapter.dart';
 import '../../adapter/remote/remocard_adapter.dart';
 import '../../widgets/common/loading_spinner.dart';
 
@@ -22,6 +23,7 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
   final _globalPasswordController = TextEditingController();
   bool _useHttps = false;
   bool _isConnecting = false;
+  final Set<String> _connectingServers = {};
   String? _connectionError;
 
   @override
@@ -77,11 +79,9 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
         finalUrl = finalUrl.substring(0, finalUrl.length - 1);
       }
 
-      // Verify connection
-      await RemoCardAdapter(finalUrl).listReaders();
-
-      // Save
-      await AppSettings().addRemoCardUrl(finalUrl);
+      // Verify the server and cache its readers for the main reader list. The
+      // server remains temporary until the user explicitly taps the star.
+      await CompositeAdapter().loadRemoteReadersFromUrl(finalUrl);
 
       _hostController.clear();
       _passwordController.clear();
@@ -119,6 +119,55 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
     }
   }
 
+  Future<void> _connectFavorite(String url) async {
+    if (_connectingServers.contains(url)) return;
+    setState(() => _connectingServers.add(url));
+
+    try {
+      final readers = await CompositeAdapter().loadRemoteReadersFromUrl(url);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            readers.isEmpty
+                ? AppLocalizations.of(context)!.noRemoteReadersFound
+                : AppLocalizations.of(
+                    context,
+                  )!.connectedRemoteReaders(readers.length),
+          ),
+          backgroundColor: readers.isEmpty ? null : Colors.green,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = error is RemoCardInvalidPasswordException
+          ? AppLocalizations.of(context)!.authFailedCheckPassword
+          : AppLocalizations.of(
+              context,
+            )!.failedToConnectRemoteReaders(error.toString());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _connectingServers.remove(url));
+      }
+    }
+  }
+
+  Future<void> _toggleFavorite(String url) async {
+    final settings = AppSettings();
+    if (settings.remoCardUrls.contains(url)) {
+      await settings.removeRemoCardUrl(url);
+    } else {
+      await settings.addRemoCardUrl(url);
+    }
+  }
+
+  Future<void> _deleteServer(String url) async {
+    await CompositeAdapter().forgetRemoteServer(url);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -127,7 +176,7 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
     return ListenableBuilder(
       listenable: settings,
       builder: (context, _) {
-        final urls = settings.remoCardUrls;
+        final urls = CompositeAdapter().remoteServerUrls;
 
         return StyledHeaderScaffold(
           title: AppLocalizations.of(context)!.remoteReaders,
@@ -486,13 +535,17 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
               const SizedBox(height: 24),
 
               if (urls.isNotEmpty) ...[
-                Text(
-                  AppLocalizations.of(context)!.configuredServers,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.onSurfaceSubtle(context),
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      AppLocalizations.of(context)!.configuredServers,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.onSurfaceSubtle(context),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 ...urls.map((url) => _buildUrlCard(context, url)),
@@ -622,6 +675,8 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
 
   Widget _buildUrlCard(BuildContext context, String url) {
     final theme = Theme.of(context);
+    final isConnecting = _connectingServers.contains(url);
+    final isFavorite = AppSettings().remoCardUrls.contains(url);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -632,20 +687,21 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: (url.startsWith('https') ? Colors.green : Colors.blue)
-                  .withValues(alpha: 0.1),
-              shape: BoxShape.circle,
+          IconButton.filledTonal(
+            onPressed: isConnecting ? null : () => _connectFavorite(url),
+            tooltip: AppLocalizations.of(context)!.connect,
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.blue.withValues(alpha: 0.1),
+              foregroundColor: Colors.blue,
+              disabledBackgroundColor: Colors.blue.withValues(alpha: 0.06),
             ),
-            child: Icon(
-              url.startsWith('https')
-                  ? Icons.lock_outline
-                  : Icons.cloud_outlined,
-              color: url.startsWith('https') ? Colors.green : Colors.blue,
-              size: 20,
-            ),
+            icon: isConnecting
+                ? const LoadingSpinner(
+                    size: 20,
+                    strokeWidth: 2.5,
+                    color: Colors.blue,
+                  )
+                : const Icon(Icons.cloud_outlined, size: 20),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -689,8 +745,21 @@ class _RemoteSettingsPageState extends State<RemoteSettingsPage> {
             },
           ),
           IconButton(
+            tooltip: isFavorite
+                ? AppLocalizations.of(context)!.removeFromFavorites
+                : AppLocalizations.of(context)!.addToFavorites,
+            icon: Icon(
+              isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+              color: isFavorite
+                  ? Colors.amber
+                  : AppTheme.onSurfaceSubtle(context),
+              size: 21,
+            ),
+            onPressed: isConnecting ? null : () => _toggleFavorite(url),
+          ),
+          IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-            onPressed: () => AppSettings().removeRemoCardUrl(url),
+            onPressed: isConnecting ? null : () => _deleteServer(url),
           ),
         ],
       ),

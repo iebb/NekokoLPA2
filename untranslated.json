@@ -1,1 +1,55 @@
-{}
+{
+  "de": [
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
+  ],
+
+  "es": [
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
+  ],
+
+  "fr": [
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
+  ],
+
+  "it": [
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
+  ],
+
+  "ja": [
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
+  ],
+
+  "ko": [
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
+  ],
+
+  "ru": [
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
+  ],
+
+  "zh": [
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
+  ],
+
+  "zh_TW": [
+    "favoriteServers",
+    "addToFavorites",
+    "removeFromFavorites"
+  ]
+}

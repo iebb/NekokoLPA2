@@ -1400,6 +1400,15 @@ class AppLocalizationsEs extends AppLocalizations {
   String get configuredServers => 'Servidores configurados';
 
   @override
+  String get favoriteServers => 'Favorite RemoCard Servers';
+
+  @override
+  String get addToFavorites => 'Add to favorites';
+
+  @override
+  String get removeFromFavorites => 'Remove from favorites';
+
+  @override
   String get secureHttps => 'Seguro (HTTPS)';
 
   @override
