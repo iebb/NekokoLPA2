@@ -243,6 +243,35 @@ void main() {
       expect(settings.isSensitiveDataMasked, isFalse);
     });
 
+    test('leaving reveal with nothing configured applies the preset',
+        () async {
+      await setAllSegmentFlags(false);
+      settings.setRevealSensitiveProfileData(true);
+      await settings.toggleSensitiveDataVisibility();
+      expect(settings.revealSensitiveProfileData, isFalse);
+      expect(settings.redactEidMiddle, isTrue);
+      expect(settings.redactIccidFirst, isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+      expect(settings.isSensitiveDataMasked, isTrue);
+    });
+
+    test('full-hide with nothing configured cycles to preset in two taps',
+        () async {
+      await setAllSegmentFlags(false);
+      settings.setFullHideSensitiveData(true);
+      // Tap 1: full-hide -> reveal all.
+      await settings.toggleSensitiveDataVisibility();
+      expect(settings.revealSensitiveProfileData, isTrue);
+      expect(settings.isSensitiveDataMasked, isFalse);
+      // Tap 2: reveal -> preset (no inert step in between).
+      await settings.toggleSensitiveDataVisibility();
+      expect(settings.revealSensitiveProfileData, isFalse);
+      expect(settings.redactEidMiddle, isTrue);
+      expect(settings.redactIccidFirst, isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+      expect(settings.isSensitiveDataMasked, isTrue);
+    });
+
     test('full-hide with redactions configured reveals', () async {
       settings.setFullHideSensitiveData(true);
       await settings.toggleSensitiveDataVisibility();

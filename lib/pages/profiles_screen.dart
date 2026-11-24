@@ -2258,8 +2258,13 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       settings.setFullHideSensitiveData(false);
       settings.setRevealSensitiveProfileData(true);
     } else if (settings.revealSensitiveProfileData) {
-      // Reveal -> mask as configured.
+      // Reveal -> mask as configured. With nothing configured, reveal is
+      // redundant (hasNo already shows all), so apply the preset here
+      // instead of leaving a visually inert tap.
       settings.setRevealSensitiveProfileData(false);
+      if (settings.hasNoRedactionsConfigured) {
+        await settings.applyQuickRedactionPreset();
+      }
       return;
     } else if (settings.hasNoRedactionsConfigured) {
       await settings.applyQuickRedactionPreset();

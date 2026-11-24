@@ -1210,6 +1210,9 @@ class AppSettings extends ChangeNotifier {
       setRevealSensitiveProfileData(true);
     } else if (_revealSensitiveProfileData) {
       setRevealSensitiveProfileData(false);
+      if (hasNoRedactionsConfigured) {
+        await applyQuickRedactionPreset();
+      }
     } else if (hasNoRedactionsConfigured) {
       await applyQuickRedactionPreset();
     } else {
