@@ -178,6 +178,14 @@ void main() {
       expect(ProfileRedaction.redactEid(sampleEid), '********');
     });
 
+    test('full-hide wins over revealFull for display', () {
+      settings.setFullHideSensitiveData(true);
+      expect(
+        ProfileRedaction.redactEid(sampleEid, revealFull: true),
+        '********',
+      );
+    });
+
     test('reveal and full-hide are mutually exclusive', () {
       settings.setFullHideSensitiveData(true);
       expect(settings.fullHideSensitiveData, isTrue);
