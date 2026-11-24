@@ -37,12 +37,12 @@ class RedactionSettingsPage extends StatelessWidget {
                         onChanged: AppSettings().setRedactEidFirst,
                       ),
                       _SegmentToggle(
-                        label: 'Mid 16',
+                        label: 'Mid 22',
                         value: AppSettings().redactEidMiddle,
                         onChanged: AppSettings().setRedactEidMiddle,
                       ),
                       _SegmentToggle(
-                        label: 'Last 10',
+                        label: 'Last 2',
                         value: AppSettings().redactEidLast,
                         onChanged: AppSettings().setRedactEidLast,
                       ),

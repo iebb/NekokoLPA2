@@ -377,13 +377,13 @@ class AppSettings extends ChangeNotifier {
   bool _redactEidLast = false;
   bool get redactEidLast => _redactEidLast;
 
-  bool _redactIccidFirst = true;
+  bool _redactIccidFirst = false;
   bool get redactIccidFirst => _redactIccidFirst;
 
-  bool _redactIccidMiddle = false;
+  bool _redactIccidMiddle = true;
   bool get redactIccidMiddle => _redactIccidMiddle;
 
-  bool _redactIccidLast = false;
+  bool _redactIccidLast = true;
   bool get redactIccidLast => _redactIccidLast;
 
   NicknameRedactionMode _nicknameRedactionMode = NicknameRedactionMode.none;
@@ -559,9 +559,9 @@ class AppSettings extends ChangeNotifier {
     _redactEidFirst = _prefs?.getBool('redactEidFirst') ?? false;
     _redactEidMiddle = _prefs?.getBool('redactEidMiddle') ?? true;
     _redactEidLast = _prefs?.getBool('redactEidLast') ?? false;
-    _redactIccidFirst = _prefs?.getBool('redactIccidFirst') ?? true;
-    _redactIccidMiddle = _prefs?.getBool('redactIccidMiddle') ?? false;
-    _redactIccidLast = _prefs?.getBool('redactIccidLast') ?? false;
+    _redactIccidFirst = _prefs?.getBool('redactIccidFirst') ?? false;
+    _redactIccidMiddle = _prefs?.getBool('redactIccidMiddle') ?? true;
+    _redactIccidLast = _prefs?.getBool('redactIccidLast') ?? true;
 
     final nicknameRedactionIdx = _prefs?.getInt('nicknameRedactionMode');
     if (nicknameRedactionIdx != null &&

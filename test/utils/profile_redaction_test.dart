@@ -21,9 +21,9 @@ void main() {
     await settings.setRedactEidFirst(false);
     await settings.setRedactEidMiddle(true);
     await settings.setRedactEidLast(false);
-    await settings.setRedactIccidFirst(true);
-    await settings.setRedactIccidMiddle(false);
-    await settings.setRedactIccidLast(false);
+    await settings.setRedactIccidFirst(false);
+    await settings.setRedactIccidMiddle(true);
+    await settings.setRedactIccidLast(true);
     await settings.setNicknameRedactionMode(NicknameRedactionMode.none);
     await settings.setOperatorRedactionMode(OperatorRedactionMode.none);
     await settings.setTagsRedactionMode(TagsRedactionMode.none);
@@ -43,14 +43,14 @@ void main() {
   setUp(resetToDefaults);
 
   group('segment previews (true = mask)', () {
-    test('defaults mask the EID middle and the ICCID first segment', () {
+    test('defaults mask the EID middle and everything after the ICCID first segment', () {
       expect(
         ProfileRedaction.redactEidPreview(sampleEid),
-        '89049032********1234567890',
+        '89049032********90',
       );
       expect(
         ProfileRedaction.redactIccidPreview(sampleIccid),
-        '********345678901234',
+        '89882810********',
       );
     });
 
@@ -153,7 +153,8 @@ void main() {
     test('is true only when nothing is masked', () async {
       expect(settings.hasNoRedactionsConfigured, isFalse);
       await settings.setRedactEidMiddle(false);
-      await settings.setRedactIccidFirst(false);
+      await settings.setRedactIccidMiddle(false);
+      await settings.setRedactIccidLast(false);
       expect(settings.hasNoRedactionsConfigured, isTrue);
     });
   });

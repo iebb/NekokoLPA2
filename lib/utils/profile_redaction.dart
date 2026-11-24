@@ -48,8 +48,8 @@ class ProfileRedaction {
       eid,
       ranges: [
         _Range(0, 8, settings.redactEidFirst),
-        _Range(8, 24, settings.redactEidMiddle),
-        _Range(eid.length - 10, eid.length, settings.redactEidLast),
+        _Range(8, eid.length - 2, settings.redactEidMiddle),
+        _Range(eid.length - 2, eid.length, settings.redactEidLast),
       ],
     );
   }
