@@ -1204,7 +1204,11 @@ class AppSettings extends ChangeNotifier {
       (!_revealSensitiveProfileData && !hasNoRedactionsConfigured);
 
   Future<void> toggleSensitiveDataVisibility() async {
-    if (_revealSensitiveProfileData) {
+    if (_fullHideSensitiveData) {
+      // Full-hide -> reveal all, like the Profiles eye.
+      setFullHideSensitiveData(false);
+      setRevealSensitiveProfileData(true);
+    } else if (_revealSensitiveProfileData) {
       setRevealSensitiveProfileData(false);
     } else if (hasNoRedactionsConfigured) {
       await applyQuickRedactionPreset();

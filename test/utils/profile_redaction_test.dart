@@ -200,6 +200,49 @@ void main() {
     });
   });
 
+  group('toggleSensitiveDataVisibility', () {
+    test('masked as configured toggles to reveal', () async {
+      await settings.toggleSensitiveDataVisibility();
+      expect(settings.revealSensitiveProfileData, isTrue);
+    });
+
+    test('reveal toggles back to masked as configured', () async {
+      settings.setRevealSensitiveProfileData(true);
+      await settings.toggleSensitiveDataVisibility();
+      expect(settings.revealSensitiveProfileData, isFalse);
+      expect(settings.isSensitiveDataMasked, isTrue);
+    });
+
+    test('nothing configured applies the quick preset', () async {
+      await setAllSegmentFlags(false);
+      await settings.toggleSensitiveDataVisibility();
+      expect(settings.redactEidMiddle, isTrue);
+      expect(settings.redactIccidFirst, isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+    });
+
+    test('full-hide with nothing configured reveals instead of preset',
+        () async {
+      await setAllSegmentFlags(false);
+      settings.setFullHideSensitiveData(true);
+      await settings.toggleSensitiveDataVisibility();
+      expect(settings.fullHideSensitiveData, isFalse);
+      expect(settings.revealSensitiveProfileData, isTrue);
+      // The persisted no-redaction choices survive: flags stay off.
+      expect(settings.redactEidMiddle, isFalse);
+      expect(settings.redactIccidMiddle, isFalse);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+      expect(settings.isSensitiveDataMasked, isFalse);
+    });
+
+    test('full-hide with redactions configured reveals', () async {
+      settings.setFullHideSensitiveData(true);
+      await settings.toggleSensitiveDataVisibility();
+      expect(settings.fullHideSensitiveData, isFalse);
+      expect(settings.revealSensitiveProfileData, isTrue);
+    });
+  });
+
   group('redaction flags migration', () {
     test('flips stored old-semantics flags once', () async {
       SharedPreferences.setMockInitialValues({
