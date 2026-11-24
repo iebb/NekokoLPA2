@@ -2082,6 +2082,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     final revealIdentifiers =
         settings.revealSensitiveProfileData ||
         settings.hasNoRedactionsConfigured;
+    final fullHideIdentifiers = settings.fullHideSensitiveData;
     // Unused theme removed
 
     // Calculate available space for actions
@@ -2107,12 +2108,16 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         },
       if (_eid != null || _isUnsupported || _isAraMFailed)
         {
-          'icon': revealIdentifiers
-              ? Icons.visibility_outlined
-              : Icons.visibility_off_outlined,
-          'tooltip': revealIdentifiers
-              ? 'Disable redaction'
-              : 'Enable redaction',
+          'icon': fullHideIdentifiers
+              ? Icons.visibility_off_outlined
+              : revealIdentifiers
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off,
+          'tooltip': fullHideIdentifiers
+              ? 'Show all'
+              : revealIdentifiers
+                  ? 'Mask as configured'
+                  : 'Hide all',
           'onPressed': _handleIdentifierVisibilityToggle,
           'key': 'toggle_identifier_visibility',
         },
@@ -2248,14 +2253,19 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
   void _handleIdentifierVisibilityToggle() async {
     final settings = AppSettings();
-    if (settings.revealSensitiveProfileData) {
+    if (settings.fullHideSensitiveData) {
+      // Full-hide -> reveal all.
+      settings.setFullHideSensitiveData(false);
+      settings.setRevealSensitiveProfileData(true);
+    } else if (settings.revealSensitiveProfileData) {
+      // Reveal -> mask as configured.
       settings.setRevealSensitiveProfileData(false);
       return;
-    }
-    if (settings.hasNoRedactionsConfigured) {
+    } else if (settings.hasNoRedactionsConfigured) {
       await settings.applyQuickRedactionPreset();
     } else {
-      settings.setRevealSensitiveProfileData(true);
+      // Mask as configured -> full-hide.
+      settings.setFullHideSensitiveData(true);
     }
     if (mounted) {
       setState(() {});

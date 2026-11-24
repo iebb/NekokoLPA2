@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/profile_card_bottom_data.dart';
 import '../theme/app_theme.dart';
+import '../utils/profile_redaction.dart';
 import '../utils/size_formatter.dart';
 
 class ProfileCardBottom extends StatelessWidget {
@@ -24,6 +25,15 @@ class ProfileCardBottom extends StatelessWidget {
     if (phoneNumber == null && balance == null && packages.isEmpty) {
       return const SizedBox.shrink();
     }
+
+    // The profiles screen rebuilds on AppSettings changes, so these pick up
+    // the current eye state (reveal / mask as configured / full-hide).
+    final displayPhoneNumber = phoneNumber == null
+        ? null
+        : ProfileRedaction.redactPhoneNumber(phoneNumber);
+    final displayBalance = balance == null
+        ? null
+        : ProfileRedaction.redactBalance(balance);
 
     // Calculate darker shades for text
     // Calculate colors based on theme brightness
@@ -76,7 +86,7 @@ class ProfileCardBottom extends StatelessWidget {
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
-                              phoneNumber!,
+                              displayPhoneNumber!,
                               style: TextStyle(
                                 fontSize: 11,
                                 color: textColor,
@@ -112,7 +122,7 @@ class ProfileCardBottom extends StatelessWidget {
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
-                          balance!,
+                          displayBalance!,
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,

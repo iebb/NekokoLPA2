@@ -261,6 +261,11 @@ class AppSettings extends ChangeNotifier {
   bool _revealSensitiveProfileData = false;
   bool get revealSensitiveProfileData => _revealSensitiveProfileData;
 
+  /// Full-hide mode (eye icon third state): every identifier is masked.
+  /// Memory-only, like [_revealSensitiveProfileData].
+  bool _fullHideSensitiveData = false;
+  bool get fullHideSensitiveData => _fullHideSensitiveData;
+
   bool _enableUpdateCheck = true;
   bool get enableUpdateCheck => _enableUpdateCheck;
 
@@ -363,22 +368,22 @@ class AppSettings extends ChangeNotifier {
   bool _useNekokoIcons = true;
   bool get useNekokoIcons => _useNekokoIcons;
 
-  bool _redactEidFirst = true;
+  bool _redactEidFirst = false;
   bool get redactEidFirst => _redactEidFirst;
 
-  bool _redactEidMiddle = false;
+  bool _redactEidMiddle = true;
   bool get redactEidMiddle => _redactEidMiddle;
 
-  bool _redactEidLast = true;
+  bool _redactEidLast = false;
   bool get redactEidLast => _redactEidLast;
 
   bool _redactIccidFirst = true;
   bool get redactIccidFirst => _redactIccidFirst;
 
-  bool _redactIccidMiddle = true;
+  bool _redactIccidMiddle = false;
   bool get redactIccidMiddle => _redactIccidMiddle;
 
-  bool _redactIccidLast = true;
+  bool _redactIccidLast = false;
   bool get redactIccidLast => _redactIccidLast;
 
   NicknameRedactionMode _nicknameRedactionMode = NicknameRedactionMode.none;
@@ -498,6 +503,26 @@ class AppSettings extends ChangeNotifier {
     if (_prefs?.containsKey(key) == true) await _prefs?.remove(key);
   }
 
+  /// One-time migration for the redaction segment flags: they used to mean
+  /// "show this segment" and now mean "mask this segment". Flip any stored
+  /// values once so existing installs keep their on-screen display.
+  @visibleForTesting
+  static Future<void> migrateRedactionFlags(SharedPreferences prefs) async {
+    if (prefs.getBool('redactionFlagsMigratedV2') == true) return;
+    for (final key in const [
+      'redactEidFirst',
+      'redactEidMiddle',
+      'redactEidLast',
+      'redactIccidFirst',
+      'redactIccidMiddle',
+      'redactIccidLast',
+    ]) {
+      final stored = prefs.getBool(key);
+      if (stored != null) await prefs.setBool(key, !stored);
+    }
+    await prefs.setBool('redactionFlagsMigratedV2', true);
+  }
+
   Future<void> init() async {
     // Attempt to read flavor from asset first (injected by rebrand script)
     try {
@@ -529,12 +554,14 @@ class AppSettings extends ChangeNotifier {
     _loadProfileIcons = _prefs?.getBool('loadProfileIcons_v2') ?? false;
     _useNekokoIcons = _prefs?.getBool('useNekokoIcons') ?? true;
     _disableRefreshFlags = _prefs?.getBool('disableRefreshFlags') ?? false;
-    _redactEidFirst = _prefs?.getBool('redactEidFirst') ?? true;
-    _redactEidMiddle = _prefs?.getBool('redactEidMiddle') ?? false;
-    _redactEidLast = _prefs?.getBool('redactEidLast') ?? true;
+    final prefs = _prefs;
+    if (prefs != null) await migrateRedactionFlags(prefs);
+    _redactEidFirst = _prefs?.getBool('redactEidFirst') ?? false;
+    _redactEidMiddle = _prefs?.getBool('redactEidMiddle') ?? true;
+    _redactEidLast = _prefs?.getBool('redactEidLast') ?? false;
     _redactIccidFirst = _prefs?.getBool('redactIccidFirst') ?? true;
-    _redactIccidMiddle = _prefs?.getBool('redactIccidMiddle') ?? true;
-    _redactIccidLast = _prefs?.getBool('redactIccidLast') ?? true;
+    _redactIccidMiddle = _prefs?.getBool('redactIccidMiddle') ?? false;
+    _redactIccidLast = _prefs?.getBool('redactIccidLast') ?? false;
 
     final nicknameRedactionIdx = _prefs?.getInt('nicknameRedactionMode');
     if (nicknameRedactionIdx != null &&
@@ -1145,12 +1172,12 @@ class AppSettings extends ChangeNotifier {
   }
 
   bool get hasNoRedactionsConfigured =>
-      _redactEidFirst &&
-      _redactEidMiddle &&
-      _redactEidLast &&
-      _redactIccidFirst &&
-      _redactIccidMiddle &&
-      _redactIccidLast &&
+      !_redactEidFirst &&
+      !_redactEidMiddle &&
+      !_redactEidLast &&
+      !_redactIccidFirst &&
+      !_redactIccidMiddle &&
+      !_redactIccidLast &&
       _nicknameRedactionMode == NicknameRedactionMode.none &&
       _operatorRedactionMode == OperatorRedactionMode.none &&
       _tagsRedactionMode == TagsRedactionMode.none &&
@@ -1173,12 +1200,13 @@ class AppSettings extends ChangeNotifier {
 
   Future<void> applyQuickRedactionPreset() async {
     _revealSensitiveProfileData = false;
-    _redactEidFirst = true;
-    _redactEidMiddle = false;
-    _redactEidLast = false;
+    _fullHideSensitiveData = false;
+    _redactEidFirst = false;
+    _redactEidMiddle = true;
+    _redactEidLast = true;
     _redactIccidFirst = true;
-    _redactIccidMiddle = false;
-    _redactIccidLast = false;
+    _redactIccidMiddle = true;
+    _redactIccidLast = true;
     _nicknameRedactionMode = NicknameRedactionMode.hideNickname;
     _operatorRedactionMode = OperatorRedactionMode.countryName;
 
@@ -1194,8 +1222,24 @@ class AppSettings extends ChangeNotifier {
   }
 
   void setRevealSensitiveProfileData(bool value) {
-    if (_revealSensitiveProfileData == value) return;
+    // Reveal and full-hide are mutually exclusive.
+    final changed =
+        _revealSensitiveProfileData != value ||
+        (value && _fullHideSensitiveData);
+    if (!changed) return;
     _revealSensitiveProfileData = value;
+    if (value) _fullHideSensitiveData = false;
+    notifyListeners();
+  }
+
+  void setFullHideSensitiveData(bool value) {
+    // Full-hide and reveal are mutually exclusive.
+    final changed =
+        _fullHideSensitiveData != value ||
+        (value && _revealSensitiveProfileData);
+    if (!changed) return;
+    _fullHideSensitiveData = value;
+    if (value) _revealSensitiveProfileData = false;
     notifyListeners();
   }
 

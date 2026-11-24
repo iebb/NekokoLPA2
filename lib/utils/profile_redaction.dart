@@ -36,6 +36,7 @@ class ProfileRedaction {
   static String redactEid(String? eid, {bool revealFull = false}) {
     if (eid == null || eid.isEmpty) return '';
     final settings = AppSettings();
+    if (settings.fullHideSensitiveData) return _masked(eid.length);
     if (revealFull || settings.revealSensitiveProfileData) return eid;
     return redactEidPreview(eid);
   }
@@ -55,6 +56,7 @@ class ProfileRedaction {
 
   static String redactIccid(String iccid) {
     final settings = AppSettings();
+    if (settings.fullHideSensitiveData) return _masked(iccid.length);
     if (settings.revealSensitiveProfileData) return iccid;
     return redactIccidPreview(iccid);
   }
@@ -69,6 +71,28 @@ class ProfileRedaction {
         _Range(iccid.length - 6, iccid.length, settings.redactIccidLast),
       ],
     );
+  }
+
+  /// Masks the last [digits] digits of a phone number, keeping any
+  /// formatting characters (such as `+` and spaces) in place. In full-hide
+  /// mode every digit is masked.
+  static String redactPhoneNumber(String? value) {
+    if (value == null || value.isEmpty) return '';
+    final settings = AppSettings();
+    if (settings.fullHideSensitiveData) return _maskDigits(value, null);
+    if (settings.revealSensitiveProfileData) return value;
+    return _maskDigits(value, 6);
+  }
+
+  /// Fully masks a balance value; nothing of the amount is shown.
+  static String redactBalance(String? balance) {
+    if (balance == null || balance.isEmpty) return '';
+    final settings = AppSettings();
+    if (settings.revealSensitiveProfileData &&
+        !settings.fullHideSensitiveData) {
+      return balance;
+    }
+    return '********';
   }
 
   static String displayName(EuiccProfile profile) {
@@ -281,21 +305,47 @@ class ProfileRedaction {
 
   static String _applyRanges(String source, {required List<_Range> ranges}) {
     if (source.isEmpty) return source;
-    final keep = List<bool>.filled(source.length, false);
+    // An enabled range means that segment is redacted (masked).
+    final mask = List<bool>.filled(source.length, false);
     for (final range in ranges) {
       if (!range.enabled) continue;
       final start = range.start.clamp(0, source.length);
       final end = range.end.clamp(0, source.length);
       for (var i = start; i < end; i++) {
-        keep[i] = true;
+        mask[i] = true;
       }
     }
 
     final buffer = StringBuffer();
     for (var i = 0; i < source.length; i++) {
-      buffer.write(keep[i] ? source[i] : _mask);
+      buffer.write(mask[i] ? _mask : source[i]);
     }
     return buffer.toString().replaceAll(_longMaskRun, '********');
+  }
+
+  /// Returns a fully masked string of [length] characters.
+  static String _masked(int length) =>
+      (_mask * length).replaceAll(_longMaskRun, '********');
+
+  /// Replaces digit characters with [_mask], keeping non-digits in place.
+  /// When [lastDigits] is null every digit is masked, otherwise only the
+  /// last [lastDigits] digits are masked.
+  static String _maskDigits(String value, int? lastDigits) {
+    var remaining = lastDigits;
+    final chars = value.split('');
+    for (var i = chars.length - 1; i >= 0; i--) {
+      if (remaining == 0) break;
+      if (_isDigit(chars[i])) {
+        chars[i] = _mask;
+        if (remaining != null) remaining--;
+      }
+    }
+    return chars.join();
+  }
+
+  static bool _isDigit(String char) {
+    final code = char.codeUnitAt(0);
+    return code >= 0x30 && code <= 0x39;
   }
 
   static String _shuffledCountryCode(String seed) {
