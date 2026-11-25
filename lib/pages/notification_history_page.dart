@@ -511,7 +511,12 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
                           final profileMeta = snapshot.data;
                           final fallbackName = displayIccid;
                           final profileName =
-                              profileMeta?.displayName ?? fallbackName;
+                              (profileMeta != null
+                                  ? ProfileRedaction.metadataDisplayName(
+                                      profileMeta,
+                                    )
+                                  : null) ??
+                              fallbackName;
 
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),

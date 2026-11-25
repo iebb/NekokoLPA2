@@ -1178,6 +1178,201 @@ void main() {
       // Restore the default mock store for the tests after this one.
       SharedPreferences.setMockInitialValues({});
     });
+
+    test('a failed preset with a pending migration restores its batch',
+        () async {
+      // Migration pending: the marker fails at init.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // One flag write fails; the rollback succeeds, so both staged
+      // records are restored to their pre-preset state instead of being
+      // replayed at the next launch.
+      store.failCounts['flutter.redactEidMiddle'] = 1;
+      expect(await settings.applyQuickRedactionPreset(), isFalse);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+      expect(
+        await store.persisted('flutter.redactionFlagsMigrationEditsV2'),
+        isNull,
+      );
+      expect(
+        await store.persisted(
+          'flutter.redactionFlagsMigrationPresetModesV2',
+        ),
+        isNull,
+      );
+
+      // The next attempt applies in full, modes included.
+      expect(await settings.applyQuickRedactionPreset(), isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+      expect(
+        settings.nicknameRedactionMode,
+        NicknameRedactionMode.hideNickname,
+      );
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('a failed rollback keeps the preset batch for the next launch',
+        () async {
+      // Migration completes at init.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // The flag write and its rollback write both fail, so the batch
+      // stays staged instead of being restored.
+      store.failCounts['flutter.redactEidMiddle'] = 2;
+      expect(await settings.applyQuickRedactionPreset(), isFalse);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+      expect(
+        jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+              as String,
+        ) as Map,
+        {
+          'redactEidFirst': false,
+          'redactEidMiddle': true,
+          'redactEidLast': true,
+          'redactIccidFirst': true,
+          'redactIccidMiddle': true,
+          'redactIccidLast': true,
+        },
+      );
+      expect(
+        jsonDecode(
+          await store.persisted(
+                'flutter.redactionFlagsMigrationPresetModesV2',
+              )
+              as String,
+        ) as Map,
+        {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+      );
+
+      // A restart replays the full preset and drops the batch.
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+      expect(settings.redactEidMiddle, isTrue);
+      expect(
+        settings.nicknameRedactionMode,
+        NicknameRedactionMode.hideNickname,
+      );
+      expect(
+        settings.operatorRedactionMode,
+        OperatorRedactionMode.countryName,
+      );
+      expect(
+        await store.persisted('flutter.redactionFlagsMigrationEditsV2'),
+        isNull,
+      );
+      expect(
+        await store.persisted(
+          'flutter.redactionFlagsMigrationPresetModesV2',
+        ),
+        isNull,
+      );
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('a failed rollback with a pending migration replays at restart',
+        () async {
+      // Migration pending: the marker fails at init.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // The flag write and its rollback write both fail, so the batch
+      // stays staged.
+      store.failCounts['flutter.redactEidMiddle'] = 2;
+      expect(await settings.applyQuickRedactionPreset(), isFalse);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // A restart is a fresh process: rebuild the mock store from the
+      // backing store's contents, so the prefs cache starts empty and
+      // the migration really runs again. Storage has recovered by now.
+      final stored = await store.getAll();
+      SharedPreferences.setMockInitialValues(
+        Map<String, Object>.fromEntries(
+          stored.entries.map(
+            (entry) => MapEntry(
+              entry.key.replaceFirst('flutter.', ''),
+              entry.value,
+            ),
+          ),
+        ),
+      );
+      await settings.init();
+      final prefs = await SharedPreferences.getInstance();
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+      expect(settings.redactEidMiddle, isTrue);
+      expect(
+        settings.nicknameRedactionMode,
+        NicknameRedactionMode.hideNickname,
+      );
+      expect(prefs.getBool('redactionFlagsMigratedV2'), isTrue);
+      expect(prefs.getString('redactionFlagsMigrationEditsV2'), isNull);
+      expect(
+        prefs.getString('redactionFlagsMigrationPresetModesV2'),
+        isNull,
+      );
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
   });
 
   group('displayName', () {
