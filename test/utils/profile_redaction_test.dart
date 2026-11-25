@@ -1952,6 +1952,184 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
+    test('a mode edit supersedes a retained batch after migration', () async {
+      // Migration complete, with a staged preset batch left behind:
+      // the startup replay applies it but its final remove fails.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': false,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+        'flutter.nicknameRedactionMode': 2,
+        'flutter.operatorRedactionMode': 1,
+        'flutter.redactionFlagsMigratedV2': true,
+        'flutter.redactionFlagsMigrationPresetBatchV2': jsonEncode({
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'modes': {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        }),
+      });
+      store.failCounts['flutter.redactionFlagsMigrationPresetBatchV2'] = 1;
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': false,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+        'nicknameRedactionMode': 2,
+        'operatorRedactionMode': 1,
+        'redactionFlagsMigratedV2': true,
+        'redactionFlagsMigrationPresetBatchV2': jsonEncode({
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'modes': {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        }),
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.nicknameRedactionMode, NicknameRedactionMode.hideNickname);
+      expect(settings.operatorRedactionMode, OperatorRedactionMode.countryName);
+      // The replay applied the batch but could not remove it.
+      expect(
+        await store.persisted('flutter.redactionFlagsMigrationPresetBatchV2'),
+        isNotNull,
+      );
+
+      // Switching the nickname mode writes the newer value into the
+      // retained batch as well, leaving the operator mode untouched.
+      expect(
+        await settings.setNicknameRedactionMode(NicknameRedactionMode.none),
+        isTrue,
+      );
+      expect(settings.nicknameRedactionMode, NicknameRedactionMode.none);
+      expect(
+        (jsonDecode(
+              await store.persisted(
+                    'flutter.redactionFlagsMigrationPresetBatchV2',
+                  )
+                  as String,
+            )
+            as Map)['modes'],
+        {'nicknameRedactionMode': 0, 'operatorRedactionMode': 1},
+      );
+      expect(
+        await store.persisted('flutter.nicknameRedactionMode'),
+        0,
+      );
+
+      // A restart replays the updated batch, not the stale preset.
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      await settings.init();
+      expect(settings.nicknameRedactionMode, NicknameRedactionMode.none);
+      expect(settings.operatorRedactionMode, OperatorRedactionMode.countryName);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('a mode edit fails when the retained batch cannot be updated',
+        () async {
+      // Migration complete, with a staged preset batch left behind.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': false,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+        'flutter.nicknameRedactionMode': 2,
+        'flutter.operatorRedactionMode': 1,
+        'flutter.redactionFlagsMigratedV2': true,
+        'flutter.redactionFlagsMigrationPresetBatchV2': jsonEncode({
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'modes': {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        }),
+      });
+      // The startup replay applies the batch but its final remove
+      // fails, so the batch stays behind for the edit to supersede.
+      store.failCounts['flutter.redactionFlagsMigrationPresetBatchV2'] = 1;
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': false,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+        'nicknameRedactionMode': 2,
+        'operatorRedactionMode': 1,
+        'redactionFlagsMigratedV2': true,
+        'redactionFlagsMigrationPresetBatchV2': jsonEncode({
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'modes': {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        }),
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.operatorRedactionMode, OperatorRedactionMode.countryName);
+
+      // The next write to the batch key fails, so the edit is refused
+      // and the mode does not move.
+      store.failCounts['flutter.redactionFlagsMigrationPresetBatchV2'] = 1;
+      expect(
+        await settings.setOperatorRedactionMode(OperatorRedactionMode.none),
+        isFalse,
+      );
+      expect(settings.operatorRedactionMode, OperatorRedactionMode.countryName);
+
+      // Once storage recovers, the retry lands and the edit sticks.
+      expect(
+        await settings.setOperatorRedactionMode(OperatorRedactionMode.none),
+        isTrue,
+      );
+      expect(settings.operatorRedactionMode, OperatorRedactionMode.none);
+
+      // A restart replays the updated batch, not the stale preset.
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      await settings.init();
+      expect(settings.operatorRedactionMode, OperatorRedactionMode.none);
+      expect(settings.nicknameRedactionMode, NicknameRedactionMode.hideNickname);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
     test('a failed preset keeps the edits it superseded', () async {
       // Migration pending: the marker fails at init.
       final store = _FailingWriteStore({
@@ -2163,6 +2341,22 @@ void main() {
         ProfileRedaction.displayName(profile),
         isNot(contains(RegExp(r'\d'))),
       );
+    });
+
+    test('maskPhoneLike masks phone runs and leaves other text alone', () {
+      expect(
+        ProfileRedaction.maskPhoneLike('+44 121 234 5678'),
+        isNot(contains(RegExp(r'\d'))),
+      );
+      expect(
+        ProfileRedaction.maskPhoneLike('My travel eSIM'),
+        'My travel eSIM',
+      );
+      final masked = ProfileRedaction.maskPhoneLike(
+        'Call +372 5123 4567 please',
+      );
+      expect(masked, isNot(contains(RegExp(r'\d'))));
+      expect(masked.length, 'Call +372 5123 4567 please'.length);
     });
   });
 

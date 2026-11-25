@@ -1711,16 +1711,65 @@ class AppSettings extends ChangeNotifier {
   Future<bool> setRedactIccidLast(bool value) =>
       _setSegmentFlag('redactIccidLast', value, (v) => _redactIccidLast = v);
 
-  Future<void> setNicknameRedactionMode(NicknameRedactionMode value) async {
+  Future<bool> setNicknameRedactionMode(NicknameRedactionMode value) async {
+    if (!await _runPendingMigrationEdit(
+      () => _supersedeRetainedPresetMode(nickname: value.index),
+    )) {
+      return false;
+    }
     _nicknameRedactionMode = value;
     await _prefs?.setInt('nicknameRedactionMode', value.index);
     notifyListeners();
+    return true;
   }
 
-  Future<void> setOperatorRedactionMode(OperatorRedactionMode value) async {
+  Future<bool> setOperatorRedactionMode(OperatorRedactionMode value) async {
+    if (!await _runPendingMigrationEdit(
+      () => _supersedeRetainedPresetMode(operator: value.index),
+    )) {
+      return false;
+    }
     _operatorRedactionMode = value;
     await _prefs?.setInt('operatorRedactionMode', value.index);
     notifyListeners();
+    return true;
+  }
+
+  /// Writes the given mode into a retained preset batch, so a later
+  /// startup replay cannot overwrite the newer choice. Returns whether
+  /// the batch now holds the mode (true when there is no batch, or no
+  /// modes, to update). The segment-flag path has the same shape in
+  /// [_supersedeRetainedPresetBatch].
+  Future<bool> _supersedeRetainedPresetMode({
+    int? nickname,
+    int? operator,
+  }) async {
+    final prefs = _prefs;
+    if (prefs == null) return true;
+    final batch = _readPresetBatch(prefs);
+    if (batch == null || batch.modes == null) return true;
+    final previousRaw = prefs.getString(_migrationPresetBatchKey);
+    final modes = {
+      'nicknameRedactionMode': nickname ?? batch.modes!.$1,
+      'operatorRedactionMode': operator ?? batch.modes!.$2,
+    };
+    final rewritten = <String, Object>{
+      'flags': batch.flags,
+      'modes': modes,
+      if (batch.superseded.isNotEmpty) 'supersedes': batch.superseded,
+    };
+    if (await prefs.setString(
+      _migrationPresetBatchKey,
+      jsonEncode(rewritten),
+    )) {
+      return true;
+    }
+    // The failed write still replaced the in-memory cache: repair it,
+    // so a retry still sees the stale batch.
+    if (previousRaw != null) {
+      await prefs.setString(_migrationPresetBatchKey, previousRaw);
+    }
+    return false;
   }
 
   Future<void> setTagsRedactionMode(TagsRedactionMode value) async {

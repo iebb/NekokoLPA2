@@ -148,13 +148,18 @@ class ProfileRedaction {
     if (settings.fullHideSensitiveData ||
         settings.nicknameRedactionMode ==
             NicknameRedactionMode.redactPhoneNumbers) {
-      return base.replaceAllMapped(
-        _phoneNumber,
-        (match) => _mask * match.group(0)!.length,
-      );
+      return maskPhoneLike(base);
     }
     return base;
   }
+
+  /// Masks every phone-like run in [value] with `*`s of the same length.
+  /// This is the rule [displayName] applies to a phone-like nickname
+  /// under full-hide or redact-phone-numbers.
+  static String maskPhoneLike(String value) => value.replaceAllMapped(
+    _phoneNumber,
+    (match) => _mask * match.group(0)!.length,
+  );
 
   /// The display name of a cached [ProfileMetadata], with the same
   /// nickname rules as [displayName]: the stored nickname is hidden

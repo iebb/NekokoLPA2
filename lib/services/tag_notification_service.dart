@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import 'database_service.dart';
+import '../utils/profile_redaction.dart';
 import '../utils/profile_tag_utils.dart';
 import '../settings/app_settings.dart';
 import '../widgets/common/simple_dialog_container.dart';
@@ -106,6 +107,43 @@ class TagNotificationService {
     return results.map((m) => ScheduledNotification.fromMap(m)).toList();
   }
 
+  /// The `" for <name>"` suffix of the tag-change confirmations, with
+  /// the nickname rules from [ProfileRedaction]: the nickname is
+  /// suppressed entirely when the mode says so (falls back to the
+  /// operator name), and a phone-like nickname is masked under
+  /// full-hide or when the mode is redact-phone-numbers. Revealing
+  /// shows the nickname as-is, like everywhere else.
+  String _profileInfo({
+    String? profileName,
+    String? profileNickname,
+    String? regionCode,
+  }) {
+    final settings = AppSettings();
+    if (profileNickname != null &&
+        profileNickname.isNotEmpty &&
+        settings.nicknameRedactionMode !=
+            NicknameRedactionMode.hideNickname) {
+      final cleanedNickname = ProfileTagUtils.parse(
+        profileNickname,
+        regionCode: regionCode,
+      ).displayName;
+      if (cleanedNickname.isNotEmpty) {
+        final shown =
+            settings.revealSensitiveProfileData ||
+                    (!settings.fullHideSensitiveData &&
+                        settings.nicknameRedactionMode !=
+                            NicknameRedactionMode.redactPhoneNumbers)
+                ? cleanedNickname
+                : ProfileRedaction.maskPhoneLike(cleanedNickname);
+        if (shown.isNotEmpty) return ' for $shown';
+      }
+    }
+    if (profileName != null && profileName.isNotEmpty) {
+      return ' for $profileName';
+    }
+    return '';
+  }
+
   Future<void> promptAndSchedule(
     BuildContext context,
     String iccid,
@@ -123,19 +161,11 @@ class TagNotificationService {
     if (!context.mounted) return;
 
     // Use cleaned nickname (without tags) or fallback to name
-    String profileInfo = "";
-    if (profileNickname != null && profileNickname.isNotEmpty) {
-      final cleanedNickname = ProfileTagUtils.parse(
-        profileNickname,
-        regionCode: regionCode,
-      ).displayName;
-      if (cleanedNickname.isNotEmpty) {
-        profileInfo = " for $cleanedNickname";
-      }
-    }
-    if (profileInfo.isEmpty && profileName != null && profileName.isNotEmpty) {
-      profileInfo = " for $profileName";
-    }
+    final profileInfo = _profileInfo(
+      profileName: profileName,
+      profileNickname: profileNickname,
+      regionCode: regionCode,
+    );
 
     // Display raw tag in quotes if no note
     final displayTag = tag.note ?? '"${tag.raw}"';
@@ -198,19 +228,11 @@ class TagNotificationService {
     if (!context.mounted) return;
 
     // Use cleaned nickname (without tags) or fallback to name
-    String profileInfo = "";
-    if (profileNickname != null && profileNickname.isNotEmpty) {
-      final cleanedNickname = ProfileTagUtils.parse(
-        profileNickname,
-        regionCode: regionCode,
-      ).displayName;
-      if (cleanedNickname.isNotEmpty) {
-        profileInfo = " for $cleanedNickname";
-      }
-    }
-    if (profileInfo.isEmpty && profileName != null && profileName.isNotEmpty) {
-      profileInfo = " for $profileName";
-    }
+    final profileInfo = _profileInfo(
+      profileName: profileName,
+      profileNickname: profileNickname,
+      regionCode: regionCode,
+    );
 
     // Display raw tag in quotes if no note
     final displayTag = newTag.note ?? '"${newTag.raw}"';
@@ -256,19 +278,11 @@ class TagNotificationService {
     if (!context.mounted) return;
 
     // Use cleaned nickname (without tags) or fallback to name
-    String profileInfo = "";
-    if (profileNickname != null && profileNickname.isNotEmpty) {
-      final cleanedNickname = ProfileTagUtils.parse(
-        profileNickname,
-        regionCode: regionCode,
-      ).displayName;
-      if (cleanedNickname.isNotEmpty) {
-        profileInfo = " for $cleanedNickname";
-      }
-    }
-    if (profileInfo.isEmpty && profileName != null && profileName.isNotEmpty) {
-      profileInfo = " for $profileName";
-    }
+    final profileInfo = _profileInfo(
+      profileName: profileName,
+      profileNickname: profileNickname,
+      regionCode: regionCode,
+    );
 
     // Display raw tag in quotes if no note
     final displayTag = tag.note ?? '"${tag.raw}"';
