@@ -71,6 +71,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
           title: 'VoWiFi',
           subtitle: '${sessions.length} active session(s)',
           actions: [
+            const VoWifiPrivacyAction(),
             IconButton(
               tooltip: l10n.vowifiAutoRenewSubtitle,
               isSelected: AppSettings().vowifiAutoRenew,
