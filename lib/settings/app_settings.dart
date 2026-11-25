@@ -1301,7 +1301,9 @@ class AppSettings extends ChangeNotifier {
     final prefs = _prefs;
     if (prefs == null) return true;
     if (_migrationCompleted) return true;
-    final edits = _readMigrationEdits(prefs);
+    // Read before the capture only to know which stored values are
+    // already new-semantics edits and must not be snapshotted as old.
+    final priorEdits = _readMigrationEdits(prefs);
     // Without a snapshot, a later retry would rebuild the source pair
     // from the current flags — but an edited flag already holds its new
     // value, which would corrupt the coupled EID pair. Capture the
@@ -1310,7 +1312,7 @@ class AppSettings extends ChangeNotifier {
     if (!_migrationSnapshotStored) {
       final source = <String, bool>{};
       for (final flagKey in _segmentFlagKeys) {
-        if (edits.containsKey(flagKey)) continue;
+        if (priorEdits.containsKey(flagKey)) continue;
         final stored = prefs.getBool(flagKey);
         if (stored != null) source[flagKey] = stored;
       }
@@ -1322,20 +1324,25 @@ class AppSettings extends ChangeNotifier {
       }
       _migrationSnapshotStored = true;
     }
-    final previous = prefs.getString(_migrationEditsKey);
+    // Re-read after the capture: a concurrent edit may have recorded
+    // its key while this call awaited the snapshot write; merging from
+    // the pre-capture map would drop it.
+    final edits = _readMigrationEdits(prefs);
     edits[key] = newValue;
     if (await prefs.setString(_migrationEditsKey, jsonEncode(edits))) {
       return true;
     }
-    // The failed write still replaced the in-memory cache, so restore
-    // the previous record: otherwise a later successful edit would read
-    // the rejected edit from the cache and persist it. The restore is
-    // itself an optimistic write, so the cache is fixed even if the
-    // store write fails again (the store never received the new value).
-    if (previous == null) {
+    // The failed write still replaced the in-memory cache, so roll the
+    // record back — dropping only this key, so a concurrent edit's
+    // record survives. The restore is itself an optimistic write, so
+    // the cache is fixed even if the store write fails again (the store
+    // never received the new value).
+    final current = _readMigrationEdits(prefs);
+    current.remove(key);
+    if (current.isEmpty) {
       await prefs.remove(_migrationEditsKey);
     } else {
-      await prefs.setString(_migrationEditsKey, previous);
+      await prefs.setString(_migrationEditsKey, jsonEncode(current));
     }
     return false;
   }

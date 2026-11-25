@@ -868,6 +868,61 @@ void main() {
       // Restore the default mock store for the tests after this one.
       SharedPreferences.setMockInitialValues({});
     });
+
+    test('concurrent edits both survive the snapshot capture', () async {
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': false,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigrationSourceV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': false,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(
+        await store.persisted('flutter.redactionFlagsMigrationSourceV2'),
+        isNull,
+      );
+
+      // Two quick taps on different switches: neither setter is awaited
+      // before the other starts, so both capture the snapshot at once.
+      store.failingKeys.clear();
+      final first = settings.setRedactIccidFirst(true);
+      final second = settings.setRedactIccidMiddle(true);
+      await Future.wait([first, second]);
+      expect(
+        jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+              as String,
+        ) as Map,
+        {'redactIccidFirst': true, 'redactIccidMiddle': true},
+      );
+
+      // The retry applies both edits.
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      final relaunched = await SharedPreferences.getInstance();
+      await AppSettings.migrateRedactionFlags(relaunched);
+      expect(relaunched.getBool('redactIccidFirst'), isTrue);
+      expect(relaunched.getBool('redactIccidMiddle'), isTrue);
+      expect(relaunched.getBool('redactionFlagsMigratedV2'), isTrue);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
   });
 
   group('unsupported card details', () {
