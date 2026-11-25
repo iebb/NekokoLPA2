@@ -1407,30 +1407,40 @@ class AppSettings extends ChangeNotifier {
     // A later edit for a superseded key is newer than the preset: drop
     // the key from the batch's supersession, so the migration and the
     // display stop skipping the record entry. The record write landed
-    // first, so a failed batch rewrite cannot resurrect the old edit;
-    // and the skip is value-aware (it only drops a record entry equal
-    // to the superseded value), so a failed rewrite still keeps a newer
-    // edit whose value differs — only a rewrite failure plus an edit
-    // back to exactly the old value would still lose it.
-    await _clearPresetBatchSupersession(values.keys);
-    return true;
+    // first, so a failed batch rewrite cannot resurrect the old edit.
+    // When the rewrite does not land, a newer edit whose value differs
+    // from the superseded one is still protected by the value-aware
+    // skip; only a same-value edit is ambiguous, and it is reported as
+    // not recorded, so the setter leaves the toggle where it was and
+    // the next tap retries.
+    return _clearPresetBatchSupersession(values);
   }
 
-  /// Removes [keys] from the staged preset batch's superseded map,
-  /// best-effort: the batch is rewritten only when it lists at least
-  /// one of them. The value-aware skip in the migration and the
-  /// display is the safety net when this rewrite does not land.
-  Future<void> _clearPresetBatchSupersession(Iterable<String> keys) async {
+  /// Removes [values]' keys from the staged preset batch's superseded
+  /// map. Returns whether no ambiguously superseded edit remains:
+  /// true when nothing had to be rewritten, when the rewrite landed,
+  /// or when a failed rewrite only affects an edit whose value differs
+  /// from the superseded one (the value-aware skip in the migration
+  /// and the display still keeps it); false when the rewrite did not
+  /// land and a same-value edit would still be skipped on restart.
+  Future<bool> _clearPresetBatchSupersession(
+    Map<String, bool> values,
+  ) async {
     final prefs = _prefs;
-    if (prefs == null) return;
+    if (prefs == null) return true;
     final batch = _readPresetBatch(prefs);
-    if (batch == null) return;
+    if (batch == null) return true;
     final superseded = Map<String, bool>.from(batch.superseded);
     var changed = false;
-    for (final key in keys) {
-      changed = superseded.remove(key) != null || changed;
+    var ambiguous = false;
+    for (final entry in values.entries) {
+      if (superseded.containsKey(entry.key)) {
+        if (superseded[entry.key] == entry.value) ambiguous = true;
+        changed = superseded.remove(entry.key) != null || changed;
+      }
     }
-    if (!changed) return;
+    if (!changed) return true;
+    final previousRaw = prefs.getString(_migrationPresetBatchKey);
     final rewritten = <String, Object>{
       'flags': batch.flags,
       if (batch.modes != null)
@@ -1440,7 +1450,18 @@ class AppSettings extends ChangeNotifier {
         },
       if (superseded.isNotEmpty) 'supersedes': superseded,
     };
-    await prefs.setString(_migrationPresetBatchKey, jsonEncode(rewritten));
+    if (await prefs.setString(
+      _migrationPresetBatchKey,
+      jsonEncode(rewritten),
+    )) {
+      return true;
+    }
+    // The failed write still replaced the in-memory cache: repair it,
+    // so a retry still sees the supersession to clear.
+    if (previousRaw != null) {
+      await prefs.setString(_migrationPresetBatchKey, previousRaw);
+    }
+    return !ambiguous;
   }
 
   /// Stages [values] in the pending-migration edits record with a single

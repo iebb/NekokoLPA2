@@ -1724,6 +1724,62 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
+    test('a same-value edit fails until the supersession clears',
+        () async {
+      // Migration pending: the marker fails at init.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // The user toggles EID Middle on and back off before the preset.
+      await settings.setRedactEidMiddle(true);
+      await settings.setRedactEidMiddle(false);
+
+      // The preset succeeds and supersedes the old edit.
+      expect(await settings.applyQuickRedactionPreset(), isTrue);
+
+      // The next write to the batch key fails, so clearing the
+      // supersession does not land: the same-value edit is refused,
+      // and the toggle does not move.
+      store.failCounts['flutter.redactionFlagsMigrationPresetBatchV2'] = 1;
+      expect(await settings.setRedactEidMiddle(false), isFalse);
+      expect(settings.redactEidMiddle, isTrue);
+
+      // Once storage recovers, the retry lands and the edit sticks.
+      expect(await settings.setRedactEidMiddle(false), isTrue);
+      expect(settings.redactEidMiddle, isFalse);
+
+      // A restart replays the post-preset edit, not the batch value.
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      await settings.init();
+      expect(settings.redactEidMiddle, isFalse);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
     test('a failed preset keeps the edits it superseded', () async {
       // Migration pending: the marker fails at init.
       final store = _FailingWriteStore({
