@@ -1299,61 +1299,78 @@ class AppSettings extends ChangeNotifier {
   /// writes and drop each other's edits.
   Future<void> _pendingMigrationEdit = Future.value();
 
-  /// Records a segment-flag edit made while the migration is still
-  /// pending, in new-semantics terms, so a later retry writes the edited
-  /// value instead of recomputing it from the frozen snapshot. Returns
-  /// false when the record itself cannot be stored.
-  Future<bool> _syncPendingMigrationEdit(String key, bool newValue) {
-    final run = _pendingMigrationEdit.then(
-      (_) => _syncPendingMigrationEditLocked(key, newValue),
-    );
+  /// Runs [run] after any in-flight pending-migration edit transaction,
+  /// so two quick taps cannot interleave their snapshot captures and
+  /// edits-record writes.
+  Future<T> _runPendingMigrationEdit<T>(Future<T> Function() run) {
+    final result = _pendingMigrationEdit.then((_) => run());
     // Keep the chain alive even if this run fails.
-    _pendingMigrationEdit = run.then((_) {}).catchError((_) {});
-    return run;
+    _pendingMigrationEdit = result.then((_) {}).catchError((_) {});
+    return result;
   }
 
-  Future<bool> _syncPendingMigrationEditLocked(
-    String key,
-    bool newValue,
-  ) async {
+  /// Records segment-flag edits made while the migration is still
+  /// pending, in new-semantics terms, so a later retry writes the edited
+  /// values instead of recomputing them from the frozen snapshot. Returns
+  /// false when the record itself cannot be stored.
+  Future<bool> _syncPendingMigrationEdit(String key, bool newValue) =>
+      _runPendingMigrationEdit(
+        () => _recordPendingMigrationEdits({key: newValue}),
+      );
+
+  /// Captures the pre-migration flag values into the snapshot when none
+  /// is stored yet. Without one, a later retry would rebuild the source
+  /// pair from the current flags — but an edited flag already holds its
+  /// new value, which would corrupt the coupled EID pair. Returns false
+  /// when the snapshot cannot be stored, in which case the caller must
+  /// refuse the edit.
+  Future<bool> _ensureMigrationSnapshot(SharedPreferences prefs) async {
+    if (_migrationSnapshotStored) return true;
+    final edits = _readMigrationEdits(prefs);
+    final source = <String, bool>{};
+    for (final flagKey in _segmentFlagKeys) {
+      if (edits.containsKey(flagKey)) continue;
+      final stored = prefs.getBool(flagKey);
+      if (stored != null) source[flagKey] = stored;
+    }
+    if (!await prefs.setString(_migrationSnapshotKey, jsonEncode(source))) {
+      return false;
+    }
+    _migrationSnapshotStored = true;
+    return true;
+  }
+
+  /// Records [values] in the pending-migration edits record with a single
+  /// write. Staging a whole batch at once makes the write the atomic gate:
+  /// if it fails, nothing is recorded at all, so a caller applying the
+  /// values afterwards can never land half-applied. Returns false when
+  /// the record cannot be stored.
+  Future<bool> _recordPendingMigrationEdits(Map<String, bool> values) async {
     final prefs = _prefs;
     if (prefs == null) return true;
     if (_migrationCompleted) return true;
+    if (!await _ensureMigrationSnapshot(prefs)) return false;
     final edits = _readMigrationEdits(prefs);
-    // Without a snapshot, a later retry would rebuild the source pair
-    // from the current flags — but an edited flag already holds its new
-    // value, which would corrupt the coupled EID pair. Capture the
-    // pre-edit values first (skipping flags already recorded as edited)
-    // and refuse the edit until that lands.
-    if (!_migrationSnapshotStored) {
-      final source = <String, bool>{};
-      for (final flagKey in _segmentFlagKeys) {
-        if (edits.containsKey(flagKey)) continue;
-        final stored = prefs.getBool(flagKey);
-        if (stored != null) source[flagKey] = stored;
-      }
-      if (!await prefs.setString(
-        _migrationSnapshotKey,
-        jsonEncode(source),
-      )) {
-        return false;
-      }
-      _migrationSnapshotStored = true;
+    final previousValues = <String, bool?>{};
+    for (final entry in values.entries) {
+      previousValues[entry.key] = edits[entry.key];
+      edits[entry.key] = entry.value;
     }
-    final previousValue = edits[key];
-    edits[key] = newValue;
     if (await prefs.setString(_migrationEditsKey, jsonEncode(edits))) {
       return true;
     }
     // The failed write still replaced the in-memory cache, so restore
-    // the record to what it was before this edit: an earlier persisted
-    // edit to the same key must survive. The restore is itself an
-    // optimistic write, so the cache is fixed even if the store write
-    // fails again (the store never received the new value).
-    if (previousValue == null) {
-      edits.remove(key);
-    } else {
-      edits[key] = previousValue;
+    // the record to what it was before this transaction: an earlier
+    // persisted edit to the same key must survive. The restore is itself
+    // an optimistic write, so the cache is fixed even if the store write
+    // fails again (the store never received the new values).
+    for (final entry in previousValues.entries) {
+      final previous = entry.value;
+      if (previous == null) {
+        edits.remove(entry.key);
+      } else {
+        edits[entry.key] = previous;
+      }
     }
     if (edits.isEmpty) {
       await prefs.remove(_migrationEditsKey);
@@ -1475,23 +1492,42 @@ class AppSettings extends ChangeNotifier {
   /// half-applied preset would look configured while the identifiers
   /// stay raw.
   Future<bool> applyQuickRedactionPreset() async {
-    // The segment flags go through the setters so an edit made while
-    // the migration is still pending is recorded for the retry instead
-    // of being overwritten by the frozen snapshot on the next launch.
-    // Every setter is attempted; only when all of them land does the
-    // rest of the preset apply.
-    var ok = await setRedactEidFirst(false);
-    ok = await setRedactEidMiddle(true) && ok;
-    ok = await setRedactEidLast(true) && ok;
-    ok = await setRedactIccidFirst(true) && ok;
-    ok = await setRedactIccidMiddle(true) && ok;
-    ok = await setRedactIccidLast(true) && ok;
-    if (!ok) return false;
+    // Stage all six edits in the pending-migration record with a single
+    // write first: if the record cannot be stored, nothing is applied at
+    // all, so the preset can never land half-applied. Once staged, the
+    // flags are applied directly instead of through the setters, since
+    // each setter would record its own write and re-open the partial
+    // window. The record also keeps the retry honest: a restart replays
+    // the staged values instead of recomputing them from the snapshot.
+    const preset = {
+      'redactEidFirst': false,
+      'redactEidMiddle': true,
+      'redactEidLast': true,
+      'redactIccidFirst': true,
+      'redactIccidMiddle': true,
+      'redactIccidLast': true,
+    };
+    final recorded = await _runPendingMigrationEdit(
+      () => _recordPendingMigrationEdits(preset),
+    );
+    if (!recorded) return false;
+    _redactEidFirst = false;
+    _redactEidMiddle = true;
+    _redactEidLast = true;
+    _redactIccidFirst = true;
+    _redactIccidMiddle = true;
+    _redactIccidLast = true;
     _revealSensitiveProfileData = false;
     _fullHideSensitiveData = false;
     _nicknameRedactionMode = NicknameRedactionMode.hideNickname;
     _operatorRedactionMode = OperatorRedactionMode.countryName;
 
+    final prefs = _prefs;
+    if (prefs != null) {
+      for (final entry in preset.entries) {
+        await prefs.setBool(entry.key, entry.value);
+      }
+    }
     await _prefs?.setInt('nicknameRedactionMode', _nicknameRedactionMode.index);
     await _prefs?.setInt('operatorRedactionMode', _operatorRedactionMode.index);
     notifyListeners();

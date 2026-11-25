@@ -9,6 +9,7 @@ import '../l10n/app_localizations.dart';
 import '../services/vowifi_sms_service.dart';
 import '../settings/app_settings.dart';
 import '../theme/app_theme.dart';
+import '../vowifi/l10n.dart';
 import '../vowifi/privacy_redaction.dart';
 import '../widgets/styled_header_scaffold.dart';
 
@@ -230,7 +231,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    session.profileName,
+                    VoWifiPrivacy.phoneNumber(session.profileName),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall?.copyWith(
@@ -348,7 +349,8 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
               context,
             ).colorScheme.primary.withValues(alpha: 0.12),
             child: Text(
-              session.profileName.trim().isEmpty
+              session.profileName.trim().isEmpty ||
+                      VoWifiPrivacy.isEnabled
                   ? '?'
                   : session.profileName.trim().characters.first.toUpperCase(),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -532,7 +534,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  session.profileName,
+                  VoWifiPrivacy.phoneNumber(session.profileName),
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -843,7 +845,10 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
             ),
           ] else
             SelectableText(
-              _displayMessageText(message),
+              VoWifiPrivacy.privateText(
+                _displayMessageText(message),
+                voWifiL10n(context).voWifiMessageHidden,
+              ),
               style: theme.textTheme.bodyMedium,
             ),
           if (((deliveryStatus ?? '').isNotEmpty ||
@@ -1090,7 +1095,9 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        _formatIdentityChoice(identity),
+                                        VoWifiPrivacy.phoneNumber(
+                                          _formatIdentityChoice(identity),
+                                        ),
                                         style: theme.textTheme.titleSmall
                                             ?.copyWith(
                                               fontWeight: FontWeight.w800,
@@ -1098,7 +1105,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        identity,
+                                        VoWifiPrivacy.phoneNumber(identity),
                                         style: theme.textTheme.bodySmall
                                             ?.copyWith(
                                               color: AppTheme.onSurfaceSubtle(

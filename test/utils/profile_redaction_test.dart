@@ -1062,6 +1062,72 @@ void main() {
       // Restore the default mock store for the tests after this one.
       SharedPreferences.setMockInitialValues({});
     });
+
+    test('a transient record failure does not partially apply the preset',
+        () async {
+      // Old values that convert to nothing configured: every flag off.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // The single staged record write fails once. With per-setter
+      // recording, the setters after the failed one would still land
+      // and leave the preset half-applied; staging means the failed
+      // attempt changes nothing at all.
+      store.failCounts['flutter.redactionFlagsMigrationEditsV2'] = 1;
+      expect(await settings.applyQuickRedactionPreset(), isFalse);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+      expect(settings.redactEidMiddle, isFalse);
+      expect(settings.redactIccidFirst, isFalse);
+      expect(
+        settings.nicknameRedactionMode,
+        NicknameRedactionMode.none,
+      );
+      expect(
+        await store.persisted('flutter.redactionFlagsMigrationEditsV2'),
+        isNull,
+      );
+
+      // The next attempt records and applies in full.
+      expect(await settings.applyQuickRedactionPreset(), isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+      expect(settings.redactEidMiddle, isTrue);
+      expect(settings.redactIccidFirst, isTrue);
+      expect(
+        jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+              as String,
+        ) as Map,
+        {
+          'redactEidFirst': false,
+          'redactEidMiddle': true,
+          'redactEidLast': true,
+          'redactIccidFirst': true,
+          'redactIccidMiddle': true,
+          'redactIccidLast': true,
+        },
+      );
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
   });
 
   group('displayName', () {
@@ -1120,8 +1186,17 @@ class _FailingWriteStore extends InMemorySharedPreferencesStore {
 
   final Set<String> failingKeys = {};
 
+  /// Fail the next [count] writes to each key, then let them through:
+  /// a transient failure on one write only.
+  final Map<String, int> failCounts = {};
+
   @override
   Future<bool> setValue(String valueType, String key, Object value) async {
+    final remaining = failCounts[key];
+    if (remaining != null && remaining > 0) {
+      failCounts[key] = remaining - 1;
+      return false;
+    }
     if (failingKeys.contains(key)) return false;
     return super.setValue(valueType, key, value);
   }
