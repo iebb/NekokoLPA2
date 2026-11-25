@@ -79,6 +79,11 @@ class _ReminderDetailsPageState extends State<ReminderDetailsPage> {
 
     final p = _profile!;
     final theme = Theme.of(context);
+    // The title and the avatar initial both use the redacted name, so
+    // a phone-number nickname stays masked here too.
+    final displayName =
+        ProfileRedaction.metadataDisplayName(p) ??
+        IccidFormatter.forDisplay(ProfileRedaction.redactIccid(p.iccid));
 
     return StyledHeaderScaffold(
       title: l10n.reminderDetails,
@@ -117,8 +122,8 @@ class _ReminderDetailsPageState extends State<ReminderDetailsPage> {
                         ),
                         child: Center(
                           child: Text(
-                            p.displayName.isNotEmpty
-                                ? p.displayName[0].toUpperCase()
+                            displayName.isNotEmpty
+                                ? displayName[0].toUpperCase()
                                 : '?',
                             style: TextStyle(
                               fontSize: 20,
@@ -134,7 +139,7 @@ class _ReminderDetailsPageState extends State<ReminderDetailsPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              p.displayName,
+                              displayName,
                               style: const TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,

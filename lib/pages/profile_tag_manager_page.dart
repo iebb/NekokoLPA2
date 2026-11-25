@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/profile_metadata_service.dart';
+import '../utils/profile_redaction.dart';
 import '../utils/profile_tag_utils.dart';
 import '../theme/app_theme.dart';
 import '../widgets/styled_header_scaffold.dart';
@@ -195,7 +196,7 @@ class _ProfileTagManagerPageState extends State<ProfileTagManagerPage> {
 
     return StyledHeaderScaffold(
       title: AppLocalizations.of(context)!.manageTags,
-      subtitle: widget.profile.displayName,
+      subtitle: ProfileRedaction.displayName(widget.profile),
       actions: [
         if (_isLoading)
           const Center(

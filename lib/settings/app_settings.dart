@@ -1402,7 +1402,16 @@ class AppSettings extends ChangeNotifier {
   /// through [_stagePendingMigrationEdits] instead, because its recovery
   /// batch is also needed once the migration is complete.)
   Future<bool> _recordPendingMigrationEdits(Map<String, bool> values) async {
-    if (_migrationCompleted) return true;
+    if (_migrationCompleted) {
+      // A recovery batch can stay durable after the migration
+      // completes (a failed preset's batch, or one whose startup
+      // replay did not land). Its flags and modes are already in
+      // storage, but a later replay would still overwrite a newer
+      // edit, so the edit is written into the batch as well; if that
+      // write does not land, the edit is refused and the next tap
+      // retries.
+      return _supersedeRetainedPresetBatch(values);
+    }
     if (await _stagePendingMigrationEdits(values) == null) return false;
     // A later edit for a superseded key is newer than the preset: drop
     // the key from the batch's supersession, so the migration and the
@@ -1462,6 +1471,40 @@ class AppSettings extends ChangeNotifier {
       await prefs.setString(_migrationPresetBatchKey, previousRaw);
     }
     return !ambiguous;
+  }
+
+  /// Writes [values] into a retained preset batch's flags, so a later
+  /// startup replay cannot overwrite the newer edit. Returns whether
+  /// the batch now holds the edit (true when there is no batch to
+  /// update).
+  Future<bool> _supersedeRetainedPresetBatch(Map<String, bool> values) async {
+    final prefs = _prefs;
+    if (prefs == null) return true;
+    final batch = _readPresetBatch(prefs);
+    if (batch == null) return true;
+    final previousRaw = prefs.getString(_migrationPresetBatchKey);
+    final flags = Map<String, bool>.from(batch.flags)..addAll(values);
+    final rewritten = <String, Object>{
+      'flags': flags,
+      if (batch.modes != null)
+        'modes': {
+          'nicknameRedactionMode': batch.modes!.$1,
+          'operatorRedactionMode': batch.modes!.$2,
+        },
+      if (batch.superseded.isNotEmpty) 'supersedes': batch.superseded,
+    };
+    if (await prefs.setString(
+      _migrationPresetBatchKey,
+      jsonEncode(rewritten),
+    )) {
+      return true;
+    }
+    // The failed write still replaced the in-memory cache: repair it,
+    // so a retry still sees the stale batch.
+    if (previousRaw != null) {
+      await prefs.setString(_migrationPresetBatchKey, previousRaw);
+    }
+    return false;
   }
 
   /// Stages [values] in the pending-migration edits record with a single
@@ -1572,11 +1615,12 @@ class AppSettings extends ChangeNotifier {
   static Future<void> _applyPresetBatchModes(
     SharedPreferences prefs,
   ) async {
+    final raw = prefs.getString(_migrationPresetBatchKey);
     final batch = _readPresetBatch(prefs);
     if (batch == null) return;
     final modes = batch.modes;
     if (modes == null) {
-      await prefs.remove(_migrationPresetBatchKey);
+      await _removePresetBatch(prefs, raw);
       return;
     }
     final nicknameOk = await prefs.setInt(
@@ -1588,7 +1632,21 @@ class AppSettings extends ChangeNotifier {
       modes.$2,
     );
     if (nicknameOk && operatorOk) {
-      await prefs.remove(_migrationPresetBatchKey);
+      await _removePresetBatch(prefs, raw);
+    }
+  }
+
+  /// Removes the staged preset batch, repairing the in-memory cache
+  /// when the remove does not land: a failed remove still drops the
+  /// key from the cache, and later reads in this process would
+  /// otherwise miss the retained batch.
+  static Future<void> _removePresetBatch(
+    SharedPreferences prefs,
+    String? previousRaw,
+  ) async {
+    if (await prefs.remove(_migrationPresetBatchKey)) return;
+    if (previousRaw != null) {
+      await prefs.setString(_migrationPresetBatchKey, previousRaw);
     }
   }
 
@@ -1597,6 +1655,7 @@ class AppSettings extends ChangeNotifier {
   /// keeps owning the batch until then. The batch is dropped only when
   /// every write lands, so a failed write leaves it for the next launch.
   static Future<void> _replayPresetBatch(SharedPreferences prefs) async {
+    final raw = prefs.getString(_migrationPresetBatchKey);
     final batch = _readPresetBatch(prefs);
     if (batch == null) return;
     var ok = true;
@@ -1609,7 +1668,7 @@ class AppSettings extends ChangeNotifier {
       ok = await prefs.setInt('operatorRedactionMode', modes.$2) && ok;
     }
     if (!ok) return;
-    await prefs.remove(_migrationPresetBatchKey);
+    await _removePresetBatch(prefs, raw);
   }
 
   /// Sets one segment flag, recording the edit first when the migration
@@ -1784,11 +1843,18 @@ class AppSettings extends ChangeNotifier {
 
   /// Writes [previousRaw] back into the staged preset batch (removing
   /// it when there was none before). Returns whether the write landed.
+  /// A failed remove repairs the in-memory cache with the batch it
+  /// tried to drop, so later reads in this process still see it.
   Future<bool> _restorePresetBatch(String? previousRaw) async {
     final prefs = _prefs;
     if (prefs == null) return true;
     if (previousRaw == null) {
-      return prefs.remove(_migrationPresetBatchKey);
+      final currentRaw = prefs.getString(_migrationPresetBatchKey);
+      if (await prefs.remove(_migrationPresetBatchKey)) return true;
+      if (currentRaw != null) {
+        await prefs.setString(_migrationPresetBatchKey, currentRaw);
+      }
+      return false;
     }
     return prefs.setString(_migrationPresetBatchKey, previousRaw);
   }

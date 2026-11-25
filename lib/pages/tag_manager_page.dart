@@ -273,10 +273,10 @@ class _TagManagerPageState extends State<TagManagerPage> {
                 ),
               ),
               title: Text(
-                ProfileTagUtils.parse(
-                  p.nickname,
-                  regionCode: p.flag,
-                ).displayName,
+                ProfileRedaction.metadataDisplayName(p) ??
+                    IccidFormatter.forDisplay(
+                      ProfileRedaction.redactIccid(p.iccid),
+                    ),
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,

@@ -1780,6 +1780,178 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
+    test('an edit supersedes a retained batch after migration', () async {
+      // Migration complete, with a staged preset batch left behind:
+      // the startup replay applies it but its final remove fails.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': false,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+        'flutter.nicknameRedactionMode': 2,
+        'flutter.operatorRedactionMode': 1,
+        'flutter.redactionFlagsMigratedV2': true,
+        'flutter.redactionFlagsMigrationPresetBatchV2': jsonEncode({
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'modes': {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        }),
+      });
+      store.failCounts['flutter.redactionFlagsMigrationPresetBatchV2'] = 1;
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': false,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+        'nicknameRedactionMode': 2,
+        'operatorRedactionMode': 1,
+        'redactionFlagsMigratedV2': true,
+        'redactionFlagsMigrationPresetBatchV2': jsonEncode({
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'modes': {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        }),
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+      expect(settings.redactEidFirst, isFalse);
+      // The replay applied the batch but could not remove it.
+      expect(
+        await store.persisted('flutter.redactionFlagsMigrationPresetBatchV2'),
+        isNotNull,
+      );
+
+      // Enabling the EID-first mask writes the newer value into the
+      // retained batch as well.
+      expect(await settings.setRedactEidFirst(true), isTrue);
+      expect(settings.redactEidFirst, isTrue);
+      expect(
+        (jsonDecode(
+              await store.persisted(
+                    'flutter.redactionFlagsMigrationPresetBatchV2',
+                  )
+                  as String,
+            )
+            as Map)['flags'],
+        {
+          'redactEidFirst': true,
+          'redactEidMiddle': true,
+          'redactEidLast': true,
+          'redactIccidFirst': true,
+          'redactIccidMiddle': true,
+          'redactIccidLast': true,
+        },
+      );
+
+      // A restart replays the updated batch, not the stale preset.
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      await settings.init();
+      expect(settings.redactEidFirst, isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('an edit fails when the retained batch cannot be updated',
+        () async {
+      // Migration complete, with a staged preset batch left behind.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': false,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+        'flutter.nicknameRedactionMode': 2,
+        'flutter.operatorRedactionMode': 1,
+        'flutter.redactionFlagsMigratedV2': true,
+        'flutter.redactionFlagsMigrationPresetBatchV2': jsonEncode({
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'modes': {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        }),
+      });
+      // The startup replay applies the batch but its final remove
+      // fails, so the batch stays behind for the edit to supersede.
+      store.failCounts['flutter.redactionFlagsMigrationPresetBatchV2'] = 1;
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': false,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+        'nicknameRedactionMode': 2,
+        'operatorRedactionMode': 1,
+        'redactionFlagsMigratedV2': true,
+        'redactionFlagsMigrationPresetBatchV2': jsonEncode({
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'modes': {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        }),
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.redactEidFirst, isFalse);
+
+      // The next write to the batch key fails, so the edit is refused
+      // and the toggle does not move.
+      store.failCounts['flutter.redactionFlagsMigrationPresetBatchV2'] = 1;
+      expect(await settings.setRedactEidFirst(true), isFalse);
+      expect(settings.redactEidFirst, isFalse);
+
+      // Once storage recovers, the retry lands and the edit sticks.
+      expect(await settings.setRedactEidFirst(true), isTrue);
+      expect(settings.redactEidFirst, isTrue);
+
+      // A restart replays the updated batch, not the stale preset.
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      await settings.init();
+      expect(settings.redactEidFirst, isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
     test('a failed preset keeps the edits it superseded', () async {
       // Migration pending: the marker fails at init.
       final store = _FailingWriteStore({
