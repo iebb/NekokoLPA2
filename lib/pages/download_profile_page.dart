@@ -12,6 +12,7 @@ import '../services/es9plus_service.dart';
 import '../utils/foreground_card_session.dart';
 import '../utils/hex_utils.dart';
 import '../utils/iccid_formatter.dart';
+import '../utils/profile_redaction.dart';
 import '../widgets/common/simple_dialog_container.dart';
 import '../widgets/common/loading_spinner.dart';
 import '../widgets/styled_header_scaffold.dart';
@@ -1541,7 +1542,11 @@ class _DownloadProfilePageState extends State<DownloadProfilePage> {
     // Show metadata
     final l10n = AppLocalizations.of(context)!;
     final iccidHex = _metadata?.iccid != null ? HexUtils.swapNibbles(HexUtils.bytesToHex(_metadata!.iccid!)) : l10n.unavailable;
-    final iccidDisplay = IccidFormatter.forDisplay(iccidHex);
+    // Only a real ICCID is redacted; without metadata iccidHex is the
+    // "unavailable" label and must stay readable.
+    final iccidDisplay = _metadata?.iccid != null
+        ? ProfileRedaction.redactIccid(IccidFormatter.forDisplay(iccidHex))
+        : iccidHex;
     final name = _metadata?.profileName ?? l10n.unknownProfile;
     final provider = _metadata?.serviceProviderName ?? l10n.unknownProvider;
     

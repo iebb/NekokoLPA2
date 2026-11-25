@@ -923,6 +923,74 @@ void main() {
       // Restore the default mock store for the tests after this one.
       SharedPreferences.setMockInitialValues({});
     });
+
+    test('a failed same-key edit keeps the earlier persisted edit',
+        () async {
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': false,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigrationSourceV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': false,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(
+        await store.persisted('flutter.redactionFlagsMigrationSourceV2'),
+        isNull,
+      );
+
+      // The first edit persists; the snapshot is captured on the way.
+      store.failingKeys.clear();
+      await settings.setRedactIccidFirst(true);
+      expect(
+        jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+              as String,
+        ) as Map,
+        {'redactIccidFirst': true},
+      );
+      expect(await store.persisted('flutter.redactIccidFirst'), isTrue);
+
+      // A later edit to the same key fails to record, so the setter
+      // drops it — but the earlier record must survive the rollback.
+      store.failingKeys.add('flutter.redactionFlagsMigrationEditsV2');
+      await settings.setRedactIccidFirst(false);
+      expect(settings.redactIccidFirst, isTrue);
+      expect(await store.persisted('flutter.redactIccidFirst'), isTrue);
+      expect(
+        jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+              as String,
+        ) as Map,
+        {'redactIccidFirst': true},
+      );
+
+      // The retry applies the earlier edit.
+      store.failingKeys.clear();
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      final relaunched = await SharedPreferences.getInstance();
+      await AppSettings.migrateRedactionFlags(relaunched);
+      expect(relaunched.getBool('redactIccidFirst'), isTrue);
+      expect(relaunched.getBool('redactionFlagsMigratedV2'), isTrue);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
   });
 
   group('unsupported card details', () {

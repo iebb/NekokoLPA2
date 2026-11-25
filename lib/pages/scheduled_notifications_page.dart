@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import '../widgets/styled_header_scaffold.dart';
 import 'package:intl/intl.dart';
 import '../utils/iccid_formatter.dart';
+import '../utils/profile_redaction.dart';
 import '../l10n/app_localizations.dart';
 
 class ScheduledNotificationsPage extends StatefulWidget {
@@ -146,7 +147,7 @@ class _ScheduledNotificationsPageState
               ),
             ),
             Text(
-              "${AppLocalizations.of(context)!.iccid}: ${IccidFormatter.forDisplay(notif.iccid)}",
+              "${AppLocalizations.of(context)!.iccid}: ${ProfileRedaction.redactIccid(IccidFormatter.forDisplay(notif.iccid))}",
               style: AppTheme.mono(
                 TextStyle(
                   fontSize: 11,

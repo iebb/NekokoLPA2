@@ -1293,17 +1293,33 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Serializes pending-migration edit transactions: the settings page
+  /// fires the setters without awaiting them, so two quick taps would
+  /// otherwise interleave their snapshot captures and edits-record
+  /// writes and drop each other's edits.
+  Future<void> _pendingMigrationEdit = Future.value();
+
   /// Records a segment-flag edit made while the migration is still
   /// pending, in new-semantics terms, so a later retry writes the edited
   /// value instead of recomputing it from the frozen snapshot. Returns
   /// false when the record itself cannot be stored.
-  Future<bool> _syncPendingMigrationEdit(String key, bool newValue) async {
+  Future<bool> _syncPendingMigrationEdit(String key, bool newValue) {
+    final run = _pendingMigrationEdit.then(
+      (_) => _syncPendingMigrationEditLocked(key, newValue),
+    );
+    // Keep the chain alive even if this run fails.
+    _pendingMigrationEdit = run.then((_) {}).catchError((_) {});
+    return run;
+  }
+
+  Future<bool> _syncPendingMigrationEditLocked(
+    String key,
+    bool newValue,
+  ) async {
     final prefs = _prefs;
     if (prefs == null) return true;
     if (_migrationCompleted) return true;
-    // Read before the capture only to know which stored values are
-    // already new-semantics edits and must not be snapshotted as old.
-    final priorEdits = _readMigrationEdits(prefs);
+    final edits = _readMigrationEdits(prefs);
     // Without a snapshot, a later retry would rebuild the source pair
     // from the current flags — but an edited flag already holds its new
     // value, which would corrupt the coupled EID pair. Capture the
@@ -1312,7 +1328,7 @@ class AppSettings extends ChangeNotifier {
     if (!_migrationSnapshotStored) {
       final source = <String, bool>{};
       for (final flagKey in _segmentFlagKeys) {
-        if (priorEdits.containsKey(flagKey)) continue;
+        if (edits.containsKey(flagKey)) continue;
         final stored = prefs.getBool(flagKey);
         if (stored != null) source[flagKey] = stored;
       }
@@ -1324,25 +1340,25 @@ class AppSettings extends ChangeNotifier {
       }
       _migrationSnapshotStored = true;
     }
-    // Re-read after the capture: a concurrent edit may have recorded
-    // its key while this call awaited the snapshot write; merging from
-    // the pre-capture map would drop it.
-    final edits = _readMigrationEdits(prefs);
+    final previousValue = edits[key];
     edits[key] = newValue;
     if (await prefs.setString(_migrationEditsKey, jsonEncode(edits))) {
       return true;
     }
-    // The failed write still replaced the in-memory cache, so roll the
-    // record back — dropping only this key, so a concurrent edit's
-    // record survives. The restore is itself an optimistic write, so
-    // the cache is fixed even if the store write fails again (the store
-    // never received the new value).
-    final current = _readMigrationEdits(prefs);
-    current.remove(key);
-    if (current.isEmpty) {
+    // The failed write still replaced the in-memory cache, so restore
+    // the record to what it was before this edit: an earlier persisted
+    // edit to the same key must survive. The restore is itself an
+    // optimistic write, so the cache is fixed even if the store write
+    // fails again (the store never received the new value).
+    if (previousValue == null) {
+      edits.remove(key);
+    } else {
+      edits[key] = previousValue;
+    }
+    if (edits.isEmpty) {
       await prefs.remove(_migrationEditsKey);
     } else {
-      await prefs.setString(_migrationEditsKey, jsonEncode(current));
+      await prefs.setString(_migrationEditsKey, jsonEncode(edits));
     }
     return false;
   }
