@@ -1518,7 +1518,92 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('a failed preset restores the edits it superseded', () async {
+    test('a staged batch supersedes without deleting the old edit',
+        () async {
+      // Migration pending: the marker fails at init.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // The user toggles EID Middle on and back off before the preset.
+      await settings.setRedactEidMiddle(true);
+      await settings.setRedactEidMiddle(false);
+
+      // The preset succeeds. The old edit stays in the record; the
+      // batch records that it supersedes it.
+      expect(await settings.applyQuickRedactionPreset(), isTrue);
+      expect(
+        jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+              as String,
+        ) as Map,
+        {'redactEidMiddle': false},
+      );
+      expect(
+        jsonDecode(
+          await store.persisted(
+                'flutter.redactionFlagsMigrationPresetBatchV2',
+              )
+              as String,
+        ) as Map,
+        {
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'supersedes': ['redactEidMiddle'],
+        },
+      );
+
+      // A launch whose marker write fails again still shows the
+      // preset, not the superseded edit. (A plain second init() in
+      // the same process cannot test this: the optimistic cache holds
+      // the failed marker write as landed, so migrate short-circuits
+      // and replays the batch instead.)
+      final persisted = await store.getAll();
+      final failingRestart = _FailingWriteStore(persisted);
+      failingRestart.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({});
+      SharedPreferencesStorePlatform.instance = failingRestart;
+      await settings.init();
+      expect(settings.redactEidMiddle, isTrue);
+
+      // A restart replays the preset, not the older edit.
+      final restarted = await failingRestart.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in restarted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      await settings.init();
+      expect(settings.redactEidMiddle, isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('a failed preset keeps the edits it superseded', () async {
       // Migration pending: the marker fails at init.
       final store = _FailingWriteStore({
         'flutter.redactEidFirst': true,
@@ -1546,7 +1631,8 @@ void main() {
       await settings.setRedactEidMiddle(false);
 
       // One flag write fails; the rollback succeeds, so the superseded
-      // edit is put back and the restart replays the pre-preset choice.
+      // edit is still there (it was never removed) and the restart
+      // replays the pre-preset choice.
       store.failCounts['flutter.redactEidMiddle'] = 1;
       expect(await settings.applyQuickRedactionPreset(), isFalse);
       expect(settings.hasNoRedactionsConfigured, isTrue);

@@ -677,10 +677,17 @@ class AppSettings extends ChangeNotifier {
     final targets = _convertedFlags(source);
     // A staged preset batch overlays the snapshot-converted values, and
     // edits made after the preset win over the batch: they are the
-    // newer choice, in new-semantics terms.
+    // newer choice, in new-semantics terms. Edits the batch supersedes
+    // are skipped: they predate the preset and must not win over it.
     final batch = _readPresetBatch(prefs);
-    if (batch != null) targets.addAll(batch.flags);
-    targets.addAll(_readMigrationEdits(prefs));
+    final edits = _readMigrationEdits(prefs);
+    if (batch != null) {
+      targets.addAll(batch.flags);
+      for (final key in batch.supersedes) {
+        edits.remove(key);
+      }
+    }
+    targets.addAll(edits);
     var allWritesSucceeded = true;
     for (final entry in targets.entries) {
       if (!await prefs.setBool(entry.key, entry.value)) {
@@ -769,9 +776,13 @@ class AppSettings extends ChangeNotifier {
       snapshot = _readMigrationSnapshot(prefs);
       edits = _readMigrationEdits(prefs);
       // A staged preset batch counts as an edit for display purposes,
-      // underneath any newer setter edit.
+      // underneath any newer setter edit, and supersedes the edits it
+      // recorded before the preset.
       final batch = _readPresetBatch(prefs);
       if (batch != null) {
+        for (final key in batch.supersedes) {
+          edits.remove(key);
+        }
         edits = {...batch.flags, ...edits};
       }
     }
@@ -1443,10 +1454,14 @@ class AppSettings extends ChangeNotifier {
 
   /// Reads the staged preset batch, or null when there is none or it
   /// is corrupt. The modes part is optional (a batch whose modes were
-  /// dropped after a successful preset carries flags only).
-  static ({Map<String, bool> flags, (int, int)? modes})? _readPresetBatch(
-    SharedPreferences prefs,
-  ) {
+  /// dropped after a successful preset carries flags only), as is the
+  /// supersedes list (batches staged with no prior edits have none).
+  static ({
+    Map<String, bool> flags,
+    (int, int)? modes,
+    List<String> supersedes,
+  })?
+  _readPresetBatch(SharedPreferences prefs) {
     final raw = prefs.getString(_migrationPresetBatchKey);
     if (raw == null) return null;
     try {
@@ -1468,7 +1483,14 @@ class AppSettings extends ChangeNotifier {
           modes = (nickname, operator);
         }
       }
-      return (flags: flags, modes: modes);
+      final supersedes = <String>[];
+      final supersedesRaw = map['supersedes'];
+      if (supersedesRaw is List) {
+        for (final item in supersedesRaw) {
+          if (item is String) supersedes.add(item);
+        }
+      }
+      return (flags: flags, modes: modes, supersedes: supersedes);
     } catch (_) {
       return null;
     }
@@ -1643,87 +1665,47 @@ class AppSettings extends ChangeNotifier {
 
   /// Stages the preset recovery batch with a single write: the six
   /// segment edits plus the two mode ints in one JSON value. Returns
-  /// whether the batch landed, the previous raw batch (null when there
-  /// was none), and the edits superseded by the batch, or `ok: false`
-  /// when a write failed — in which case nothing is staged at all, so
-  /// there is no partial batch.
+  /// whether the batch landed and the previous raw batch (null when
+  /// there was none), or `ok: false` when the write failed — in which
+  /// case nothing is staged at all, so there is no partial batch.
   ///
   /// Edits recorded before the preset are superseded by the batch: the
-  /// six preset keys are dropped from the pending record, so the next
-  /// migration does not replay an older choice over the preset. Edits
-  /// recorded after the staging land in the record later, through the
-  /// setters, and win over the batch.
-  Future<({bool ok, String? previousBatch, Map<String, bool> superseded})>
-  _stagePresetBatch() async {
+  /// batch records their keys in `supersedes`, and the migration and
+  /// the display skip those keys in the pending record instead of the
+  /// record being deleted first. The old edits stay durable until the
+  /// migration consumes the batch, so there is no window — a failed
+  /// write, a failed rollback, or a terminated process — in which
+  /// neither the old edit nor the batch survives. Edits recorded after
+  /// the staging land in the record later, through the setters, and
+  /// win over the batch.
+  Future<({bool ok, String? previousBatch})> _stagePresetBatch() async {
     final prefs = _prefs;
-    if (prefs == null) {
-      return (ok: true, previousBatch: null, superseded: <String, bool>{});
-    }
+    if (prefs == null) return (ok: true, previousBatch: null);
     if (!await _ensureMigrationSnapshot(prefs)) {
-      return (ok: false, previousBatch: null, superseded: <String, bool>{});
+      return (ok: false, previousBatch: null);
     }
-    final edits = _readMigrationEdits(prefs);
-    final superseded = <String, bool>{};
-    for (final key in _quickPresetFlags.keys) {
-      final value = edits.remove(key);
-      if (value != null) superseded[key] = value;
-    }
-    if (superseded.isNotEmpty) {
-      final editsOk = edits.isEmpty
-          ? await prefs.remove(_migrationEditsKey)
-          : await prefs.setString(_migrationEditsKey, jsonEncode(edits));
-      if (!editsOk) {
-        return (
-          ok: false,
-          previousBatch: null,
-          superseded: <String, bool>{},
-        );
-      }
-    }
+    final supersedes = _readMigrationEdits(prefs).keys
+        .where(_quickPresetFlags.containsKey)
+        .toList();
     final previousBatch = prefs.getString(_migrationPresetBatchKey);
-    final batch = jsonEncode({
+    final batch = <String, Object>{
       'flags': _quickPresetFlags,
       'modes': {
         'nicknameRedactionMode': NicknameRedactionMode.hideNickname.index,
         'operatorRedactionMode': OperatorRedactionMode.countryName.index,
       },
-    });
-    if (await prefs.setString(_migrationPresetBatchKey, batch)) {
-      return (
-        ok: true,
-        previousBatch: previousBatch,
-        superseded: superseded,
-      );
+      if (supersedes.isNotEmpty) 'supersedes': supersedes,
+    };
+    if (await prefs.setString(_migrationPresetBatchKey, jsonEncode(batch))) {
+      return (ok: true, previousBatch: previousBatch);
     }
-    // The failed write still replaced the in-memory cache: repair it,
-    // and put the superseded edits back.
+    // The failed write still replaced the in-memory cache: repair it.
     if (previousBatch == null) {
       await prefs.remove(_migrationPresetBatchKey);
     } else {
       await prefs.setString(_migrationPresetBatchKey, previousBatch);
     }
-    await _restoreSupersededEdits(superseded);
-    return (ok: false, previousBatch: null, superseded: <String, bool>{});
-  }
-
-  /// Puts edits superseded by a failed batch staging back into the
-  /// pending record. Only restores keys that are still absent, so a
-  /// newer edit for the same key is never overwritten.
-  Future<void> _restoreSupersededEdits(Map<String, bool> superseded) async {
-    if (superseded.isEmpty) return;
-    final prefs = _prefs;
-    if (prefs == null) return;
-    final edits = _readMigrationEdits(prefs);
-    var changed = false;
-    for (final entry in superseded.entries) {
-      if (!edits.containsKey(entry.key)) {
-        edits[entry.key] = entry.value;
-        changed = true;
-      }
-    }
-    if (changed) {
-      await prefs.setString(_migrationEditsKey, jsonEncode(edits));
-    }
+    return (ok: false, previousBatch: null);
   }
 
   /// Writes [previousRaw] back into the staged preset batch (removing
@@ -1738,19 +1720,21 @@ class AppSettings extends ChangeNotifier {
   }
 
   /// Rewrites the staged preset batch without its modes, keeping the
-  /// flags for the pending migration retry. The stored modes are already
-  /// the preset, and a later mode change before the next launch is
-  /// written straight to storage, so the stale modes must not survive
-  /// to be replayed over it. Returns whether the write landed.
+  /// flags (and the superseded keys) for the pending migration retry.
+  /// The stored modes are already the preset, and a later mode change
+  /// before the next launch is written straight to storage, so the
+  /// stale modes must not survive to be replayed over it. Returns
+  /// whether the write landed.
   Future<bool> _dropPresetBatchModes() async {
     final prefs = _prefs;
     if (prefs == null) return true;
     final batch = _readPresetBatch(prefs);
     if (batch == null) return true;
-    return prefs.setString(
-      _migrationPresetBatchKey,
-      jsonEncode({'flags': batch.flags}),
-    );
+    final rewritten = <String, Object>{
+      'flags': batch.flags,
+      if (batch.supersedes.isNotEmpty) 'supersedes': batch.supersedes,
+    };
+    return prefs.setString(_migrationPresetBatchKey, jsonEncode(rewritten));
   }
 
   Future<bool> applyQuickRedactionPreset() async {
@@ -1854,14 +1838,13 @@ class AppSettings extends ChangeNotifier {
                 rollbackOk;
       }
       if (rollbackOk && prefs != null) {
-        // Restoration succeeded: un-stage the recovery batch and put
-        // the superseded edits back, so a restart replays the
-        // pre-preset values and the eye retries.
+        // Restoration succeeded: un-stage the recovery batch, so a
+        // restart replays the pre-preset values and the eye retries.
+        // The superseded edits were never removed, so there is nothing
+        // to put back: the restart replays them as the pre-preset
+        // choice.
         await _runPendingMigrationEdit(
           () => _restorePresetBatch(staged.previousBatch),
-        );
-        await _runPendingMigrationEdit(
-          () => _restoreSupersededEdits(staged.superseded),
         );
       }
       // Otherwise the batch stays staged: the next launch replays the
