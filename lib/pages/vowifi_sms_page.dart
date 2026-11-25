@@ -857,7 +857,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
             const SizedBox(height: 6),
             Text(
               (deliveryStatus ?? '').isNotEmpty
-                  ? deliveryStatus!
+                  ? VoWifiPrivacy.identifiers(deliveryStatus!)
                   : message.status,
               style: theme.textTheme.labelSmall?.copyWith(
                 color: AppTheme.onSurfaceSubtle(context),
@@ -921,6 +921,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                 child: TextField(
                   controller: _toController,
                   keyboardType: TextInputType.phone,
+                  obscureText: VoWifiPrivacy.isEnabled,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s()-]')),
                   ],

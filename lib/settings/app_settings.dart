@@ -1511,6 +1511,23 @@ class AppSettings extends ChangeNotifier {
       () => _recordPendingMigrationEdits(preset),
     );
     if (!recorded) return false;
+    // Remember the previous values so a failed preference write can
+    // roll the preset back instead of reporting success half-applied.
+    // This also covers the completed-migration path, where the staged
+    // record above short-circuits and there is no durable batch to
+    // replay from.
+    final previousFlags = <String, bool>{
+      'redactEidFirst': _redactEidFirst,
+      'redactEidMiddle': _redactEidMiddle,
+      'redactEidLast': _redactEidLast,
+      'redactIccidFirst': _redactIccidFirst,
+      'redactIccidMiddle': _redactIccidMiddle,
+      'redactIccidLast': _redactIccidLast,
+    };
+    final previousReveal = _revealSensitiveProfileData;
+    final previousFullHide = _fullHideSensitiveData;
+    final previousNicknameMode = _nicknameRedactionMode;
+    final previousOperatorMode = _operatorRedactionMode;
     _redactEidFirst = false;
     _redactEidMiddle = true;
     _redactEidLast = true;
@@ -1522,14 +1539,56 @@ class AppSettings extends ChangeNotifier {
     _nicknameRedactionMode = NicknameRedactionMode.hideNickname;
     _operatorRedactionMode = OperatorRedactionMode.countryName;
 
+    var ok = true;
     final prefs = _prefs;
     if (prefs != null) {
       for (final entry in preset.entries) {
-        await prefs.setBool(entry.key, entry.value);
+        ok = await prefs.setBool(entry.key, entry.value) && ok;
       }
+      ok =
+          await prefs.setInt(
+                'nicknameRedactionMode',
+                _nicknameRedactionMode.index,
+              ) &&
+              ok;
+      ok =
+          await prefs.setInt(
+                'operatorRedactionMode',
+                _operatorRedactionMode.index,
+              ) &&
+              ok;
     }
-    await _prefs?.setInt('nicknameRedactionMode', _nicknameRedactionMode.index);
-    await _prefs?.setInt('operatorRedactionMode', _operatorRedactionMode.index);
+    if (!ok) {
+      // Roll back in memory and in storage, so the next eye tap retries
+      // the preset instead of believing it landed. (When the migration
+      // is still pending, the staged record above stays: a restart
+      // replays the preset values instead of recomputing them.)
+      _redactEidFirst = previousFlags['redactEidFirst']!;
+      _redactEidMiddle = previousFlags['redactEidMiddle']!;
+      _redactEidLast = previousFlags['redactEidLast']!;
+      _redactIccidFirst = previousFlags['redactIccidFirst']!;
+      _redactIccidMiddle = previousFlags['redactIccidMiddle']!;
+      _redactIccidLast = previousFlags['redactIccidLast']!;
+      _revealSensitiveProfileData = previousReveal;
+      _fullHideSensitiveData = previousFullHide;
+      _nicknameRedactionMode = previousNicknameMode;
+      _operatorRedactionMode = previousOperatorMode;
+      if (prefs != null) {
+        for (final entry in previousFlags.entries) {
+          await prefs.setBool(entry.key, entry.value);
+        }
+        await prefs.setInt(
+          'nicknameRedactionMode',
+          previousNicknameMode.index,
+        );
+        await prefs.setInt(
+          'operatorRedactionMode',
+          previousOperatorMode.index,
+        );
+      }
+      notifyListeners();
+      return false;
+    }
     notifyListeners();
     return true;
   }

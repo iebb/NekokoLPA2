@@ -2,6 +2,7 @@ import '../models/euicc_profile.dart';
 import '../services/profile_metadata_service.dart';
 import '../settings/app_settings.dart';
 import 'mcc_mapper.dart';
+import 'profile_tag_utils.dart';
 
 class ProfileRedaction {
   static const String _mask = '*';
@@ -153,6 +154,37 @@ class ProfileRedaction {
       );
     }
     return base;
+  }
+
+  /// The display name of a cached [ProfileMetadata], with the same
+  /// nickname rules as [displayName]: the stored nickname is hidden
+  /// entirely when the mode says so (returns null, so the caller falls
+  /// back to the redacted ICCID), and a phone-like name is masked under
+  /// full-hide or when the mode is redact-phone-numbers. A name that
+  /// came from the operator/provider stays as-is.
+  static String? metadataDisplayName(ProfileMetadata meta) {
+    final settings = AppSettings();
+    if (settings.revealSensitiveProfileData) return meta.displayName;
+    if (settings.nicknameRedactionMode ==
+            NicknameRedactionMode.hideNickname &&
+        meta.nickname != null &&
+        meta.nickname!.trim().isNotEmpty &&
+        ProfileTagUtils.parse(
+          meta.nickname!,
+          regionCode: meta.flag,
+        ).displayName.isNotEmpty) {
+      return null;
+    }
+    final name = meta.displayName;
+    if (settings.fullHideSensitiveData ||
+        settings.nicknameRedactionMode ==
+            NicknameRedactionMode.redactPhoneNumbers) {
+      return name.replaceAllMapped(
+        _phoneNumber,
+        (match) => _mask * match.group(0)!.length,
+      );
+    }
+    return name;
   }
 
   static String? operatorSummary(EuiccProfile profile) {

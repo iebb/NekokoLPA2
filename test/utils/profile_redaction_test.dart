@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nlpa2/models/euicc_profile.dart';
+import 'package:nlpa2/services/profile_metadata_service.dart';
 import 'package:nlpa2/settings/app_settings.dart';
 import 'package:nlpa2/utils/profile_redaction.dart';
 import 'package:nlpa2/vowifi/privacy_redaction.dart';
@@ -1128,6 +1129,55 @@ void main() {
       // Restore the default mock store for the tests after this one.
       SharedPreferences.setMockInitialValues({});
     });
+
+    test('a failed flag write rolls the preset back', () async {
+      // Migration completes at init: every flag off, nothing configured.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // With the migration complete there is no staged record to replay
+      // from, so a single failed flag write must roll the whole preset
+      // back instead of reporting success half-applied.
+      store.failCounts['flutter.redactEidMiddle'] = 1;
+      expect(await settings.applyQuickRedactionPreset(), isFalse);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+      expect(settings.redactEidMiddle, isFalse);
+      expect(settings.redactEidLast, isFalse);
+      expect(settings.redactIccidFirst, isFalse);
+      expect(
+        settings.nicknameRedactionMode,
+        NicknameRedactionMode.none,
+      );
+      expect(
+        await store.persisted('flutter.redactEidMiddle'),
+        isFalse,
+      );
+
+      // The next attempt applies in full.
+      expect(await settings.applyQuickRedactionPreset(), isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+      expect(settings.redactEidMiddle, isTrue);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
   });
 
   group('displayName', () {
@@ -1146,6 +1196,61 @@ void main() {
       expect(
         ProfileRedaction.displayName(profile),
         isNot(contains(RegExp(r'\d'))),
+      );
+    });
+  });
+
+  group('metadataDisplayName', () {
+    final meta = ProfileMetadata(
+      iccid: sampleIccid,
+      nickname: '+441212345678',
+      lastSeen: DateTime(2026, 11, 25),
+    );
+
+    test('a phone-number nickname is masked in full-hide mode', () {
+      // Control: with nothing hidden, the number is the title.
+      expect(
+        ProfileRedaction.metadataDisplayName(meta),
+        '+44 121 234 5678',
+      );
+      settings.setFullHideSensitiveData(true);
+      expect(
+        ProfileRedaction.metadataDisplayName(meta),
+        isNot(contains(RegExp(r'\d'))),
+      );
+    });
+
+    test('a stored nickname is hidden entirely in hide-nickname mode',
+        () async {
+      await settings.setNicknameRedactionMode(
+        NicknameRedactionMode.hideNickname,
+      );
+      expect(ProfileRedaction.metadataDisplayName(meta), isNull);
+    });
+
+    test('a phone-number nickname is masked in redact-phone-numbers mode',
+        () async {
+      await settings.setNicknameRedactionMode(
+        NicknameRedactionMode.redactPhoneNumbers,
+      );
+      expect(
+        ProfileRedaction.metadataDisplayName(meta),
+        isNot(contains(RegExp(r'\d'))),
+      );
+    });
+
+    test('an operator name is kept when the nickname is hidden', () async {
+      final operatorMeta = ProfileMetadata(
+        iccid: sampleIccid,
+        providerName: 'Vodafone',
+        lastSeen: DateTime(2026, 11, 25),
+      );
+      await settings.setNicknameRedactionMode(
+        NicknameRedactionMode.hideNickname,
+      );
+      expect(
+        ProfileRedaction.metadataDisplayName(operatorMeta),
+        'Vodafone',
       );
     });
   });
