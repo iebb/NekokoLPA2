@@ -144,8 +144,9 @@ class ProfileRedaction {
       }
     }
 
-    if (settings.nicknameRedactionMode ==
-        NicknameRedactionMode.redactPhoneNumbers) {
+    if (settings.fullHideSensitiveData ||
+        settings.nicknameRedactionMode ==
+            NicknameRedactionMode.redactPhoneNumbers) {
       return base.replaceAllMapped(
         _phoneNumber,
         (match) => _mask * match.group(0)!.length,

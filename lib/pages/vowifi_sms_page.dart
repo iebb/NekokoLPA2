@@ -9,6 +9,7 @@ import '../l10n/app_localizations.dart';
 import '../services/vowifi_sms_service.dart';
 import '../settings/app_settings.dart';
 import '../theme/app_theme.dart';
+import '../vowifi/privacy_redaction.dart';
 import '../widgets/styled_header_scaffold.dart';
 
 class VowifiSmsPage extends StatefulWidget {
@@ -238,7 +239,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _associatedLabel(session),
+                    VoWifiPrivacy.phoneNumber(_associatedLabel(session)),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -470,7 +471,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                   ),
                 ),
                 child: Text(
-                  'No messages for ${_associatedLabel(session)}.',
+                  'No messages for ${VoWifiPrivacy.phoneNumber(_associatedLabel(session))}.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: AppTheme.onSurfaceSubtle(context),
                   ),
@@ -660,7 +661,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
           children: [
             Flexible(
               child: Text(
-                _associatedLabel(session),
+                VoWifiPrivacy.phoneNumber(_associatedLabel(session)),
                 style: theme.textTheme.titleSmall?.copyWith(
                   color: theme.colorScheme.primary,
                   fontWeight: FontWeight.w700,
@@ -928,7 +929,9 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                     // helperText removed here to fix height/alignment
                     hintText: _formatE164Display(associated).isEmpty
                         ? '+12025550123'
-                        : _formatE164Display(associated),
+                        : VoWifiPrivacy.phoneNumber(
+                            _formatE164Display(associated),
+                          ),
                     // Make it look attached to the button on the right
                     border: OutlineInputBorder(
                       borderRadius: const BorderRadius.horizontal(
@@ -1202,7 +1205,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
   }
 
   String _heroMetadataLine(VowifiSessionInfo session) {
-    return 'Registered over ${session.readerName}, ICCID ${session.iccid}, ready for SMS traffic.';
+    return 'Registered over ${session.readerName}, ICCID ${VoWifiPrivacy.identifiers(session.iccid)}, ready for SMS traffic.';
   }
 
   List<String> _sortedIdentities(VowifiSessionInfo session) {
@@ -1371,9 +1374,9 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
       return 'Delivery Update';
     }
     if (message.direction == VowifiSmsDirection.outbound) {
-      return 'To ${_messagePeerLabel(message, session)}';
+      return 'To ${VoWifiPrivacy.phoneNumber(_messagePeerLabel(message, session))}';
     }
-    return _messagePeerLabel(message, session);
+    return VoWifiPrivacy.phoneNumber(_messagePeerLabel(message, session));
   }
 
   bool _isBinaryMessage(VowifiSmsMessage message) {

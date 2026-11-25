@@ -1367,39 +1367,40 @@ class AppSettings extends ChangeNotifier {
   /// is still pending. If the record cannot be stored, the flag is left
   /// untouched: persisting it would let the next startup read it as an
   /// old-semantics value and negate it.
-  Future<void> _setSegmentFlag(
+  Future<bool> _setSegmentFlag(
     String key,
     bool value,
     void Function(bool value) setField,
   ) async {
-    if (!await _syncPendingMigrationEdit(key, value)) return;
+    if (!await _syncPendingMigrationEdit(key, value)) return false;
     setField(value);
     await _prefs?.setBool(key, value);
     notifyListeners();
+    return true;
   }
 
-  Future<void> setRedactEidFirst(bool value) =>
+  Future<bool> setRedactEidFirst(bool value) =>
       _setSegmentFlag('redactEidFirst', value, (v) => _redactEidFirst = v);
 
-  Future<void> setRedactEidMiddle(bool value) =>
+  Future<bool> setRedactEidMiddle(bool value) =>
       _setSegmentFlag('redactEidMiddle', value, (v) => _redactEidMiddle = v);
 
-  Future<void> setRedactEidLast(bool value) =>
+  Future<bool> setRedactEidLast(bool value) =>
       _setSegmentFlag('redactEidLast', value, (v) => _redactEidLast = v);
 
-  Future<void> setRedactIccidFirst(bool value) => _setSegmentFlag(
+  Future<bool> setRedactIccidFirst(bool value) => _setSegmentFlag(
     'redactIccidFirst',
     value,
     (v) => _redactIccidFirst = v,
   );
 
-  Future<void> setRedactIccidMiddle(bool value) => _setSegmentFlag(
+  Future<bool> setRedactIccidMiddle(bool value) => _setSegmentFlag(
     'redactIccidMiddle',
     value,
     (v) => _redactIccidMiddle = v,
   );
 
-  Future<void> setRedactIccidLast(bool value) =>
+  Future<bool> setRedactIccidLast(bool value) =>
       _setSegmentFlag('redactIccidLast', value, (v) => _redactIccidLast = v);
 
   Future<void> setNicknameRedactionMode(NicknameRedactionMode value) async {
@@ -1468,24 +1469,33 @@ class AppSettings extends ChangeNotifier {
     }
   }
 
-  Future<void> applyQuickRedactionPreset() async {
-    _revealSensitiveProfileData = false;
-    _fullHideSensitiveData = false;
+  /// Applies the quick preset (mask every segment, hide nicknames, show
+  /// country names). Returns false and changes nothing when a segment
+  /// edit cannot be recorded while the migration is pending: a
+  /// half-applied preset would look configured while the identifiers
+  /// stay raw.
+  Future<bool> applyQuickRedactionPreset() async {
     // The segment flags go through the setters so an edit made while
     // the migration is still pending is recorded for the retry instead
     // of being overwritten by the frozen snapshot on the next launch.
-    await setRedactEidFirst(false);
-    await setRedactEidMiddle(true);
-    await setRedactEidLast(true);
-    await setRedactIccidFirst(true);
-    await setRedactIccidMiddle(true);
-    await setRedactIccidLast(true);
+    // Every setter is attempted; only when all of them land does the
+    // rest of the preset apply.
+    var ok = await setRedactEidFirst(false);
+    ok = await setRedactEidMiddle(true) && ok;
+    ok = await setRedactEidLast(true) && ok;
+    ok = await setRedactIccidFirst(true) && ok;
+    ok = await setRedactIccidMiddle(true) && ok;
+    ok = await setRedactIccidLast(true) && ok;
+    if (!ok) return false;
+    _revealSensitiveProfileData = false;
+    _fullHideSensitiveData = false;
     _nicknameRedactionMode = NicknameRedactionMode.hideNickname;
     _operatorRedactionMode = OperatorRedactionMode.countryName;
 
     await _prefs?.setInt('nicknameRedactionMode', _nicknameRedactionMode.index);
     await _prefs?.setInt('operatorRedactionMode', _operatorRedactionMode.index);
     notifyListeners();
+    return true;
   }
 
   void setRevealSensitiveProfileData(bool value) {

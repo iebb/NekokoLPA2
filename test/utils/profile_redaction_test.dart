@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nlpa2/models/euicc_profile.dart';
 import 'package:nlpa2/settings/app_settings.dart';
 import 'package:nlpa2/utils/profile_redaction.dart';
 import 'package:nlpa2/vowifi/privacy_redaction.dart';
@@ -990,6 +991,96 @@ void main() {
 
       // Restore the default mock store for the tests after this one.
       SharedPreferences.setMockInitialValues({});
+    });
+
+    test('a failed preset leaves the preset state unchanged', () async {
+      // Old values that convert to nothing configured: every flag off,
+      // nickname and operator modes none.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // The preset cannot record its segment edits, so it aborts
+      // before touching the nickname/operator modes: the eye still
+      // reports nothing configured instead of looking masked.
+      store.failingKeys.add('flutter.redactionFlagsMigrationEditsV2');
+      expect(await settings.applyQuickRedactionPreset(), isFalse);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+      expect(settings.redactEidMiddle, isFalse);
+      expect(settings.redactIccidFirst, isFalse);
+      expect(
+        settings.nicknameRedactionMode,
+        NicknameRedactionMode.none,
+      );
+      expect(
+        settings.operatorRedactionMode,
+        OperatorRedactionMode.none,
+      );
+
+      // Once storage recovers, the same preset applies in full.
+      store.failingKeys.clear();
+      expect(await settings.applyQuickRedactionPreset(), isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+      expect(settings.redactEidFirst, isFalse);
+      expect(settings.redactEidMiddle, isTrue);
+      expect(settings.redactEidLast, isTrue);
+      expect(settings.redactIccidFirst, isTrue);
+      expect(settings.redactIccidMiddle, isTrue);
+      expect(settings.redactIccidLast, isTrue);
+      expect(
+        jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+              as String,
+        ) as Map,
+        {
+          'redactEidFirst': false,
+          'redactEidMiddle': true,
+          'redactEidLast': true,
+          'redactIccidFirst': true,
+          'redactIccidMiddle': true,
+          'redactIccidLast': true,
+        },
+      );
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+  });
+
+  group('displayName', () {
+    test('a phone-number nickname is masked in full-hide mode', () {
+      final profile = EuiccProfile(
+        iccid: sampleIccid,
+        enabled: true,
+        nickname: '+441212345678',
+      );
+      // Control: with nothing hidden, the number is the title.
+      expect(
+        ProfileRedaction.displayName(profile),
+        '+44 121 234 5678',
+      );
+      settings.setFullHideSensitiveData(true);
+      expect(
+        ProfileRedaction.displayName(profile),
+        isNot(contains(RegExp(r'\d'))),
+      );
     });
   });
 
