@@ -1469,6 +1469,246 @@ void main() {
       // Restore the default mock store for the tests after this one.
       SharedPreferences.setMockInitialValues({});
     });
+
+    test('a preset supersedes edits recorded before it', () async {
+      // Migration pending: the marker fails at init.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // From an all-visible state, toggling EID Middle on and back off
+      // leaves `false` in the edits record.
+      await settings.setRedactEidMiddle(true);
+      await settings.setRedactEidMiddle(false);
+      expect(settings.redactEidMiddle, isFalse);
+
+      // The preset shows and stores `true` in the current run.
+      expect(await settings.applyQuickRedactionPreset(), isTrue);
+      expect(settings.redactEidMiddle, isTrue);
+
+      // A restart replays the preset, not the older edit: the middle
+      // digits stay masked.
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      await settings.init();
+      expect(settings.redactEidMiddle, isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('a failed preset restores the edits it superseded', () async {
+      // Migration pending: the marker fails at init.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // The user toggles EID Middle on and back off before the preset.
+      await settings.setRedactEidMiddle(true);
+      await settings.setRedactEidMiddle(false);
+
+      // One flag write fails; the rollback succeeds, so the superseded
+      // edit is put back and the restart replays the pre-preset choice.
+      store.failCounts['flutter.redactEidMiddle'] = 1;
+      expect(await settings.applyQuickRedactionPreset(), isFalse);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+      expect(settings.redactEidMiddle, isFalse);
+
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      await settings.init();
+      expect(settings.redactEidMiddle, isFalse);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('a failed batch cleanup rolls the preset back', () async {
+      // Migration completes at init: every flag off, nothing configured.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // The cleanup remove fails after the staging write, so the preset
+      // is rolled back instead of reporting success with a stale batch.
+      store.failAfterFirst.add(
+        'flutter.redactionFlagsMigrationPresetBatchV2',
+      );
+      expect(await settings.applyQuickRedactionPreset(), isFalse);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+      expect(settings.redactEidMiddle, isFalse);
+      expect(
+        jsonDecode(
+          await store.persisted(
+                'flutter.redactionFlagsMigrationPresetBatchV2',
+              )
+              as String,
+        ) as Map,
+        {
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'modes': {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        },
+      );
+
+      // Once storage recovers, the same preset applies in full and the
+      // batch is dropped.
+      store.failAfterFirst.clear();
+      expect(await settings.applyQuickRedactionPreset(), isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+      expect(
+        await store.persisted(
+          'flutter.redactionFlagsMigrationPresetBatchV2',
+        ),
+        isNull,
+      );
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('a failed mode drop rolls the preset back', () async {
+      // Migration pending: the marker fails at init.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // The mode drop fails after the staging write, so the preset is
+      // rolled back instead of reporting success with stale modes.
+      store.failAfterFirst.add(
+        'flutter.redactionFlagsMigrationPresetBatchV2',
+      );
+      expect(await settings.applyQuickRedactionPreset(), isFalse);
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+      expect(settings.redactEidMiddle, isFalse);
+      expect(
+        jsonDecode(
+          await store.persisted(
+                'flutter.redactionFlagsMigrationPresetBatchV2',
+              )
+              as String,
+        ) as Map,
+        {
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'modes': {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        },
+      );
+
+      // Once storage recovers, the same preset applies in full; only
+      // the flags stay for the pending retry.
+      store.failAfterFirst.clear();
+      expect(await settings.applyQuickRedactionPreset(), isTrue);
+      expect(settings.hasNoRedactionsConfigured, isFalse);
+      expect(
+        jsonDecode(
+          await store.persisted(
+                'flutter.redactionFlagsMigrationPresetBatchV2',
+              )
+              as String,
+        ) as Map,
+        {
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+        },
+      );
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
   });
 
   group('displayName', () {
@@ -1586,15 +1826,36 @@ class _FailingWriteStore extends InMemorySharedPreferencesStore {
   /// a transient failure on one write only.
   final Map<String, int> failCounts = {};
 
-  @override
-  Future<bool> setValue(String valueType, String key, Object value) async {
+  /// Fail writes to each key after the first one goes through: a
+  /// failure that hits a later write to the same key (for example the
+  /// preset's cleanup write, which follows the staging write).
+  final Set<String> failAfterFirst = {};
+
+  final Map<String, int> _writeCounts = {};
+
+  bool _shouldFail(String key) {
+    final count = (_writeCounts[key] ?? 0) + 1;
+    _writeCounts[key] = count;
     final remaining = failCounts[key];
     if (remaining != null && remaining > 0) {
       failCounts[key] = remaining - 1;
-      return false;
+      return true;
     }
-    if (failingKeys.contains(key)) return false;
+    if (failingKeys.contains(key)) return true;
+    if (failAfterFirst.contains(key) && count > 1) return true;
+    return false;
+  }
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    if (_shouldFail(key)) return false;
     return super.setValue(valueType, key, value);
+  }
+
+  @override
+  Future<bool> remove(String key) async {
+    if (_shouldFail(key)) return false;
+    return super.remove(key);
   }
 
   Future<Object?> persisted(String key) async => (await getAll())[key];

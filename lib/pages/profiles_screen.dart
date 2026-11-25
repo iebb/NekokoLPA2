@@ -3177,7 +3177,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       title: AppLocalizations.of(context)!.deleteProfile,
       message: AppLocalizations.of(
         context,
-      )!.deleteProfileConfirmation(p.displayName),
+      )!.deleteProfileConfirmation(ProfileRedaction.displayName(p)),
       confirmLabel: AppLocalizations.of(context)!.delete,
       isDestructive: true,
     );
@@ -3189,7 +3189,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       title: AppLocalizations.of(context)!.deleteProfile,
       message: AppLocalizations.of(
         context,
-      )!.deleteProfileConfirmation(p.displayName),
+      )!.deleteProfileConfirmation(ProfileRedaction.displayName(p)),
       confirmLabel: AppLocalizations.of(context)!.delete,
       isDestructive: true,
       swapButtons: true,
@@ -3341,7 +3341,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     final result = await AdaptiveContextMenu.show<String>(
       context: context,
       anchorKey: anchorKey,
-      title: profile.displayName,
+      title: ProfileRedaction.displayName(profile),
       items: [
         if (hasUsage)
           AdaptiveContextMenuItem(

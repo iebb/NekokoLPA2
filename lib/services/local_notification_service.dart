@@ -369,12 +369,23 @@ class LocalNotificationService {
         macOS: iosDetails,
       );
 
+      // The title is a display value: mask a phone-number nickname
+      // under full-hide (or the redact-phone-numbers mode), and fall
+      // back to the redacted ICCID when the nickname is hidden
+      // entirely. The payload below keeps the raw identifiers: the
+      // reminder details route looks the profile up by them.
+      final displayTitle =
+          ProfileRedaction.metadataDisplayName(profile) ??
+          IccidFormatter.forDisplay(
+            ProfileRedaction.redactIccid(profile.iccid),
+          );
+
       // Use Future.delayed + show instead of zonedSchedule to avoid timezone dependency
       Future.delayed(const Duration(seconds: 5), () async {
         try {
           await _notificationsPlugin.show(
             id: random.nextInt(100000), // ID
-            title: profile.displayName,
+            title: displayTitle,
             body: content,
             notificationDetails: platformDetails,
             payload: jsonEncode({
@@ -387,7 +398,7 @@ class LocalNotificationService {
           // Notify listeners for in-app display (foreground)
           _foregroundNotificationController.add(
             ForegroundNotification(
-              title: profile.displayName,
+              title: displayTitle,
               body: content,
               payload: jsonEncode({
                 'iccid': profile.iccid,
