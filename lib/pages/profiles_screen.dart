@@ -3100,7 +3100,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     final secondConfirmed = await _showPremiumConfirmDialog(
       title: "Purge eUICC — are you sure?",
       message:
-          "Last chance. On ${_eid ?? reader.name} this erases "
+          "Last chance. On ${_eid != null ? ProfileRedaction.redactEid(_eid) : reader.name} this erases "
           "permanently:\n\n• $chosen\n\n"
           "$profileCount profile(s) are currently installed. There is no way "
           "to recover them.",
