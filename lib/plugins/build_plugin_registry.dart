@@ -12,6 +12,7 @@ import 'thk_plugin.dart';
 import 'ty_ble_plugin.dart';
 import 'vowifi_plugin.dart';
 import 'vowifi_sim_probe_plugin.dart';
+import 'xesim_plugin.dart';
 import 'plugin_base.dart';
 import 'session_plugin.dart';
 
@@ -33,6 +34,7 @@ class BuildPluginRegistry {
         'TyBlePlugin': TyBlePlugin.new,
         'VowifiPlugin': VowifiPlugin.new,
         'VowifiSimProbePlugin': VowifiSimProbePlugin.new,
+        'XesimPlugin': XesimPlugin.new,
       };
 
   static final Map<String, SessionPluginFactory> _sessionFactories =
