@@ -272,6 +272,13 @@ class AppSettings extends ChangeNotifier {
   /// store disagrees, so the marker must not be re-read from prefs.
   bool _migrationCompleted = false;
 
+  /// Whether a migration snapshot is stored. Tracked in memory for the
+  /// same reason: after a failed snapshot write the cache claims one
+  /// exists, so the store must not be asked through prefs either — an
+  /// edit recorded on that lie would let a later retry rebuild the
+  /// source pair from already-edited flags.
+  bool _migrationSnapshotStored = false;
+
   bool _enableUpdateCheck = true;
   bool get enableUpdateCheck => _enableUpdateCheck;
 
@@ -626,15 +633,25 @@ class AppSettings extends ChangeNotifier {
   /// `init()` loads the in-memory flags through [_displayValues], so a run
   /// whose migration did not complete still shows the converted values.
   ///
-  /// Returns true only when the marker is truly set (already set on entry,
-  /// or every flag write and the marker write succeeded).
+  /// Returns the migration outcome: whether the marker is truly set
+  /// (already set on entry, or every flag write and the marker write
+  /// succeeded), and whether a snapshot is stored (already present, or
+  /// written by this run).
   @visibleForTesting
-  static Future<bool> migrateRedactionFlags(SharedPreferences prefs) async {
-    if (prefs.getBool(_migrationMarkerKey) == true) return true;
+  static Future<({bool completed, bool snapshotStored})>
+  migrateRedactionFlags(SharedPreferences prefs) async {
+    if (prefs.getBool(_migrationMarkerKey) == true) {
+      return (completed: true, snapshotStored: true);
+    }
     var source = _readMigrationSnapshot(prefs);
     if (source == null) {
       source = <String, bool>{};
+      // Skip flags already recorded as edited: their stored values are
+      // new-semantics, not pre-migration values (reached only when a
+      // snapshot was lost after edits were recorded).
+      final pendingEdits = _readMigrationEdits(prefs);
       for (final key in _segmentFlagKeys) {
+        if (pendingEdits.containsKey(key)) continue;
         final stored = prefs.getBool(key);
         if (stored != null) source[key] = stored;
       }
@@ -642,7 +659,7 @@ class AppSettings extends ChangeNotifier {
         _migrationSnapshotKey,
         jsonEncode(source),
       )) {
-        return false;
+        return (completed: false, snapshotStored: false);
       }
     }
     final targets = _convertedFlags(source);
@@ -658,13 +675,15 @@ class AppSettings extends ChangeNotifier {
     // Only mark the migration complete when every flag actually landed;
     // otherwise the next startup retries from the snapshot instead of
     // reinterpreting a stale value under the new semantics.
-    if (!allWritesSucceeded) return false;
+    if (!allWritesSucceeded) {
+      return (completed: false, snapshotStored: true);
+    }
     final markerOk = await prefs.setBool(_migrationMarkerKey, true);
     if (markerOk) {
       // The edits are now the stored values; drop the pending record.
       await prefs.remove(_migrationEditsKey);
     }
-    return markerOk;
+    return (completed: markerOk, snapshotStored: true);
   }
 
   Future<void> init() async {
@@ -699,11 +718,14 @@ class AppSettings extends ChangeNotifier {
     _useNekokoIcons = _prefs?.getBool('useNekokoIcons') ?? true;
     _disableRefreshFlags = _prefs?.getBool('disableRefreshFlags') ?? false;
     final prefs = _prefs;
-    // migrateRedactionFlags reports whether the marker is truly set: the
-    // prefs cache is optimistic, so a failed marker write would otherwise
-    // read back as set.
-    final migrated = prefs == null || await migrateRedactionFlags(prefs);
-    _migrationCompleted = migrated;
+    // migrateRedactionFlags reports whether the marker is truly set and
+    // whether a snapshot is stored: the prefs cache is optimistic, so a
+    // failed write would otherwise read back as done.
+    final outcome = prefs == null
+        ? (completed: true, snapshotStored: true)
+        : await migrateRedactionFlags(prefs);
+    _migrationCompleted = outcome.completed;
+    _migrationSnapshotStored = outcome.snapshotStored;
     // Load through _displayValues so a run whose migration did not
     // complete still shows the converted values instead of reading old
     // show-segment flags as new mask-segment flags. Once migrated, the
@@ -719,7 +741,7 @@ class AppSettings extends ChangeNotifier {
       snapshot = _readMigrationSnapshot(prefs);
       edits = _readMigrationEdits(prefs);
     }
-    final displayFlags = migrated
+    final displayFlags = _migrationCompleted
         ? storedFlags
         : _displayValues(storedFlags, snapshot, edits);
     _redactEidFirst = displayFlags['redactEidFirst'] ?? false;
@@ -1279,8 +1301,28 @@ class AppSettings extends ChangeNotifier {
     final prefs = _prefs;
     if (prefs == null) return true;
     if (_migrationCompleted) return true;
-    final previous = prefs.getString(_migrationEditsKey);
     final edits = _readMigrationEdits(prefs);
+    // Without a snapshot, a later retry would rebuild the source pair
+    // from the current flags — but an edited flag already holds its new
+    // value, which would corrupt the coupled EID pair. Capture the
+    // pre-edit values first (skipping flags already recorded as edited)
+    // and refuse the edit until that lands.
+    if (!_migrationSnapshotStored) {
+      final source = <String, bool>{};
+      for (final flagKey in _segmentFlagKeys) {
+        if (edits.containsKey(flagKey)) continue;
+        final stored = prefs.getBool(flagKey);
+        if (stored != null) source[flagKey] = stored;
+      }
+      if (!await prefs.setString(
+        _migrationSnapshotKey,
+        jsonEncode(source),
+      )) {
+        return false;
+      }
+      _migrationSnapshotStored = true;
+    }
+    final previous = prefs.getString(_migrationEditsKey);
     edits[key] = newValue;
     if (await prefs.setString(_migrationEditsKey, jsonEncode(edits))) {
       return true;

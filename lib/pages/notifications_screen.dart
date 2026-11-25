@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../settings/app_settings.dart';
 import '../utils/hex_utils.dart';
 import '../utils/iccid_formatter.dart';
+import '../utils/profile_redaction.dart';
 import '../services/profile_metadata_service.dart';
 import '../services/notification_service.dart';
 import '../services/database_service.dart';
@@ -1279,6 +1280,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         final cleanedIccid = rawIccid != null
             ? IccidFormatter.forDisplay(rawIccid)
             : null;
+        // Display value only; rawIccid stays the cache-lookup key.
+        final displayIccid = cleanedIccid != null
+            ? ProfileRedaction.redactIccid(cleanedIccid)
+            : null;
         final status = _notificationStatus[seq] ?? 'on-card';
         final isRemoving = _removingSeqs.contains(seq);
         final willDelete = _willDeleteNotification(metadata);
@@ -1325,9 +1330,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         operationColor: opColor,
                         profileName:
                             profileMeta?.displayName ??
-                            cleanedIccid ??
+                            displayIccid ??
                             AppLocalizations.of(context)!.unknownProfile,
-                        iccid: cleanedIccid,
+                        iccid: displayIccid,
                         address: addr,
                         profileMetadata: profileMeta,
                         status: status,
@@ -1343,9 +1348,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 operationColor: opColor,
                                 profileName:
                                     profileMeta?.displayName ??
-                                    cleanedIccid ??
+                                    displayIccid ??
                                     "Unknown Profile",
-                                iccid: cleanedIccid,
+                                iccid: displayIccid,
                                 address: addr,
                                 metadata: profileMeta,
                               ),

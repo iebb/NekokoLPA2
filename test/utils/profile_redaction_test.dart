@@ -784,6 +784,90 @@ void main() {
       // Restore the default mock store for the tests after this one.
       SharedPreferences.setMockInitialValues({});
     });
+
+    test('an edit refused for a missing snapshot does not corrupt the pair',
+        () async {
+      // The conservative old combination: show middle, mask last 10.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': false,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigrationSourceV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': false,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      // The snapshot write failed, so the migration is still pending and
+      // this run shows the converted values.
+      expect(
+        await store.persisted('flutter.redactionFlagsMigratedV2'),
+        isNull,
+      );
+      expect(
+        await store.persisted('flutter.redactionFlagsMigrationSourceV2'),
+        isNull,
+      );
+      expect(settings.redactEidMiddle, isTrue);
+      expect(settings.redactEidLast, isTrue);
+
+      // The first edit is refused: the snapshot cannot be captured, so
+      // the flag is left untouched instead of letting a later retry
+      // rebuild the source pair from the edited value.
+      await settings.setRedactEidLast(false);
+      expect(settings.redactEidLast, isTrue);
+      expect(await store.persisted('flutter.redactEidLast'), isFalse);
+      expect(
+        await store.persisted('flutter.redactionFlagsMigrationSourceV2'),
+        isNull,
+      );
+
+      // Once the snapshot write succeeds, the edit is captured against
+      // the pre-edit values: off, then back on.
+      store.failingKeys.clear();
+      await settings.setRedactEidLast(false);
+      expect(
+        jsonDecode(
+          await store.persisted('flutter.redactionFlagsMigrationSourceV2')
+              as String,
+        ) as Map,
+        {
+          'redactEidFirst': true,
+          'redactEidMiddle': true,
+          'redactEidLast': false,
+          'redactIccidFirst': true,
+          'redactIccidMiddle': true,
+          'redactIccidLast': true,
+        },
+      );
+      await settings.setRedactEidLast(true);
+
+      // The retry converts from the true old pair: the middle stays
+      // masked instead of being exposed by a mixed source pair.
+      final persisted = await store.getAll();
+      SharedPreferences.setMockInitialValues({
+        for (final entry in persisted.entries)
+          entry.key.replaceFirst('flutter.', ''): entry.value,
+      });
+      final relaunched = await SharedPreferences.getInstance();
+      await AppSettings.migrateRedactionFlags(relaunched);
+      expect(relaunched.getBool('redactEidFirst'), isFalse);
+      expect(relaunched.getBool('redactEidMiddle'), isTrue);
+      expect(relaunched.getBool('redactEidLast'), isTrue);
+      expect(relaunched.getBool('redactionFlagsMigratedV2'), isTrue);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
   });
 
   group('unsupported card details', () {
