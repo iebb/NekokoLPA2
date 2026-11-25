@@ -688,16 +688,20 @@ void main() {
       await settings.applyQuickRedactionPreset();
       expect(
         jsonDecode(
-          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+          await store.persisted(
+                'flutter.redactionFlagsMigrationPresetBatchV2',
+              )
               as String,
         ) as Map,
         {
-          'redactEidFirst': false,
-          'redactEidMiddle': true,
-          'redactEidLast': true,
-          'redactIccidFirst': true,
-          'redactIccidMiddle': true,
-          'redactIccidLast': true,
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
         },
       );
 
@@ -1018,10 +1022,10 @@ void main() {
       await settings.init();
       expect(settings.hasNoRedactionsConfigured, isTrue);
 
-      // The preset cannot record its segment edits, so it aborts
-      // before touching the nickname/operator modes: the eye still
-      // reports nothing configured instead of looking masked.
-      store.failingKeys.add('flutter.redactionFlagsMigrationEditsV2');
+      // The preset cannot stage its batch, so it aborts before touching
+      // the nickname/operator modes: the eye still reports nothing
+      // configured instead of looking masked.
+      store.failingKeys.add('flutter.redactionFlagsMigrationPresetBatchV2');
       expect(await settings.applyQuickRedactionPreset(), isFalse);
       expect(settings.hasNoRedactionsConfigured, isTrue);
       expect(settings.redactEidMiddle, isFalse);
@@ -1047,16 +1051,20 @@ void main() {
       expect(settings.redactIccidLast, isTrue);
       expect(
         jsonDecode(
-          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+          await store.persisted(
+                'flutter.redactionFlagsMigrationPresetBatchV2',
+              )
               as String,
         ) as Map,
         {
-          'redactEidFirst': false,
-          'redactEidMiddle': true,
-          'redactEidLast': true,
-          'redactIccidFirst': true,
-          'redactIccidMiddle': true,
-          'redactIccidLast': true,
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
         },
       );
 
@@ -1088,11 +1096,11 @@ void main() {
       await settings.init();
       expect(settings.hasNoRedactionsConfigured, isTrue);
 
-      // The single staged record write fails once. With per-setter
+      // The single staged batch write fails once. With per-setter
       // recording, the setters after the failed one would still land
       // and leave the preset half-applied; staging means the failed
       // attempt changes nothing at all.
-      store.failCounts['flutter.redactionFlagsMigrationEditsV2'] = 1;
+      store.failCounts['flutter.redactionFlagsMigrationPresetBatchV2'] = 1;
       expect(await settings.applyQuickRedactionPreset(), isFalse);
       expect(settings.hasNoRedactionsConfigured, isTrue);
       expect(settings.redactEidMiddle, isFalse);
@@ -1102,7 +1110,9 @@ void main() {
         NicknameRedactionMode.none,
       );
       expect(
-        await store.persisted('flutter.redactionFlagsMigrationEditsV2'),
+        await store.persisted(
+          'flutter.redactionFlagsMigrationPresetBatchV2',
+        ),
         isNull,
       );
 
@@ -1113,16 +1123,20 @@ void main() {
       expect(settings.redactIccidFirst, isTrue);
       expect(
         jsonDecode(
-          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
+          await store.persisted(
+                'flutter.redactionFlagsMigrationPresetBatchV2',
+              )
               as String,
         ) as Map,
         {
-          'redactEidFirst': false,
-          'redactEidMiddle': true,
-          'redactEidLast': true,
-          'redactIccidFirst': true,
-          'redactIccidMiddle': true,
-          'redactIccidLast': true,
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
         },
       );
 
@@ -1203,19 +1217,15 @@ void main() {
       await settings.init();
       expect(settings.hasNoRedactionsConfigured, isTrue);
 
-      // One flag write fails; the rollback succeeds, so both staged
-      // records are restored to their pre-preset state instead of being
+      // One flag write fails; the rollback succeeds, so the staged
+      // batch is restored to its pre-preset state instead of being
       // replayed at the next launch.
       store.failCounts['flutter.redactEidMiddle'] = 1;
       expect(await settings.applyQuickRedactionPreset(), isFalse);
       expect(settings.hasNoRedactionsConfigured, isTrue);
       expect(
-        await store.persisted('flutter.redactionFlagsMigrationEditsV2'),
-        isNull,
-      );
-      expect(
         await store.persisted(
-          'flutter.redactionFlagsMigrationPresetModesV2',
+          'flutter.redactionFlagsMigrationPresetBatchV2',
         ),
         isNull,
       );
@@ -1262,26 +1272,22 @@ void main() {
       expect(settings.hasNoRedactionsConfigured, isTrue);
       expect(
         jsonDecode(
-          await store.persisted('flutter.redactionFlagsMigrationEditsV2')
-              as String,
-        ) as Map,
-        {
-          'redactEidFirst': false,
-          'redactEidMiddle': true,
-          'redactEidLast': true,
-          'redactIccidFirst': true,
-          'redactIccidMiddle': true,
-          'redactIccidLast': true,
-        },
-      );
-      expect(
-        jsonDecode(
           await store.persisted(
-                'flutter.redactionFlagsMigrationPresetModesV2',
+                'flutter.redactionFlagsMigrationPresetBatchV2',
               )
               as String,
         ) as Map,
-        {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        {
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+          'modes': {'nicknameRedactionMode': 2, 'operatorRedactionMode': 1},
+        },
       );
 
       // A restart replays the full preset and drops the batch.
@@ -1297,12 +1303,8 @@ void main() {
         OperatorRedactionMode.countryName,
       );
       expect(
-        await store.persisted('flutter.redactionFlagsMigrationEditsV2'),
-        isNull,
-      );
-      expect(
         await store.persisted(
-          'flutter.redactionFlagsMigrationPresetModesV2',
+          'flutter.redactionFlagsMigrationPresetBatchV2',
         ),
         isNull,
       );
@@ -1366,8 +1368,102 @@ void main() {
       expect(prefs.getBool('redactionFlagsMigratedV2'), isTrue);
       expect(prefs.getString('redactionFlagsMigrationEditsV2'), isNull);
       expect(
-        prefs.getString('redactionFlagsMigrationPresetModesV2'),
+        prefs.getString('redactionFlagsMigrationPresetBatchV2'),
         isNull,
+      );
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('a later edit survives a restart after a successful preset',
+        () async {
+      // Migration completes at init: every flag off, nothing configured.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(settings.hasNoRedactionsConfigured, isTrue);
+
+      // The preset succeeds, and its batch is dropped: nothing is left
+      // to replay over a later choice.
+      expect(await settings.applyQuickRedactionPreset(), isTrue);
+      expect(
+        await store.persisted(
+          'flutter.redactionFlagsMigrationPresetBatchV2',
+        ),
+        isNull,
+      );
+
+      // The user then enables the EID-first mask; a restart must keep
+      // it instead of replaying the stale preset (which had it off).
+      await settings.setRedactEidFirst(true);
+      expect(settings.redactEidFirst, isTrue);
+      await settings.init();
+      expect(settings.redactEidFirst, isTrue);
+
+      // Restore the default mock store for the tests after this one.
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test(
+        'a successful preset keeps only its flags while migration is pending',
+        () async {
+      // Migration pending: the marker fails at init.
+      final store = _FailingWriteStore({
+        'flutter.redactEidFirst': true,
+        'flutter.redactEidMiddle': true,
+        'flutter.redactEidLast': true,
+        'flutter.redactIccidFirst': true,
+        'flutter.redactIccidMiddle': true,
+        'flutter.redactIccidLast': true,
+      });
+      store.failingKeys.add('flutter.redactionFlagsMigratedV2');
+      SharedPreferences.setMockInitialValues({
+        'redactEidFirst': true,
+        'redactEidMiddle': true,
+        'redactEidLast': true,
+        'redactIccidFirst': true,
+        'redactIccidMiddle': true,
+        'redactIccidLast': true,
+      });
+      SharedPreferencesStorePlatform.instance = store;
+      await settings.init();
+      expect(await settings.applyQuickRedactionPreset(), isTrue);
+
+      // The flags stay for the pending retry; the modes are dropped,
+      // so a later mode change is not overwritten by the stale batch.
+      expect(
+        jsonDecode(
+          await store.persisted(
+                'flutter.redactionFlagsMigrationPresetBatchV2',
+              )
+              as String,
+        ) as Map,
+        {
+          'flags': {
+            'redactEidFirst': false,
+            'redactEidMiddle': true,
+            'redactEidLast': true,
+            'redactIccidFirst': true,
+            'redactIccidMiddle': true,
+            'redactIccidLast': true,
+          },
+        },
       );
 
       // Restore the default mock store for the tests after this one.

@@ -2529,7 +2529,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
                 enable ? l10n.seHalSwitchTitle : l10n.seHalDisableTitle,
               ),
               content: Text(
-                '${p.displayName}\nICCID: ${ProfileRedaction.redactIccid(p.iccid)}\n\n${enable ? l10n.seHalEnableWarning : l10n.seHalDisableWarning}',
+                '${ProfileRedaction.displayName(p)}\nICCID: ${ProfileRedaction.redactIccid(p.iccid)}\n\n${enable ? l10n.seHalEnableWarning : l10n.seHalDisableWarning}',
               ),
               actions: [
                 TextButton(
