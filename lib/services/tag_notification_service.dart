@@ -119,10 +119,14 @@ class TagNotificationService {
     String? regionCode,
   }) {
     final settings = AppSettings();
+    // Reveal first, like ProfileRedaction.displayName: with the eye on
+    // "show all", the nickname shows as-is even when its mode is
+    // hide-nickname (the quick preset leaves that mode behind).
     if (profileNickname != null &&
         profileNickname.isNotEmpty &&
-        settings.nicknameRedactionMode !=
-            NicknameRedactionMode.hideNickname) {
+        (settings.revealSensitiveProfileData ||
+            settings.nicknameRedactionMode !=
+                NicknameRedactionMode.hideNickname)) {
       final cleanedNickname = ProfileTagUtils.parse(
         profileNickname,
         regionCode: regionCode,
