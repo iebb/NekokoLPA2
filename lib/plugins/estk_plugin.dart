@@ -9,6 +9,7 @@ import '../models/euicc_profile.dart';
 import '../models/asn1/rsp_definitions.g.dart';
 import '../adapter/euicc_adapter.dart';
 import '../utils/hex_utils.dart';
+import '../utils/profile_redaction.dart';
 import '../theme/app_theme.dart';
 import '../settings/app_settings.dart';
 import 'package:logging/logging.dart';
@@ -520,7 +521,7 @@ class EstkPlugin extends ProfilePlugin implements SessionPlugin {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    eid,
+                    ProfileRedaction.redactEid(eid),
                     style: AppTheme.mono(
                       TextStyle(
                         fontSize: 13,

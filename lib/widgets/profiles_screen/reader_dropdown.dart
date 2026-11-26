@@ -55,20 +55,19 @@ Widget buildReaderDropdown({
             onSelected: onChanged,
             child: GestureDetector(
               onLongPress: () {
-                if (selectedReader != null) {
-                  final eid = _formatReaderEid(
-                    selectedReader,
-                    showFullEid: true,
+                // Copy the raw EID: an explicit copy gesture copies the
+                // real value (like the context-menu copy), never the
+                // on-screen mask — under full-hide the redacted form
+                // would otherwise land on the clipboard as `********`.
+                final eid = selectedReader?.eid;
+                if (eid != null && eid.isNotEmpty) {
+                  Clipboard.setData(ClipboardData(text: eid));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('EID copied to clipboard'),
+                      duration: Duration(seconds: 1),
+                    ),
                   );
-                  if (eid != null) {
-                    Clipboard.setData(ClipboardData(text: eid));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('EID copied to clipboard'),
-                        duration: Duration(seconds: 1),
-                      ),
-                    );
-                  }
                 }
               },
               child: Padding(

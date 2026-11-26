@@ -5,6 +5,7 @@ import '../utils/profile_tag_utils.dart';
 import '../theme/app_theme.dart';
 import '../widgets/styled_header_scaffold.dart';
 import '../utils/iccid_formatter.dart';
+import '../utils/profile_redaction.dart';
 import '../l10n/app_localizations.dart';
 
 class TagManagerPage extends StatefulWidget {
@@ -272,10 +273,10 @@ class _TagManagerPageState extends State<TagManagerPage> {
                 ),
               ),
               title: Text(
-                ProfileTagUtils.parse(
-                  p.nickname,
-                  regionCode: p.flag,
-                ).displayName,
+                ProfileRedaction.metadataDisplayName(p) ??
+                    IccidFormatter.forDisplay(
+                      ProfileRedaction.redactIccid(p.iccid),
+                    ),
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -285,7 +286,7 @@ class _TagManagerPageState extends State<TagManagerPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    "${AppLocalizations.of(context)!.iccid}: ${IccidFormatter.forDisplay(p.iccid)}",
+                    "${AppLocalizations.of(context)!.iccid}: ${ProfileRedaction.redactIccid(IccidFormatter.forDisplay(p.iccid))}",
                     style: AppTheme.mono(
                       TextStyle(
                         fontSize: 11,
@@ -295,7 +296,7 @@ class _TagManagerPageState extends State<TagManagerPage> {
                   ),
                   if (p.eid != null)
                     Text(
-                      "EID: ${p.eid}",
+                      "EID: ${ProfileRedaction.redactEid(p.eid!)}",
                       style: AppTheme.mono(
                         TextStyle(
                           fontSize: 10,

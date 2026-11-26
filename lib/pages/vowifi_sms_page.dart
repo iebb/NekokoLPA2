@@ -9,6 +9,8 @@ import '../l10n/app_localizations.dart';
 import '../services/vowifi_sms_service.dart';
 import '../settings/app_settings.dart';
 import '../theme/app_theme.dart';
+import '../vowifi/l10n.dart';
+import '../vowifi/privacy_redaction.dart';
 import '../widgets/styled_header_scaffold.dart';
 
 class VowifiSmsPage extends StatefulWidget {
@@ -69,6 +71,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
           title: 'VoWiFi',
           subtitle: '${sessions.length} active session(s)',
           actions: [
+            const VoWifiPrivacyAction(),
             IconButton(
               tooltip: l10n.vowifiAutoRenewSubtitle,
               isSelected: AppSettings().vowifiAutoRenew,
@@ -229,7 +232,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    session.profileName,
+                    VoWifiPrivacy.phoneNumber(session.profileName),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall?.copyWith(
@@ -238,7 +241,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _associatedLabel(session),
+                    VoWifiPrivacy.phoneNumber(_associatedLabel(session)),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -347,7 +350,8 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
               context,
             ).colorScheme.primary.withValues(alpha: 0.12),
             child: Text(
-              session.profileName.trim().isEmpty
+              session.profileName.trim().isEmpty ||
+                      VoWifiPrivacy.isEnabled
                   ? '?'
                   : session.profileName.trim().characters.first.toUpperCase(),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -470,7 +474,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                   ),
                 ),
                 child: Text(
-                  'No messages for ${_associatedLabel(session)}.',
+                  'No messages for ${VoWifiPrivacy.phoneNumber(_associatedLabel(session))}.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: AppTheme.onSurfaceSubtle(context),
                   ),
@@ -531,7 +535,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  session.profileName,
+                  VoWifiPrivacy.phoneNumber(session.profileName),
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -660,7 +664,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
           children: [
             Flexible(
               child: Text(
-                _associatedLabel(session),
+                VoWifiPrivacy.phoneNumber(_associatedLabel(session)),
                 style: theme.textTheme.titleSmall?.copyWith(
                   color: theme.colorScheme.primary,
                   fontWeight: FontWeight.w700,
@@ -842,7 +846,10 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
             ),
           ] else
             SelectableText(
-              _displayMessageText(message),
+              VoWifiPrivacy.privateText(
+                _displayMessageText(message),
+                voWifiL10n(context).voWifiMessageHidden,
+              ),
               style: theme.textTheme.bodyMedium,
             ),
           if (((deliveryStatus ?? '').isNotEmpty ||
@@ -851,7 +858,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
             const SizedBox(height: 6),
             Text(
               (deliveryStatus ?? '').isNotEmpty
-                  ? deliveryStatus!
+                  ? VoWifiPrivacy.identifiers(deliveryStatus!)
                   : message.status,
               style: theme.textTheme.labelSmall?.copyWith(
                 color: AppTheme.onSurfaceSubtle(context),
@@ -915,6 +922,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                 child: TextField(
                   controller: _toController,
                   keyboardType: TextInputType.phone,
+                  obscureText: VoWifiPrivacy.isEnabled,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s()-]')),
                   ],
@@ -928,7 +936,9 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                     // helperText removed here to fix height/alignment
                     hintText: _formatE164Display(associated).isEmpty
                         ? '+12025550123'
-                        : _formatE164Display(associated),
+                        : VoWifiPrivacy.phoneNumber(
+                            _formatE164Display(associated),
+                          ),
                     // Make it look attached to the button on the right
                     border: OutlineInputBorder(
                       borderRadius: const BorderRadius.horizontal(
@@ -1087,7 +1097,9 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        _formatIdentityChoice(identity),
+                                        VoWifiPrivacy.phoneNumber(
+                                          _formatIdentityChoice(identity),
+                                        ),
                                         style: theme.textTheme.titleSmall
                                             ?.copyWith(
                                               fontWeight: FontWeight.w800,
@@ -1095,7 +1107,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        identity,
+                                        VoWifiPrivacy.phoneNumber(identity),
                                         style: theme.textTheme.bodySmall
                                             ?.copyWith(
                                               color: AppTheme.onSurfaceSubtle(
@@ -1202,7 +1214,7 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
   }
 
   String _heroMetadataLine(VowifiSessionInfo session) {
-    return 'Registered over ${session.readerName}, ICCID ${session.iccid}, ready for SMS traffic.';
+    return 'Registered over ${session.readerName}, ICCID ${VoWifiPrivacy.identifiers(session.iccid)}, ready for SMS traffic.';
   }
 
   List<String> _sortedIdentities(VowifiSessionInfo session) {
@@ -1371,9 +1383,9 @@ class _VowifiSmsPageState extends State<VowifiSmsPage> {
       return 'Delivery Update';
     }
     if (message.direction == VowifiSmsDirection.outbound) {
-      return 'To ${_messagePeerLabel(message, session)}';
+      return 'To ${VoWifiPrivacy.phoneNumber(_messagePeerLabel(message, session))}';
     }
-    return _messagePeerLabel(message, session);
+    return VoWifiPrivacy.phoneNumber(_messagePeerLabel(message, session));
   }
 
   bool _isBinaryMessage(VowifiSmsMessage message) {

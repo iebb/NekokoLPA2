@@ -2,6 +2,7 @@ import '../models/euicc_profile.dart';
 import '../services/profile_metadata_service.dart';
 import '../settings/app_settings.dart';
 import 'mcc_mapper.dart';
+import 'profile_tag_utils.dart';
 
 class ProfileRedaction {
   static const String _mask = '*';
@@ -36,6 +37,7 @@ class ProfileRedaction {
   static String redactEid(String? eid, {bool revealFull = false}) {
     if (eid == null || eid.isEmpty) return '';
     final settings = AppSettings();
+    if (settings.fullHideSensitiveData) return _masked(eid.length);
     if (revealFull || settings.revealSensitiveProfileData) return eid;
     return redactEidPreview(eid);
   }
@@ -47,14 +49,15 @@ class ProfileRedaction {
       eid,
       ranges: [
         _Range(0, 8, settings.redactEidFirst),
-        _Range(8, 24, settings.redactEidMiddle),
-        _Range(eid.length - 10, eid.length, settings.redactEidLast),
+        _Range(8, eid.length - 2, settings.redactEidMiddle),
+        _Range(eid.length - 2, eid.length, settings.redactEidLast),
       ],
     );
   }
 
   static String redactIccid(String iccid) {
     final settings = AppSettings();
+    if (settings.fullHideSensitiveData) return _masked(iccid.length);
     if (settings.revealSensitiveProfileData) return iccid;
     return redactIccidPreview(iccid);
   }
@@ -69,6 +72,50 @@ class ProfileRedaction {
         _Range(iccid.length - 6, iccid.length, settings.redactIccidLast),
       ],
     );
+  }
+
+  /// Masks the last [digits] digits of a phone number, keeping any
+  /// formatting characters (such as `+` and spaces) in place. In full-hide
+  /// mode every digit is masked.
+  static String redactPhoneNumber(String? value) {
+    if (value == null || value.isEmpty) return '';
+    final settings = AppSettings();
+    if (settings.fullHideSensitiveData) return _maskDigits(value, null);
+    if (settings.revealSensitiveProfileData ||
+        settings.hasNoRedactionsConfigured) {
+      return value;
+    }
+    return _maskDigits(value, 6);
+  }
+
+  /// Fully masks a balance value; nothing of the amount is shown.
+  static String redactBalance(String? balance) {
+    if (balance == null || balance.isEmpty) return '';
+    final settings = AppSettings();
+    if (!settings.fullHideSensitiveData &&
+        (settings.revealSensitiveProfileData ||
+            settings.hasNoRedactionsConfigured)) {
+      return balance;
+    }
+    return '********';
+  }
+
+  /// Redacts the identifiers in an unsupported-card probe summary
+  /// ("ICCID: ...\nIMSI: ...\nPLMN: ...\nGID1: ..."). The ICCID line
+  /// follows the configured ICCID segments (and full-hide); the IMSI has
+  /// no segment settings, so it is only masked under full-hide. The other
+  /// lines are not personal identifiers and pass through unchanged.
+  static String redactUnsupportedCardDetails(String details) {
+    final settings = AppSettings();
+    return details.split('\n').map((line) {
+      if (line.startsWith('ICCID: ')) {
+        return 'ICCID: ${redactIccid(line.substring('ICCID: '.length))}';
+      }
+      if (line.startsWith('IMSI: ') && settings.fullHideSensitiveData) {
+        return 'IMSI: ********';
+      }
+      return line;
+    }).join('\n');
   }
 
   static String displayName(EuiccProfile profile) {
@@ -98,14 +145,51 @@ class ProfileRedaction {
       }
     }
 
+    if (settings.fullHideSensitiveData ||
+        settings.nicknameRedactionMode ==
+            NicknameRedactionMode.redactPhoneNumbers) {
+      return maskPhoneLike(base);
+    }
+    return base;
+  }
+
+  /// Masks every phone-like run in [value] with `*`s of the same length.
+  /// This is the rule [displayName] applies to a phone-like nickname
+  /// under full-hide or redact-phone-numbers.
+  static String maskPhoneLike(String value) => value.replaceAllMapped(
+    _phoneNumber,
+    (match) => _mask * match.group(0)!.length,
+  );
+
+  /// The display name of a cached [ProfileMetadata], with the same
+  /// nickname rules as [displayName]: the stored nickname is hidden
+  /// entirely when the mode says so (returns null, so the caller falls
+  /// back to the redacted ICCID), and a phone-like name is masked under
+  /// full-hide or when the mode is redact-phone-numbers. A name that
+  /// came from the operator/provider stays as-is.
+  static String? metadataDisplayName(ProfileMetadata meta) {
+    final settings = AppSettings();
+    if (settings.revealSensitiveProfileData) return meta.displayName;
     if (settings.nicknameRedactionMode ==
-        NicknameRedactionMode.redactPhoneNumbers) {
-      return base.replaceAllMapped(
+            NicknameRedactionMode.hideNickname &&
+        meta.nickname != null &&
+        meta.nickname!.trim().isNotEmpty &&
+        ProfileTagUtils.parse(
+          meta.nickname!,
+          regionCode: meta.flag,
+        ).displayName.isNotEmpty) {
+      return null;
+    }
+    final name = meta.displayName;
+    if (settings.fullHideSensitiveData ||
+        settings.nicknameRedactionMode ==
+            NicknameRedactionMode.redactPhoneNumbers) {
+      return name.replaceAllMapped(
         _phoneNumber,
         (match) => _mask * match.group(0)!.length,
       );
     }
-    return base;
+    return name;
   }
 
   static String? operatorSummary(EuiccProfile profile) {
@@ -281,21 +365,47 @@ class ProfileRedaction {
 
   static String _applyRanges(String source, {required List<_Range> ranges}) {
     if (source.isEmpty) return source;
-    final keep = List<bool>.filled(source.length, false);
+    // An enabled range means that segment is redacted (masked).
+    final mask = List<bool>.filled(source.length, false);
     for (final range in ranges) {
       if (!range.enabled) continue;
       final start = range.start.clamp(0, source.length);
       final end = range.end.clamp(0, source.length);
       for (var i = start; i < end; i++) {
-        keep[i] = true;
+        mask[i] = true;
       }
     }
 
     final buffer = StringBuffer();
     for (var i = 0; i < source.length; i++) {
-      buffer.write(keep[i] ? source[i] : _mask);
+      buffer.write(mask[i] ? _mask : source[i]);
     }
     return buffer.toString().replaceAll(_longMaskRun, '********');
+  }
+
+  /// Returns a fully masked string of [length] characters.
+  static String _masked(int length) =>
+      (_mask * length).replaceAll(_longMaskRun, '********');
+
+  /// Replaces digit characters with [_mask], keeping non-digits in place.
+  /// When [lastDigits] is null every digit is masked, otherwise only the
+  /// last [lastDigits] digits are masked.
+  static String _maskDigits(String value, int? lastDigits) {
+    var remaining = lastDigits;
+    final chars = value.split('');
+    for (var i = chars.length - 1; i >= 0; i--) {
+      if (remaining == 0) break;
+      if (_isDigit(chars[i])) {
+        chars[i] = _mask;
+        if (remaining != null) remaining--;
+      }
+    }
+    return chars.join();
+  }
+
+  static bool _isDigit(String char) {
+    final code = char.codeUnitAt(0);
+    return code >= 0x30 && code <= 0x39;
   }
 
   static String _shuffledCountryCode(String seed) {

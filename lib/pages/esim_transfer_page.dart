@@ -10,6 +10,7 @@ import '../services/notification_service.dart';
 import '../services/smds_discovery_service.dart';
 import '../services/transfer_downloader.dart';
 import '../settings/app_settings.dart';
+import '../utils/profile_redaction.dart';
 import '../ts43/entitlement.dart';
 import '../ts43/enums.dart';
 import '../ts43/errors.dart';
@@ -305,7 +306,11 @@ class _EsimTransferPageState extends State<EsimTransferPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(_l10n.transferDeleteSourceTitle),
-        content: Text(_l10n.transferDeleteSourceBody(iccid)),
+        content: Text(
+          _l10n.transferDeleteSourceBody(
+            ProfileRedaction.redactIccid(iccid),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

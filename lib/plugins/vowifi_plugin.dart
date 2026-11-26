@@ -10,6 +10,7 @@ import '../services/vowifi_sms_service.dart';
 import '../widgets/profiles_screen/action_button.dart';
 import '../settings/app_settings.dart';
 import '../utils/vowifi_reader_support.dart';
+import '../vowifi/privacy_redaction.dart';
 import 'plugin_base.dart';
 
 class VowifiPlugin extends ProfilePlugin {
@@ -137,7 +138,12 @@ class VowifiPlugin extends ProfilePlugin {
     final scrollController = ScrollController();
 
     void appendLog(String line) {
-      logs.value = <String>[...logs.value, line];
+      // Display-only: identifiers in the log lines (ICCID, IMSI, SMSC)
+      // are masked here so the dialog never shows them raw.
+      logs.value = <String>[
+        ...logs.value,
+        VoWifiPrivacy.identifiers(line),
+      ];
     }
 
     void scrollToBottom() {

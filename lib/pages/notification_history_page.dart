@@ -6,6 +6,7 @@ import '../services/notification_service.dart';
 import '../services/profile_metadata_service.dart';
 import '../models/asn1/rsp_definitions.g.dart';
 import '../utils/iccid_formatter.dart';
+import '../utils/profile_redaction.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common/simple_dialog_container.dart';
 import '../widgets/styled_header_scaffold.dart';
@@ -198,12 +199,14 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
                   _detailRow(
                     context,
                     AppLocalizations.of(context)!.eid,
-                    record.eid,
+                    ProfileRedaction.redactEid(record.eid),
                   ),
                   _detailRow(
                     context,
                     AppLocalizations.of(context)!.iccid,
-                    IccidFormatter.forDisplay(record.iccid),
+                    ProfileRedaction.redactIccid(
+                      IccidFormatter.forDisplay(record.iccid),
+                    ),
                   ),
                   _detailRow(
                     context,
@@ -462,6 +465,10 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
                       final r = _filteredRecords[index];
                       final payloadLength = base64Decode(r.content).length;
                       final cleanedIccid = IccidFormatter.forDisplay(r.iccid);
+                      // Display value only; r.iccid stays the lookup key
+                      // for metadata, delete and resend.
+                      final displayIccid =
+                          ProfileRedaction.redactIccid(cleanedIccid);
 
                       // Get notification type color and icon
                       Color typeColor = Colors.grey;
@@ -502,9 +509,14 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
                         future: _fetchProfileMetadata(r.iccid),
                         builder: (context, snapshot) {
                           final profileMeta = snapshot.data;
-                          final fallbackName = cleanedIccid;
+                          final fallbackName = displayIccid;
                           final profileName =
-                              profileMeta?.displayName ?? fallbackName;
+                              (profileMeta != null
+                                  ? ProfileRedaction.metadataDisplayName(
+                                      profileMeta,
+                                    )
+                                  : null) ??
+                              fallbackName;
 
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
@@ -583,7 +595,7 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
                                                     const SizedBox(width: 6),
                                                     Expanded(
                                                       child: Text(
-                                                        cleanedIccid,
+                                                        displayIccid,
                                                         style: TextStyle(
                                                           fontSize: 12,
                                                           color:

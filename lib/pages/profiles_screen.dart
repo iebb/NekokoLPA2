@@ -844,7 +844,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
                         Text(reader.id, style: const TextStyle(fontSize: 10)),
                         if (eid != null)
                           Text(
-                            "EID: $eid",
+                            "EID: ${ProfileRedaction.redactEid(eid)}",
                             style: AppTheme.mono(
                               const TextStyle(
                                 fontSize: 10,
@@ -2082,6 +2082,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     final revealIdentifiers =
         settings.revealSensitiveProfileData ||
         settings.hasNoRedactionsConfigured;
+    final fullHideIdentifiers = settings.fullHideSensitiveData;
     // Unused theme removed
 
     // Calculate available space for actions
@@ -2107,12 +2108,16 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         },
       if (_eid != null || _isUnsupported || _isAraMFailed)
         {
-          'icon': revealIdentifiers
-              ? Icons.visibility_outlined
-              : Icons.visibility_off_outlined,
-          'tooltip': revealIdentifiers
-              ? 'Disable redaction'
-              : 'Enable redaction',
+          'icon': fullHideIdentifiers
+              ? Icons.visibility_off_outlined
+              : revealIdentifiers
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off,
+          'tooltip': fullHideIdentifiers
+              ? 'Show all'
+              : revealIdentifiers
+                  ? 'Mask as configured'
+                  : 'Hide all',
           'onPressed': _handleIdentifierVisibilityToggle,
           'key': 'toggle_identifier_visibility',
         },
@@ -2248,14 +2253,24 @@ class _ProfilesScreenState extends State<ProfilesScreen>
 
   void _handleIdentifierVisibilityToggle() async {
     final settings = AppSettings();
-    if (settings.revealSensitiveProfileData) {
+    if (settings.fullHideSensitiveData) {
+      // Full-hide -> reveal all.
+      settings.setFullHideSensitiveData(false);
+      settings.setRevealSensitiveProfileData(true);
+    } else if (settings.revealSensitiveProfileData) {
+      // Reveal -> mask as configured. With nothing configured, reveal is
+      // redundant (hasNo already shows all), so apply the preset here
+      // instead of leaving a visually inert tap.
       settings.setRevealSensitiveProfileData(false);
+      if (settings.hasNoRedactionsConfigured) {
+        await settings.applyQuickRedactionPreset();
+      }
       return;
-    }
-    if (settings.hasNoRedactionsConfigured) {
+    } else if (settings.hasNoRedactionsConfigured) {
       await settings.applyQuickRedactionPreset();
     } else {
-      settings.setRevealSensitiveProfileData(true);
+      // Mask as configured -> full-hide.
+      settings.setFullHideSensitiveData(true);
     }
     if (mounted) {
       setState(() {});
@@ -2514,7 +2529,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
                 enable ? l10n.seHalSwitchTitle : l10n.seHalDisableTitle,
               ),
               content: Text(
-                '${p.displayName}\nICCID: ${p.iccid}\n\n${enable ? l10n.seHalEnableWarning : l10n.seHalDisableWarning}',
+                '${ProfileRedaction.displayName(p)}\nICCID: ${ProfileRedaction.redactIccid(p.iccid)}\n\n${enable ? l10n.seHalEnableWarning : l10n.seHalDisableWarning}',
               ),
               actions: [
                 TextButton(
@@ -3088,7 +3103,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     final secondConfirmed = await _showPremiumConfirmDialog(
       title: "Purge eUICC — are you sure?",
       message:
-          "Last chance. On ${_eid ?? reader.name} this erases "
+          "Last chance. On ${_eid != null ? ProfileRedaction.redactEid(_eid) : reader.name} this erases "
           "permanently:\n\n• $chosen\n\n"
           "$profileCount profile(s) are currently installed. There is no way "
           "to recover them.",
@@ -3165,7 +3180,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       title: AppLocalizations.of(context)!.deleteProfile,
       message: AppLocalizations.of(
         context,
-      )!.deleteProfileConfirmation(p.displayName),
+      )!.deleteProfileConfirmation(ProfileRedaction.displayName(p)),
       confirmLabel: AppLocalizations.of(context)!.delete,
       isDestructive: true,
     );
@@ -3177,7 +3192,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
       title: AppLocalizations.of(context)!.deleteProfile,
       message: AppLocalizations.of(
         context,
-      )!.deleteProfileConfirmation(p.displayName),
+      )!.deleteProfileConfirmation(ProfileRedaction.displayName(p)),
       confirmLabel: AppLocalizations.of(context)!.delete,
       isDestructive: true,
       swapButtons: true,
@@ -3329,7 +3344,7 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     final result = await AdaptiveContextMenu.show<String>(
       context: context,
       anchorKey: anchorKey,
-      title: profile.displayName,
+      title: ProfileRedaction.displayName(profile),
       items: [
         if (hasUsage)
           AdaptiveContextMenuItem(
@@ -3435,7 +3450,11 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     Clipboard.setData(ClipboardData(text: profile.iccid));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(AppLocalizations.of(context)!.iccidCopied(profile.iccid)),
+        content: Text(
+          AppLocalizations.of(
+            context,
+          )!.iccidCopied(ProfileRedaction.redactIccid(profile.iccid)),
+        ),
         duration: const Duration(seconds: 2),
       ),
     );
@@ -3966,7 +3985,9 @@ class _ProfilesScreenState extends State<ProfilesScreen>
     if (profile.profileClass == 1) {
       classStr = AppLocalizations.of(context)!.provisioning;
     }
-    final displayIccid = IccidFormatter.forDisplay(profile.iccid);
+    final displayIccid = IccidFormatter.forDisplay(
+      ProfileRedaction.redactIccid(profile.iccid),
+    );
 
     final l10n = AppLocalizations.of(context)!;
     _showPremiumInfoDialog(
@@ -5189,7 +5210,11 @@ class _ProfilesScreenState extends State<ProfilesScreen>
         return UnsupportedCardState(
           isTelephony: reader != null && _isTelephony(reader),
           operatorIconBase64: _unsupportedOperatorIcon,
-          fallbackDetails: _unsupportedFallbackDetails,
+          fallbackDetails: _unsupportedFallbackDetails == null
+              ? null
+              : ProfileRedaction.redactUnsupportedCardDetails(
+                  _unsupportedFallbackDetails!,
+                ),
           onRetry: _listProfiles,
           onAboutAram: () => Navigator.push(
             context,

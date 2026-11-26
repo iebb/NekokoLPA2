@@ -10,6 +10,7 @@ import '../services/es9plus_service.dart';
 import '../utils/hex_utils.dart';
 import '../utils/crypto_utils.dart';
 import '../utils/iccid_formatter.dart';
+import '../utils/profile_redaction.dart';
 import '../utils/size_formatter.dart';
 import '../widgets/styled_header_scaffold.dart';
 import '../theme/app_theme.dart';
@@ -1059,7 +1060,15 @@ class _BatchDownloadPageState extends State<BatchDownloadPage> {
                                           ),
                                         ),
                                       ),
-                                      DataCell(Text(item.iccid ?? '-')),
+                                      DataCell(
+                                        Text(
+                                          item.iccid != null
+                                              ? ProfileRedaction.redactIccid(
+                                                  item.iccid!,
+                                                )
+                                              : '-',
+                                        ),
+                                      ),
                                       DataCell(
                                         Text(
                                           item.size != null

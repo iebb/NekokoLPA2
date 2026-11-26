@@ -261,6 +261,24 @@ class AppSettings extends ChangeNotifier {
   bool _revealSensitiveProfileData = false;
   bool get revealSensitiveProfileData => _revealSensitiveProfileData;
 
+  /// Full-hide mode (eye icon third state): every identifier is masked.
+  /// Memory-only, like [_revealSensitiveProfileData].
+  bool _fullHideSensitiveData = false;
+  bool get fullHideSensitiveData => _fullHideSensitiveData;
+
+  /// Whether the redaction migration is truly complete. Tracked in memory
+  /// because SharedPreferences caches writes optimistically: after a
+  /// failed marker write the cache claims the marker is set while the
+  /// store disagrees, so the marker must not be re-read from prefs.
+  bool _migrationCompleted = false;
+
+  /// Whether a migration snapshot is stored. Tracked in memory for the
+  /// same reason: after a failed snapshot write the cache claims one
+  /// exists, so the store must not be asked through prefs either — an
+  /// edit recorded on that lie would let a later retry rebuild the
+  /// source pair from already-edited flags.
+  bool _migrationSnapshotStored = false;
+
   bool _enableUpdateCheck = true;
   bool get enableUpdateCheck => _enableUpdateCheck;
 
@@ -363,16 +381,16 @@ class AppSettings extends ChangeNotifier {
   bool _useNekokoIcons = true;
   bool get useNekokoIcons => _useNekokoIcons;
 
-  bool _redactEidFirst = true;
+  bool _redactEidFirst = false;
   bool get redactEidFirst => _redactEidFirst;
 
-  bool _redactEidMiddle = false;
+  bool _redactEidMiddle = true;
   bool get redactEidMiddle => _redactEidMiddle;
 
-  bool _redactEidLast = true;
+  bool _redactEidLast = false;
   bool get redactEidLast => _redactEidLast;
 
-  bool _redactIccidFirst = true;
+  bool _redactIccidFirst = false;
   bool get redactIccidFirst => _redactIccidFirst;
 
   bool _redactIccidMiddle = true;
@@ -498,6 +516,206 @@ class AppSettings extends ChangeNotifier {
     if (_prefs?.containsKey(key) == true) await _prefs?.remove(key);
   }
 
+  /// The six segment flags the redaction migration converts.
+  static const _segmentFlagKeys = [
+    'redactEidFirst',
+    'redactEidMiddle',
+    'redactEidLast',
+    'redactIccidFirst',
+    'redactIccidMiddle',
+    'redactIccidLast',
+  ];
+
+  static const _migrationMarkerKey = 'redactionFlagsMigratedV2';
+  static const _migrationSnapshotKey = 'redactionFlagsMigrationSourceV2';
+
+  /// Edits made to the segment flags while the migration is still
+  /// pending, recorded in new-semantics terms. A retry writes these
+  /// values as-is instead of recomputing them from the snapshot, so an
+  /// edit can never be undone by the frozen pre-migration values — and
+  /// the coupled EID pair is recorded together, not inverted flag by
+  /// flag into the snapshot (inverting only Last of the conservative
+  /// old pair would flip the middle back to visible on retry).
+  static const _migrationEditsKey = 'redactionFlagsMigrationEditsV2';
+
+  /// The preset recovery batch: the six segment edits plus the two mode
+  /// ints in one JSON value, `{"flags": {...}, "modes":
+  /// {"nicknameRedactionMode": 2, "operatorRedactionMode": 1}}`. One
+  /// key (and one write) on purpose: the batch either lands whole or
+  /// not at all, so a failed preset can never leave a segment-only
+  /// batch behind. Kept separate from the edits record because that
+  /// record is a strict `Map<String, bool>` and only holds setter edits.
+  static const _migrationPresetBatchKey =
+      'redactionFlagsMigrationPresetBatchV2';
+
+  /// Converts stored old-semantics flag values ("show this segment") to
+  /// the new "mask this segment" values. The EID segment boundaries
+  /// changed with the new defaults: the middle range now runs to
+  /// length-2 and the last range is only the final 2 digits (was: middle
+  /// [8,24), last 10). A stored "show middle, mask last 10" choice would
+  /// expose 8 digits after a plain flip, so that combination maps
+  /// conservatively to "mask everything from 8 on".
+  static Map<String, bool> _convertedFlags(Map<String, bool> old) {
+    final eidMaskFromEightOn =
+        old['redactEidMiddle'] == true && old['redactEidLast'] == false;
+    return {
+      for (final entry in old.entries)
+        entry.key:
+            eidMaskFromEightOn &&
+                    (entry.key == 'redactEidMiddle' ||
+                        entry.key == 'redactEidLast')
+                ? true
+                : !entry.value,
+    };
+  }
+
+  /// New-semantics flag values for the current run, given the stored
+  /// values, the migration snapshot (if one exists), and edits made
+  /// while the migration is pending. A key already at its converted
+  /// value is taken as-is, a key still at its snapshot value takes the
+  /// converted value, and a key that matches neither was edited after
+  /// the snapshot, so the stored (new-semantics) value is trusted. With
+  /// no snapshot every stored value is still old-semantics and is
+  /// converted. Recorded edits win over anything recomputed: they are
+  /// new-semantics values the user chose.
+  static Map<String, bool> _displayValues(
+    Map<String, bool> stored,
+    Map<String, bool>? source,
+    Map<String, bool> edits,
+  ) {
+    final Map<String, bool> base;
+    if (source == null) {
+      base = _convertedFlags(stored);
+    } else {
+      final targets = _convertedFlags(source);
+      base = {
+        for (final entry in stored.entries)
+          entry.key: entry.value == targets[entry.key]
+              ? entry.value
+              : entry.value == source[entry.key]
+                  ? targets[entry.key]!
+                  : entry.value,
+      };
+    }
+    return {...base, ...edits};
+  }
+
+  /// Reads the pending migration edits, or an empty map when there are
+  /// none or the record is corrupt.
+  static Map<String, bool> _readMigrationEdits(SharedPreferences prefs) {
+    final raw = prefs.getString(_migrationEditsKey);
+    if (raw == null) return <String, bool>{};
+    try {
+      return Map<String, bool>.from(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return <String, bool>{};
+    }
+  }
+
+  /// Reads the migration snapshot, or null when there is none or it is
+  /// corrupt (the caller re-captures from the current flags then).
+  static Map<String, bool>? _readMigrationSnapshot(SharedPreferences prefs) {
+    final snapshot = prefs.getString(_migrationSnapshotKey);
+    if (snapshot == null) return null;
+    try {
+      return Map<String, bool>.from(
+        jsonDecode(snapshot) as Map<String, dynamic>,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// One-time migration for the redaction segment flags: they used to mean
+  /// "show this segment" and now mean "mask this segment". Flip any stored
+  /// values once so existing installs keep their on-screen display.
+  ///
+  /// Restart-safe: the pre-migration values are snapshotted into a single
+  /// key before any flag is flipped, and a retry recomputes from that
+  /// snapshot. Without it, an app killed mid-migration would flip the
+  /// already-flipped flags a second time on the next startup and could
+  /// unmask a segment the user had masked. If the snapshot itself cannot
+  /// be stored, nothing is flipped and the next startup retries cleanly.
+  /// The snapshot is left in place afterwards as the migration's record.
+  /// Edits made while the migration is pending are recorded separately
+  /// (see [_migrationEditsKey]) and win over the snapshot on retry, so
+  /// they are never undone by the frozen pre-migration values.
+  /// `init()` loads the in-memory flags through [_displayValues], so a run
+  /// whose migration did not complete still shows the converted values.
+  ///
+  /// Returns the migration outcome: whether the marker is truly set
+  /// (already set on entry, or every flag write and the marker write
+  /// succeeded), and whether a snapshot is stored (already present, or
+  /// written by this run).
+  @visibleForTesting
+  static Future<({bool completed, bool snapshotStored})>
+  migrateRedactionFlags(SharedPreferences prefs) async {
+    if (prefs.getBool(_migrationMarkerKey) == true) {
+      return (completed: true, snapshotStored: true);
+    }
+    var source = _readMigrationSnapshot(prefs);
+    if (source == null) {
+      source = <String, bool>{};
+      // Skip flags already recorded as edited: their stored values are
+      // new-semantics, not pre-migration values (reached only when a
+      // snapshot was lost after edits were recorded).
+      final pendingEdits = _readMigrationEdits(prefs);
+      final batch = _readPresetBatch(prefs);
+      for (final key in _segmentFlagKeys) {
+        if (pendingEdits.containsKey(key)) continue;
+        if (batch != null && batch.flags.containsKey(key)) continue;
+        final stored = prefs.getBool(key);
+        if (stored != null) source[key] = stored;
+      }
+      if (!await prefs.setString(
+        _migrationSnapshotKey,
+        jsonEncode(source),
+      )) {
+        return (completed: false, snapshotStored: false);
+      }
+    }
+    final targets = _convertedFlags(source);
+    // A staged preset batch overlays the snapshot-converted values, and
+    // edits made after the preset win over the batch: they are the
+    // newer choice, in new-semantics terms. An edit the batch
+    // supersedes is skipped only while its recorded value is still the
+    // pre-preset one; a later edit to the same key survives.
+    final batch = _readPresetBatch(prefs);
+    final edits = _readMigrationEdits(prefs);
+    if (batch != null) {
+      targets.addAll(batch.flags);
+      for (final entry in batch.superseded.entries) {
+        if (edits[entry.key] == entry.value) {
+          edits.remove(entry.key);
+        }
+      }
+    }
+    targets.addAll(edits);
+    var allWritesSucceeded = true;
+    for (final entry in targets.entries) {
+      if (!await prefs.setBool(entry.key, entry.value)) {
+        allWritesSucceeded = false;
+      }
+    }
+    // Only mark the migration complete when every flag actually landed;
+    // otherwise the next startup retries from the snapshot instead of
+    // reinterpreting a stale value under the new semantics.
+    if (!allWritesSucceeded) {
+      return (completed: false, snapshotStored: true);
+    }
+    final markerOk = await prefs.setBool(_migrationMarkerKey, true);
+    if (markerOk) {
+      // The edits are now the stored values; drop the pending record.
+      await prefs.remove(_migrationEditsKey);
+      // A staged preset batch also carries its two modes: apply them
+      // now so the migration completes with the full preset, not just
+      // the segments. A failed write leaves the batch for the next
+      // launch, which replays it once the migration is complete.
+      await _applyPresetBatchModes(prefs);
+    }
+    return (completed: markerOk, snapshotStored: true);
+  }
+
   Future<void> init() async {
     // Attempt to read flavor from asset first (injected by rebrand script)
     try {
@@ -529,12 +747,60 @@ class AppSettings extends ChangeNotifier {
     _loadProfileIcons = _prefs?.getBool('loadProfileIcons_v2') ?? false;
     _useNekokoIcons = _prefs?.getBool('useNekokoIcons') ?? true;
     _disableRefreshFlags = _prefs?.getBool('disableRefreshFlags') ?? false;
-    _redactEidFirst = _prefs?.getBool('redactEidFirst') ?? true;
-    _redactEidMiddle = _prefs?.getBool('redactEidMiddle') ?? false;
-    _redactEidLast = _prefs?.getBool('redactEidLast') ?? true;
-    _redactIccidFirst = _prefs?.getBool('redactIccidFirst') ?? true;
-    _redactIccidMiddle = _prefs?.getBool('redactIccidMiddle') ?? true;
-    _redactIccidLast = _prefs?.getBool('redactIccidLast') ?? true;
+    final prefs = _prefs;
+    // migrateRedactionFlags reports whether the marker is truly set and
+    // whether a snapshot is stored: the prefs cache is optimistic, so a
+    // failed write would otherwise read back as done.
+    final outcome = prefs == null
+        ? (completed: true, snapshotStored: true)
+        : await migrateRedactionFlags(prefs);
+    _migrationCompleted = outcome.completed;
+    _migrationSnapshotStored = outcome.snapshotStored;
+    // A preset that failed after staging its recovery batch leaves the
+    // batch behind: replay it now so a restart converges on the full
+    // preset instead of loading a half-applied one. Runs only once the
+    // migration is complete, so the pending-migration retry keeps owning
+    // the batch until then.
+    if (outcome.completed && prefs != null) {
+      await _replayPresetBatch(prefs);
+    }
+    // Load through _displayValues so a run whose migration did not
+    // complete still shows the converted values instead of reading old
+    // show-segment flags as new mask-segment flags. Once migrated, the
+    // stored values are already new-semantics and load as-is.
+    final storedFlags = <String, bool>{};
+    Map<String, bool>? snapshot;
+    var edits = <String, bool>{};
+    if (prefs != null) {
+      for (final key in _segmentFlagKeys) {
+        final value = prefs.getBool(key);
+        if (value != null) storedFlags[key] = value;
+      }
+      snapshot = _readMigrationSnapshot(prefs);
+      edits = _readMigrationEdits(prefs);
+      // A staged preset batch counts as an edit for display purposes,
+      // underneath any newer setter edit, and supersedes the edits it
+      // recorded before the preset — but only while their recorded
+      // value is still the pre-preset one.
+      final batch = _readPresetBatch(prefs);
+      if (batch != null) {
+        for (final entry in batch.superseded.entries) {
+          if (edits[entry.key] == entry.value) {
+            edits.remove(entry.key);
+          }
+        }
+        edits = {...batch.flags, ...edits};
+      }
+    }
+    final displayFlags = _migrationCompleted
+        ? storedFlags
+        : _displayValues(storedFlags, snapshot, edits);
+    _redactEidFirst = displayFlags['redactEidFirst'] ?? false;
+    _redactEidMiddle = displayFlags['redactEidMiddle'] ?? true;
+    _redactEidLast = displayFlags['redactEidLast'] ?? false;
+    _redactIccidFirst = displayFlags['redactIccidFirst'] ?? false;
+    _redactIccidMiddle = displayFlags['redactIccidMiddle'] ?? true;
+    _redactIccidLast = displayFlags['redactIccidLast'] ?? true;
 
     final nicknameRedactionIdx = _prefs?.getInt('nicknameRedactionMode');
     if (nicknameRedactionIdx != null &&
@@ -1078,52 +1344,432 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setRedactEidFirst(bool value) async {
-    _redactEidFirst = value;
-    await _prefs?.setBool('redactEidFirst', value);
-    notifyListeners();
+  /// Serializes pending-migration edit transactions: the settings page
+  /// fires the setters without awaiting them, so two quick taps would
+  /// otherwise interleave their snapshot captures and edits-record
+  /// writes and drop each other's edits.
+  Future<void> _pendingMigrationEdit = Future.value();
+
+  /// Runs [run] after any in-flight pending-migration edit transaction,
+  /// so two quick taps cannot interleave their snapshot captures and
+  /// edits-record writes.
+  Future<T> _runPendingMigrationEdit<T>(Future<T> Function() run) {
+    final result = _pendingMigrationEdit.then((_) => run());
+    // Keep the chain alive even if this run fails.
+    _pendingMigrationEdit = result.then((_) {}).catchError((_) {});
+    return result;
   }
 
-  Future<void> setRedactEidMiddle(bool value) async {
-    _redactEidMiddle = value;
-    await _prefs?.setBool('redactEidMiddle', value);
-    notifyListeners();
+  /// Records segment-flag edits made while the migration is still
+  /// pending, in new-semantics terms, so a later retry writes the edited
+  /// values instead of recomputing them from the frozen snapshot. Returns
+  /// false when the record itself cannot be stored.
+  Future<bool> _syncPendingMigrationEdit(String key, bool newValue) =>
+      _runPendingMigrationEdit(
+        () => _recordPendingMigrationEdits({key: newValue}),
+      );
+
+  /// Captures the pre-migration flag values into the snapshot when none
+  /// is stored yet. Without one, a later retry would rebuild the source
+  /// pair from the current flags — but an edited flag already holds its
+  /// new value, which would corrupt the coupled EID pair. Returns false
+  /// when the snapshot cannot be stored, in which case the caller must
+  /// refuse the edit.
+  Future<bool> _ensureMigrationSnapshot(SharedPreferences prefs) async {
+    if (_migrationSnapshotStored) return true;
+    final edits = _readMigrationEdits(prefs);
+    final source = <String, bool>{};
+    for (final flagKey in _segmentFlagKeys) {
+      if (edits.containsKey(flagKey)) continue;
+      final stored = prefs.getBool(flagKey);
+      if (stored != null) source[flagKey] = stored;
+    }
+    if (!await prefs.setString(_migrationSnapshotKey, jsonEncode(source))) {
+      return false;
+    }
+    _migrationSnapshotStored = true;
+    return true;
   }
 
-  Future<void> setRedactEidLast(bool value) async {
-    _redactEidLast = value;
-    await _prefs?.setBool('redactEidLast', value);
-    notifyListeners();
+  /// Records [values] in the pending-migration edits record with a single
+  /// write. Staging a whole batch at once makes the write the atomic gate:
+  /// if it fails, nothing is recorded at all, so a caller applying the
+  /// values afterwards can never land half-applied. Returns false when
+  /// the record cannot be stored.
+  /// Records [values] in the pending-migration edits record. Used by
+  /// the per-flag setters; after the migration completes there is no
+  /// retry to record for, so this short-circuits. (The preset stages
+  /// through [_stagePendingMigrationEdits] instead, because its recovery
+  /// batch is also needed once the migration is complete.)
+  Future<bool> _recordPendingMigrationEdits(Map<String, bool> values) async {
+    if (_migrationCompleted) {
+      // A recovery batch can stay durable after the migration
+      // completes (a failed preset's batch, or one whose startup
+      // replay did not land). Its flags and modes are already in
+      // storage, but a later replay would still overwrite a newer
+      // edit, so the edit is written into the batch as well; if that
+      // write does not land, the edit is refused and the next tap
+      // retries.
+      return _supersedeRetainedPresetBatch(values);
+    }
+    if (await _stagePendingMigrationEdits(values) == null) return false;
+    // A later edit for a superseded key is newer than the preset: drop
+    // the key from the batch's supersession, so the migration and the
+    // display stop skipping the record entry. The record write landed
+    // first, so a failed batch rewrite cannot resurrect the old edit.
+    // When the rewrite does not land, a newer edit whose value differs
+    // from the superseded one is still protected by the value-aware
+    // skip; only a same-value edit is ambiguous, and it is reported as
+    // not recorded, so the setter leaves the toggle where it was and
+    // the next tap retries.
+    return _clearPresetBatchSupersession(values);
   }
 
-  Future<void> setRedactIccidFirst(bool value) async {
-    _redactIccidFirst = value;
-    await _prefs?.setBool('redactIccidFirst', value);
-    notifyListeners();
+  /// Removes [values]' keys from the staged preset batch's superseded
+  /// map. Returns whether no ambiguously superseded edit remains:
+  /// true when nothing had to be rewritten, when the rewrite landed,
+  /// or when a failed rewrite only affects an edit whose value differs
+  /// from the superseded one (the value-aware skip in the migration
+  /// and the display still keeps it); false when the rewrite did not
+  /// land and a same-value edit would still be skipped on restart.
+  Future<bool> _clearPresetBatchSupersession(
+    Map<String, bool> values,
+  ) async {
+    final prefs = _prefs;
+    if (prefs == null) return true;
+    final batch = _readPresetBatch(prefs);
+    if (batch == null) return true;
+    final superseded = Map<String, bool>.from(batch.superseded);
+    var changed = false;
+    var ambiguous = false;
+    for (final entry in values.entries) {
+      if (superseded.containsKey(entry.key)) {
+        if (superseded[entry.key] == entry.value) ambiguous = true;
+        changed = superseded.remove(entry.key) != null || changed;
+      }
+    }
+    if (!changed) return true;
+    final previousRaw = prefs.getString(_migrationPresetBatchKey);
+    final rewritten = <String, Object>{
+      'flags': batch.flags,
+      if (batch.modes != null)
+        'modes': {
+          'nicknameRedactionMode': batch.modes!.$1,
+          'operatorRedactionMode': batch.modes!.$2,
+        },
+      if (superseded.isNotEmpty) 'supersedes': superseded,
+    };
+    if (await prefs.setString(
+      _migrationPresetBatchKey,
+      jsonEncode(rewritten),
+    )) {
+      return true;
+    }
+    // The failed write still replaced the in-memory cache: repair it,
+    // so a retry still sees the supersession to clear.
+    if (previousRaw != null) {
+      await prefs.setString(_migrationPresetBatchKey, previousRaw);
+    }
+    return !ambiguous;
   }
 
-  Future<void> setRedactIccidMiddle(bool value) async {
-    _redactIccidMiddle = value;
-    await _prefs?.setBool('redactIccidMiddle', value);
-    notifyListeners();
+  /// Writes [values] into a retained preset batch's flags, so a later
+  /// startup replay cannot overwrite the newer edit. Returns whether
+  /// the batch now holds the edit (true when there is no batch to
+  /// update).
+  Future<bool> _supersedeRetainedPresetBatch(Map<String, bool> values) async {
+    final prefs = _prefs;
+    if (prefs == null) return true;
+    final batch = _readPresetBatch(prefs);
+    if (batch == null) return true;
+    final previousRaw = prefs.getString(_migrationPresetBatchKey);
+    final flags = Map<String, bool>.from(batch.flags)..addAll(values);
+    final rewritten = <String, Object>{
+      'flags': flags,
+      if (batch.modes != null)
+        'modes': {
+          'nicknameRedactionMode': batch.modes!.$1,
+          'operatorRedactionMode': batch.modes!.$2,
+        },
+      if (batch.superseded.isNotEmpty) 'supersedes': batch.superseded,
+    };
+    if (await prefs.setString(
+      _migrationPresetBatchKey,
+      jsonEncode(rewritten),
+    )) {
+      return true;
+    }
+    // The failed write still replaced the in-memory cache: repair it,
+    // so a retry still sees the stale batch.
+    if (previousRaw != null) {
+      await prefs.setString(_migrationPresetBatchKey, previousRaw);
+    }
+    return false;
   }
 
-  Future<void> setRedactIccidLast(bool value) async {
-    _redactIccidLast = value;
-    await _prefs?.setBool('redactIccidLast', value);
-    notifyListeners();
+  /// Stages [values] in the pending-migration edits record with a single
+  /// write. Returns the previous recorded values for those keys (null =
+  /// not previously recorded), or null when the record cannot be stored.
+  /// Unlike [_recordPendingMigrationEdits] this also stages when the
+  /// migration is already complete: the preset recovery batch needs the
+  /// record then too, so a failed preset can be replayed at the next
+  /// launch.
+  Future<Map<String, bool?>?> _stagePendingMigrationEdits(
+    Map<String, bool> values,
+  ) async {
+    final prefs = _prefs;
+    if (prefs == null) return <String, bool?>{};
+    if (!await _ensureMigrationSnapshot(prefs)) return null;
+    final edits = _readMigrationEdits(prefs);
+    final previousValues = <String, bool?>{};
+    for (final entry in values.entries) {
+      previousValues[entry.key] = edits[entry.key];
+      edits[entry.key] = entry.value;
+    }
+    if (await prefs.setString(_migrationEditsKey, jsonEncode(edits))) {
+      return previousValues;
+    }
+    await _restorePendingMigrationEdits(prefs, previousValues);
+    return null;
   }
 
-  Future<void> setNicknameRedactionMode(NicknameRedactionMode value) async {
+  /// Writes [previousValues] back into the edits record (removing keys
+  /// that were not recorded before). Used to un-stage a batch after a
+  /// failure, and to repair the optimistic prefs cache after a failed
+  /// record write: the restore is itself an optimistic write, so the
+  /// cache is fixed even if the store write fails again (the store never
+  /// received the new values).
+  Future<void> _restorePendingMigrationEdits(
+    SharedPreferences prefs,
+    Map<String, bool?> previousValues,
+  ) async {
+    final edits = _readMigrationEdits(prefs);
+    for (final entry in previousValues.entries) {
+      final previous = entry.value;
+      if (previous == null) {
+        edits.remove(entry.key);
+      } else {
+        edits[entry.key] = previous;
+      }
+    }
+    if (edits.isEmpty) {
+      await prefs.remove(_migrationEditsKey);
+    } else {
+      await prefs.setString(_migrationEditsKey, jsonEncode(edits));
+    }
+  }
+
+  /// Reads the staged preset batch, or null when there is none or it
+  /// is corrupt. The modes part is optional (a batch whose modes were
+  /// dropped after a successful preset carries flags only), as is the
+  /// superseded map (batches staged with no prior edits have none).
+  /// The superseded map holds the pre-preset recorded value per key:
+  /// only a record entry still equal to that value is skipped, so a
+  /// later edit to the same key survives.
+  static ({
+    Map<String, bool> flags,
+    (int, int)? modes,
+    Map<String, bool> superseded,
+  })?
+  _readPresetBatch(SharedPreferences prefs) {
+    final raw = prefs.getString(_migrationPresetBatchKey);
+    if (raw == null) return null;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final flagsRaw = map['flags'];
+      if (flagsRaw is! Map<String, dynamic>) return null;
+      final flags = Map<String, bool>.from(flagsRaw);
+      (int, int)? modes;
+      final modesRaw = map['modes'];
+      if (modesRaw is Map<String, dynamic>) {
+        final nickname = modesRaw['nicknameRedactionMode'];
+        final operator = modesRaw['operatorRedactionMode'];
+        if (nickname is int &&
+            operator is int &&
+            nickname >= 0 &&
+            nickname < NicknameRedactionMode.values.length &&
+            operator >= 0 &&
+            operator < OperatorRedactionMode.values.length) {
+          modes = (nickname, operator);
+        }
+      }
+      final superseded = <String, bool>{};
+      final supersededRaw = map['supersedes'];
+      if (supersededRaw is Map<String, dynamic>) {
+        for (final entry in supersededRaw.entries) {
+          if (entry.value is bool) {
+            superseded[entry.key] = entry.value as bool;
+          }
+        }
+      }
+      return (flags: flags, modes: modes, superseded: superseded);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Applies a staged preset batch's modes and drops the batch when the
+  /// migration has consumed it. Only removes the batch when the mode
+  /// writes land, so a failed write leaves it for the next launch.
+  /// (The flags are applied by the migration itself, as an overlay.)
+  static Future<void> _applyPresetBatchModes(
+    SharedPreferences prefs,
+  ) async {
+    final raw = prefs.getString(_migrationPresetBatchKey);
+    final batch = _readPresetBatch(prefs);
+    if (batch == null) return;
+    final modes = batch.modes;
+    if (modes == null) {
+      await _removePresetBatch(prefs, raw);
+      return;
+    }
+    final nicknameOk = await prefs.setInt(
+      'nicknameRedactionMode',
+      modes.$1,
+    );
+    final operatorOk = await prefs.setInt(
+      'operatorRedactionMode',
+      modes.$2,
+    );
+    if (nicknameOk && operatorOk) {
+      await _removePresetBatch(prefs, raw);
+    }
+  }
+
+  /// Removes the staged preset batch, repairing the in-memory cache
+  /// when the remove does not land: a failed remove still drops the
+  /// key from the cache, and later reads in this process would
+  /// otherwise miss the retained batch.
+  static Future<void> _removePresetBatch(
+    SharedPreferences prefs,
+    String? previousRaw,
+  ) async {
+    if (await prefs.remove(_migrationPresetBatchKey)) return;
+    if (previousRaw != null) {
+      await prefs.setString(_migrationPresetBatchKey, previousRaw);
+    }
+  }
+
+  /// Replays a preset batch left behind by a failed preset. Only called
+  /// once the migration is complete, so the pending-migration retry
+  /// keeps owning the batch until then. The batch is dropped only when
+  /// every write lands, so a failed write leaves it for the next launch.
+  static Future<void> _replayPresetBatch(SharedPreferences prefs) async {
+    final raw = prefs.getString(_migrationPresetBatchKey);
+    final batch = _readPresetBatch(prefs);
+    if (batch == null) return;
+    var ok = true;
+    for (final entry in batch.flags.entries) {
+      ok = await prefs.setBool(entry.key, entry.value) && ok;
+    }
+    final modes = batch.modes;
+    if (modes != null) {
+      ok = await prefs.setInt('nicknameRedactionMode', modes.$1) && ok;
+      ok = await prefs.setInt('operatorRedactionMode', modes.$2) && ok;
+    }
+    if (!ok) return;
+    await _removePresetBatch(prefs, raw);
+  }
+
+  /// Sets one segment flag, recording the edit first when the migration
+  /// is still pending. If the record cannot be stored, the flag is left
+  /// untouched: persisting it would let the next startup read it as an
+  /// old-semantics value and negate it.
+  Future<bool> _setSegmentFlag(
+    String key,
+    bool value,
+    void Function(bool value) setField,
+  ) async {
+    if (!await _syncPendingMigrationEdit(key, value)) return false;
+    setField(value);
+    await _prefs?.setBool(key, value);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> setRedactEidFirst(bool value) =>
+      _setSegmentFlag('redactEidFirst', value, (v) => _redactEidFirst = v);
+
+  Future<bool> setRedactEidMiddle(bool value) =>
+      _setSegmentFlag('redactEidMiddle', value, (v) => _redactEidMiddle = v);
+
+  Future<bool> setRedactEidLast(bool value) =>
+      _setSegmentFlag('redactEidLast', value, (v) => _redactEidLast = v);
+
+  Future<bool> setRedactIccidFirst(bool value) => _setSegmentFlag(
+    'redactIccidFirst',
+    value,
+    (v) => _redactIccidFirst = v,
+  );
+
+  Future<bool> setRedactIccidMiddle(bool value) => _setSegmentFlag(
+    'redactIccidMiddle',
+    value,
+    (v) => _redactIccidMiddle = v,
+  );
+
+  Future<bool> setRedactIccidLast(bool value) =>
+      _setSegmentFlag('redactIccidLast', value, (v) => _redactIccidLast = v);
+
+  Future<bool> setNicknameRedactionMode(NicknameRedactionMode value) async {
+    if (!await _runPendingMigrationEdit(
+      () => _supersedeRetainedPresetMode(nickname: value.index),
+    )) {
+      return false;
+    }
     _nicknameRedactionMode = value;
     await _prefs?.setInt('nicknameRedactionMode', value.index);
     notifyListeners();
+    return true;
   }
 
-  Future<void> setOperatorRedactionMode(OperatorRedactionMode value) async {
+  Future<bool> setOperatorRedactionMode(OperatorRedactionMode value) async {
+    if (!await _runPendingMigrationEdit(
+      () => _supersedeRetainedPresetMode(operator: value.index),
+    )) {
+      return false;
+    }
     _operatorRedactionMode = value;
     await _prefs?.setInt('operatorRedactionMode', value.index);
     notifyListeners();
+    return true;
+  }
+
+  /// Writes the given mode into a retained preset batch, so a later
+  /// startup replay cannot overwrite the newer choice. Returns whether
+  /// the batch now holds the mode (true when there is no batch, or no
+  /// modes, to update). The segment-flag path has the same shape in
+  /// [_supersedeRetainedPresetBatch].
+  Future<bool> _supersedeRetainedPresetMode({
+    int? nickname,
+    int? operator,
+  }) async {
+    final prefs = _prefs;
+    if (prefs == null) return true;
+    final batch = _readPresetBatch(prefs);
+    if (batch == null || batch.modes == null) return true;
+    final previousRaw = prefs.getString(_migrationPresetBatchKey);
+    final modes = {
+      'nicknameRedactionMode': nickname ?? batch.modes!.$1,
+      'operatorRedactionMode': operator ?? batch.modes!.$2,
+    };
+    final rewritten = <String, Object>{
+      'flags': batch.flags,
+      'modes': modes,
+      if (batch.superseded.isNotEmpty) 'supersedes': batch.superseded,
+    };
+    if (await prefs.setString(
+      _migrationPresetBatchKey,
+      jsonEncode(rewritten),
+    )) {
+      return true;
+    }
+    // The failed write still replaced the in-memory cache: repair it,
+    // so a retry still sees the stale batch.
+    if (previousRaw != null) {
+      await prefs.setString(_migrationPresetBatchKey, previousRaw);
+    }
+    return false;
   }
 
   Future<void> setTagsRedactionMode(TagsRedactionMode value) async {
@@ -1145,12 +1791,12 @@ class AppSettings extends ChangeNotifier {
   }
 
   bool get hasNoRedactionsConfigured =>
-      _redactEidFirst &&
-      _redactEidMiddle &&
-      _redactEidLast &&
-      _redactIccidFirst &&
-      _redactIccidMiddle &&
-      _redactIccidLast &&
+      !_redactEidFirst &&
+      !_redactEidMiddle &&
+      !_redactEidLast &&
+      !_redactIccidFirst &&
+      !_redactIccidMiddle &&
+      !_redactIccidLast &&
       _nicknameRedactionMode == NicknameRedactionMode.none &&
       _operatorRedactionMode == OperatorRedactionMode.none &&
       _tagsRedactionMode == TagsRedactionMode.none &&
@@ -1158,12 +1804,21 @@ class AppSettings extends ChangeNotifier {
       _flagRedactionMode == FlagRedactionMode.none;
 
   /// Shared display-only privacy state for profile and Wi-Fi calling pages.
+  /// Full-hide counts as masked even when no redaction is configured.
   bool get isSensitiveDataMasked =>
-      !_revealSensitiveProfileData && !hasNoRedactionsConfigured;
+      _fullHideSensitiveData ||
+      (!_revealSensitiveProfileData && !hasNoRedactionsConfigured);
 
   Future<void> toggleSensitiveDataVisibility() async {
-    if (_revealSensitiveProfileData) {
+    if (_fullHideSensitiveData) {
+      // Full-hide -> reveal all, like the Profiles eye.
+      setFullHideSensitiveData(false);
+      setRevealSensitiveProfileData(true);
+    } else if (_revealSensitiveProfileData) {
       setRevealSensitiveProfileData(false);
+      if (hasNoRedactionsConfigured) {
+        await applyQuickRedactionPreset();
+      }
     } else if (hasNoRedactionsConfigured) {
       await applyQuickRedactionPreset();
     } else {
@@ -1171,31 +1826,246 @@ class AppSettings extends ChangeNotifier {
     }
   }
 
-  Future<void> applyQuickRedactionPreset() async {
-    _revealSensitiveProfileData = false;
-    _redactEidFirst = true;
-    _redactEidMiddle = false;
-    _redactEidLast = false;
+  /// Applies the quick preset (mask every segment, hide nicknames, show
+  /// country names). Returns false and changes nothing when a segment
+  /// edit cannot be recorded while the migration is pending: a
+  /// half-applied preset would look configured while the identifiers
+  /// stay raw.
+  static const _quickPresetFlags = <String, bool>{
+    'redactEidFirst': false,
+    'redactEidMiddle': true,
+    'redactEidLast': true,
+    'redactIccidFirst': true,
+    'redactIccidMiddle': true,
+    'redactIccidLast': true,
+  };
+
+  /// Stages the preset recovery batch with a single write: the six
+  /// segment edits plus the two mode ints in one JSON value. Returns
+  /// whether the batch landed and the previous raw batch (null when
+  /// there was none), or `ok: false` when the write failed — in which
+  /// case nothing is staged at all, so there is no partial batch.
+  ///
+  /// Edits recorded before the preset are superseded by the batch: the
+  /// batch records each one's key and pre-preset value in `supersedes`,
+  /// and the migration and the display skip a record entry only while
+  /// its value is still that pre-preset one, instead of the record
+  /// being deleted first. The old edits stay durable until the
+  /// migration consumes the batch, so there is no window — a failed
+  /// write, a failed rollback, or a terminated process — in which
+  /// neither the old edit nor the batch survives. Edits recorded after
+  /// the staging land in the record later, through the setters, and
+  /// win over the batch.
+  Future<({bool ok, String? previousBatch})> _stagePresetBatch() async {
+    final prefs = _prefs;
+    if (prefs == null) return (ok: true, previousBatch: null);
+    if (!await _ensureMigrationSnapshot(prefs)) {
+      return (ok: false, previousBatch: null);
+    }
+    final superseded = <String, bool>{};
+    final edits = _readMigrationEdits(prefs);
+    for (final entry in edits.entries) {
+      if (_quickPresetFlags.containsKey(entry.key)) {
+        superseded[entry.key] = entry.value;
+      }
+    }
+    final previousBatch = prefs.getString(_migrationPresetBatchKey);
+    final batch = <String, Object>{
+      'flags': _quickPresetFlags,
+      'modes': {
+        'nicknameRedactionMode': NicknameRedactionMode.hideNickname.index,
+        'operatorRedactionMode': OperatorRedactionMode.countryName.index,
+      },
+      if (superseded.isNotEmpty) 'supersedes': superseded,
+    };
+    if (await prefs.setString(_migrationPresetBatchKey, jsonEncode(batch))) {
+      return (ok: true, previousBatch: previousBatch);
+    }
+    // The failed write still replaced the in-memory cache: repair it.
+    if (previousBatch == null) {
+      await prefs.remove(_migrationPresetBatchKey);
+    } else {
+      await prefs.setString(_migrationPresetBatchKey, previousBatch);
+    }
+    return (ok: false, previousBatch: null);
+  }
+
+  /// Writes [previousRaw] back into the staged preset batch (removing
+  /// it when there was none before). Returns whether the write landed.
+  /// A failed remove repairs the in-memory cache with the batch it
+  /// tried to drop, so later reads in this process still see it.
+  Future<bool> _restorePresetBatch(String? previousRaw) async {
+    final prefs = _prefs;
+    if (prefs == null) return true;
+    if (previousRaw == null) {
+      final currentRaw = prefs.getString(_migrationPresetBatchKey);
+      if (await prefs.remove(_migrationPresetBatchKey)) return true;
+      if (currentRaw != null) {
+        await prefs.setString(_migrationPresetBatchKey, currentRaw);
+      }
+      return false;
+    }
+    return prefs.setString(_migrationPresetBatchKey, previousRaw);
+  }
+
+  /// Rewrites the staged preset batch without its modes, keeping the
+  /// flags (and the superseded edits) for the pending migration retry.
+  /// The stored modes are already the preset, and a later mode change
+  /// before the next launch is written straight to storage, so the
+  /// stale modes must not survive to be replayed over it. Returns
+  /// whether the write landed.
+  Future<bool> _dropPresetBatchModes() async {
+    final prefs = _prefs;
+    if (prefs == null) return true;
+    final batch = _readPresetBatch(prefs);
+    if (batch == null) return true;
+    final rewritten = <String, Object>{
+      'flags': batch.flags,
+      if (batch.superseded.isNotEmpty) 'supersedes': batch.superseded,
+    };
+    return prefs.setString(_migrationPresetBatchKey, jsonEncode(rewritten));
+  }
+
+  Future<bool> applyQuickRedactionPreset() async {
+    // Stage the recovery batch first with a single write: if it cannot
+    // be stored, nothing is applied at all. Once staged, the flags are
+    // applied directly instead of through the setters, since each
+    // setter would record its own write and re-open the partial window.
+    final staged = await _runPendingMigrationEdit(
+      () => _stagePresetBatch(),
+    );
+    if (!staged.ok) return false;
+    // Remember the previous values so a failed preference write can
+    // roll the preset back instead of reporting success half-applied.
+    final previousFlags = <String, bool>{
+      'redactEidFirst': _redactEidFirst,
+      'redactEidMiddle': _redactEidMiddle,
+      'redactEidLast': _redactEidLast,
+      'redactIccidFirst': _redactIccidFirst,
+      'redactIccidMiddle': _redactIccidMiddle,
+      'redactIccidLast': _redactIccidLast,
+    };
+    final previousReveal = _revealSensitiveProfileData;
+    final previousFullHide = _fullHideSensitiveData;
+    final previousNicknameMode = _nicknameRedactionMode;
+    final previousOperatorMode = _operatorRedactionMode;
+    _redactEidFirst = false;
+    _redactEidMiddle = true;
+    _redactEidLast = true;
     _redactIccidFirst = true;
-    _redactIccidMiddle = false;
-    _redactIccidLast = false;
+    _redactIccidMiddle = true;
+    _redactIccidLast = true;
+    _revealSensitiveProfileData = false;
+    _fullHideSensitiveData = false;
     _nicknameRedactionMode = NicknameRedactionMode.hideNickname;
     _operatorRedactionMode = OperatorRedactionMode.countryName;
 
-    await _prefs?.setBool('redactEidFirst', _redactEidFirst);
-    await _prefs?.setBool('redactEidMiddle', _redactEidMiddle);
-    await _prefs?.setBool('redactEidLast', _redactEidLast);
-    await _prefs?.setBool('redactIccidFirst', _redactIccidFirst);
-    await _prefs?.setBool('redactIccidMiddle', _redactIccidMiddle);
-    await _prefs?.setBool('redactIccidLast', _redactIccidLast);
-    await _prefs?.setInt('nicknameRedactionMode', _nicknameRedactionMode.index);
-    await _prefs?.setInt('operatorRedactionMode', _operatorRedactionMode.index);
+    var ok = true;
+    final prefs = _prefs;
+    if (prefs != null) {
+      for (final entry in _quickPresetFlags.entries) {
+        ok = await prefs.setBool(entry.key, entry.value) && ok;
+      }
+      ok =
+          await prefs.setInt(
+                'nicknameRedactionMode',
+                _nicknameRedactionMode.index,
+              ) &&
+              ok;
+      ok =
+          await prefs.setInt(
+                'operatorRedactionMode',
+                _operatorRedactionMode.index,
+              ) &&
+              ok;
+    }
+    var cleanupOk = true;
+    if (ok) {
+      // The cleanup is part of the success condition: if it cannot be
+      // stored, the preset is rolled back below instead of reporting
+      // success with a stale batch behind it.
+      if (_migrationCompleted) {
+        cleanupOk = await _runPendingMigrationEdit(
+          () => _restorePresetBatch(null),
+        );
+      } else {
+        cleanupOk = await _runPendingMigrationEdit(
+          () => _dropPresetBatchModes(),
+        );
+      }
+    }
+    if (!ok || !cleanupOk) {
+      // Roll back in memory and in storage, so the next eye tap retries
+      // the preset instead of believing it landed.
+      _redactEidFirst = previousFlags['redactEidFirst']!;
+      _redactEidMiddle = previousFlags['redactEidMiddle']!;
+      _redactEidLast = previousFlags['redactEidLast']!;
+      _redactIccidFirst = previousFlags['redactIccidFirst']!;
+      _redactIccidMiddle = previousFlags['redactIccidMiddle']!;
+      _redactIccidLast = previousFlags['redactIccidLast']!;
+      _revealSensitiveProfileData = previousReveal;
+      _fullHideSensitiveData = previousFullHide;
+      _nicknameRedactionMode = previousNicknameMode;
+      _operatorRedactionMode = previousOperatorMode;
+      var rollbackOk = true;
+      if (prefs != null) {
+        for (final entry in previousFlags.entries) {
+          rollbackOk =
+              await prefs.setBool(entry.key, entry.value) && rollbackOk;
+        }
+        rollbackOk =
+            await prefs.setInt(
+                  'nicknameRedactionMode',
+                  previousNicknameMode.index,
+                ) &&
+                rollbackOk;
+        rollbackOk =
+            await prefs.setInt(
+                  'operatorRedactionMode',
+                  previousOperatorMode.index,
+                ) &&
+                rollbackOk;
+      }
+      if (rollbackOk && prefs != null) {
+        // Restoration succeeded: un-stage the recovery batch, so a
+        // restart replays the pre-preset values and the eye retries.
+        // The superseded edits were never removed, so there is nothing
+        // to put back: the restart replays them as the pre-preset
+        // choice.
+        await _runPendingMigrationEdit(
+          () => _restorePresetBatch(staged.previousBatch),
+        );
+      }
+      // Otherwise the batch stays staged: the next launch replays the
+      // full preset (segments + modes) instead of loading a half one.
+      notifyListeners();
+      return false;
+    }
+    // Success: the preset applied and the batch cleanup landed, so no
+    // stale batch is left to replay over a later user edit.
     notifyListeners();
+    return true;
   }
 
   void setRevealSensitiveProfileData(bool value) {
-    if (_revealSensitiveProfileData == value) return;
+    // Reveal and full-hide are mutually exclusive.
+    final changed =
+        _revealSensitiveProfileData != value ||
+        (value && _fullHideSensitiveData);
+    if (!changed) return;
     _revealSensitiveProfileData = value;
+    if (value) _fullHideSensitiveData = false;
+    notifyListeners();
+  }
+
+  void setFullHideSensitiveData(bool value) {
+    // Full-hide and reveal are mutually exclusive.
+    final changed =
+        _fullHideSensitiveData != value ||
+        (value && _revealSensitiveProfileData);
+    if (!changed) return;
+    _fullHideSensitiveData = value;
+    if (value) _revealSensitiveProfileData = false;
     notifyListeners();
   }
 
