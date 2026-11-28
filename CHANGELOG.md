@@ -4,6 +4,16 @@ All notable changes to NekokoLPA2 will be documented in this file.
 
 ## [Unreleased]
 
+## [2.8.0+609] - 2026-11-29
+
+### Added
+- Xesim X7 Bluetooth eSIM cards (#66), driven like 9eSIM cards, including rename and password change. The card's six-digit Bluetooth password is issued by Xesim and is not printed on the card.
+- Hide everything: the eye button now cycles through showing all, masking as configured, and hiding the EID, ICCID, phone number and balance completely (#65).
+
+### Changed
+- Redaction settings: turning a segment on now masks it, and existing choices are converted on first launch. By default the ICCID shows its first 8 digits and the EID its first 8 and last 2 (#65).
+- The profile card masks the last 6 digits of the phone number and the whole balance while the eye is set to mask (#65).
+
 ## [2.7.0+608] - 2026-11-24
 
 ### Added
