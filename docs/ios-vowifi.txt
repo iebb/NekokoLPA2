@@ -88,15 +88,11 @@ Optional external carrier/codec fixtures default to skips, not parity passes.
 Darwin no-cgo certificate verification fails closed. Default Darwin tests use
 the non-AMR fallback; tagged macOS codec tests require a separate macOS build.
 
-The path-limited ios-vowifi workflow adds protocol, Darwin/Flutter/unsigned-iOS
-and Web checks without signing/deployment secrets. Existing release workflows
-are not replaced. CI/build results do not establish physical interoperability.
+CI/build results do not establish physical interoperability.
 
 The release checks run full application analysis and the complete Flutter test
-suite. The ios-vowifi workflow also runs strict analysis on the feature and
-modified host boundaries. Web JS release
-builds, while the upstream flutter_rust_bridge dependency's Wasm dry-run warns;
-that does not establish WebAssembly support.
+suite. Web JS release builds, while the upstream flutter_rust_bridge
+dependency's Wasm dry-run warns; that does not establish WebAssembly support.
 
 Device acceptance and background limits
 --------------------------------------
