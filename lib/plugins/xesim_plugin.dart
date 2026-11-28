@@ -5,7 +5,8 @@ import '../adapter/ble/nble_sim_adapter.dart';
 import '../models/euicc_profile.dart';
 import 'plugin_base.dart';
 
-/// Adds Xesim's X7 Bluetooth eSIM card, advertised as `Xesim` and six digits.
+/// Adds Xesim's X7 Bluetooth eSIM card, advertised as `Xesim` and six hex
+/// characters (decimal by default; a Customize rename may introduce A-F).
 ///
 /// The card speaks the 9eSIM writer protocol (Nordic UART, the E0 3DES
 /// challenge, counter + APDU + sum16 frames), and hardware testing confirmed it
@@ -14,7 +15,7 @@ import 'plugin_base.dart';
 /// the default is rejected and keeps it with the other writer passwords.
 class XesimPlugin extends ProfilePlugin {
   static final RegExp _deviceNamePattern = RegExp(
-    r'^Xesim[0-9]{6}$',
+    r'^Xesim[0-9a-fA-F]{6}$',
     caseSensitive: false,
   );
 
@@ -28,10 +29,17 @@ class XesimPlugin extends ProfilePlugin {
         isDeviceName(displayName) || isDeviceName(advertisedName),
     createAdapter: () => NBLESimAdapter(),
     icon: Icons.sd_card_outlined,
-    // The authentication key is derived from the last two digits of the name,
-    // so keep the advertised name when the platform caches a generic one.
-    readerName: (displayName, advertisedName) =>
-        isDeviceName(displayName) ? displayName.trim() : advertisedName.trim(),
+    // The auth key is derived from the name's last two characters, and the
+    // Customize rename changes them, so prefer the live advertised name; the
+    // platform's cached display name can be stale right after a rename. Fall
+    // back to the display name only when the advertisement has no valid Xesim
+    // name (e.g. the platform cached a generic one).
+    readerName: (displayName, advertisedName) {
+      final advertised = advertisedName.trim();
+      if (isDeviceName(advertised)) return advertised;
+      final display = displayName.trim();
+      return isDeviceName(display) ? display : advertised;
+    },
     scanKeywords: const ['Xesim'],
     scanServiceUuids: const ['6e400001-b5a3-f393-e0a9-e50e24dcca9e'],
   );
