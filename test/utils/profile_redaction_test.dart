@@ -8,9 +8,14 @@ import 'package:nlpa2/utils/profile_redaction.dart';
 import 'package:nlpa2/vowifi/privacy_redaction.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // AppSettings.init loads remote servers from SQLite; initDb only sets up
+  // FFI on Windows and Linux, so do it here for macOS too.
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
 
   const sampleEid = '8904903200000000000000001234567890';
   const sampleIccid = '89882810345678901234';
